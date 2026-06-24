@@ -1,15 +1,13 @@
 /**
- * App — Root application component.
- * Wraps all providers and renders the themed router.
- *
- * Provider nesting order: SettingsProvider > InterviewProvider > ExamProvider
- * ThemeProvider is created inside AppContent using the current theme mode.
+ * App v2 — Root application component.
+ * Provider nesting: SettingsProvider > SessionProvider > InterviewProvider > ExamProvider
  */
 
 import { useMemo } from 'react';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SettingsProvider } from './context/SettingsContext';
+import { SessionProvider } from './context/SessionContext';
 import { InterviewProvider } from './context/InterviewContext';
 import { ExamProvider } from './context/ExamContext';
 import { AppLayout } from './components/layout/AppLayout';
@@ -19,13 +17,9 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { useSettings } from './hooks/useSettings';
 import { createAppTheme } from './styles/theme';
 
-/** Inner component that has access to settings for theme creation. */
 function AppContent(): JSX.Element {
   const { appSettings } = useSettings();
-  const theme = useMemo(
-    () => createAppTheme(appSettings.theme),
-    [appSettings.theme],
-  );
+  const theme = useMemo(() => createAppTheme(appSettings.theme), [appSettings.theme]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -48,11 +42,13 @@ function AppContent(): JSX.Element {
 export default function App(): JSX.Element {
   return (
     <SettingsProvider>
-      <InterviewProvider>
-        <ExamProvider>
-          <AppContent />
-        </ExamProvider>
-      </InterviewProvider>
+      <SessionProvider>
+        <InterviewProvider>
+          <ExamProvider>
+            <AppContent />
+          </ExamProvider>
+        </InterviewProvider>
+      </SessionProvider>
     </SettingsProvider>
   );
 }
