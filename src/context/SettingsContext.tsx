@@ -18,12 +18,15 @@ import type {
   AIProvider,
   ASRProvider,
   AudioSource,
+  SpeakerAudioSource,
   DoubaoASRConfig,
+  LocalQwenASRConfig,
 } from '../types';
 import {
   DEFAULT_AI_SETTINGS,
   DEFAULT_APP_SETTINGS,
   DEFAULT_DOUBAO_ASR_CONFIG,
+  DEFAULT_LOCAL_QWEN_ASR_CONFIG,
   STORAGE_KEYS,
   PROVIDER_DEFAULTS,
 } from '../constants';
@@ -36,6 +39,7 @@ export interface SettingsState {
   aiSettings: AISettings;
   appSettings: AppSettings;
   doubaoConfig: DoubaoASRConfig;
+  localQwenConfig: LocalQwenASRConfig;
   connectionStatus: ConnectionTestResult | null;
   isTestingConnection: boolean;
 }
@@ -50,7 +54,10 @@ type SettingsAction =
   | { type: 'ACKNOWLEDGE_PRIVACY' }
   | { type: 'SET_ASR_PROVIDER'; payload: ASRProvider }
   | { type: 'SET_AUDIO_SOURCE'; payload: AudioSource }
+  | { type: 'SET_MY_AUDIO_SOURCE'; payload: SpeakerAudioSource }
+  | { type: 'SET_INTERVIEWER_AUDIO_SOURCE'; payload: SpeakerAudioSource }
   | { type: 'UPDATE_DOUBAO_CONFIG'; payload: Partial<DoubaoASRConfig> }
+  | { type: 'UPDATE_LOCAL_QWEN_CONFIG'; payload: Partial<LocalQwenASRConfig> }
   | { type: 'SET_CONNECTION_STATUS'; payload: ConnectionTestResult | null }
   | { type: 'SET_TESTING'; payload: boolean };
 
@@ -68,11 +75,19 @@ function getInitialState(): SettingsState {
     ...DEFAULT_DOUBAO_ASR_CONFIG,
     ...storageService.get<DoubaoASRConfig>(STORAGE_KEYS.DOUBAO_ASR_CONFIG, DEFAULT_DOUBAO_ASR_CONFIG),
   };
+  if (doubaoConfig.resourceId === 'volc.seedasr.sauc.duration') {
+    doubaoConfig.resourceId = DEFAULT_DOUBAO_ASR_CONFIG.resourceId;
+  }
   if (doubaoConfig.accessToken) {
     doubaoConfig.accessToken = deobfuscate(doubaoConfig.accessToken);
   }
 
-  return { aiSettings, appSettings, doubaoConfig, connectionStatus: null, isTestingConnection: false };
+  const localQwenConfig: LocalQwenASRConfig = {
+    ...DEFAULT_LOCAL_QWEN_ASR_CONFIG,
+    ...storageService.get<LocalQwenASRConfig>(STORAGE_KEYS.LOCAL_QWEN_ASR_CONFIG, DEFAULT_LOCAL_QWEN_ASR_CONFIG),
+  };
+
+  return { aiSettings, appSettings, doubaoConfig, localQwenConfig, connectionStatus: null, isTestingConnection: false };
 }
 
 function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
@@ -96,9 +111,45 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
     case 'SET_ASR_PROVIDER':
       return { ...state, appSettings: { ...state.appSettings, asrProvider: action.payload } };
     case 'SET_AUDIO_SOURCE':
-      return { ...state, appSettings: { ...state.appSettings, audioSource: action.payload } };
+      if (action.payload === 'both') {
+        return {
+          ...state,
+          appSettings: {
+            ...state.appSettings,
+            audioSource: action.payload,
+            myAudioSource: 'microphone',
+            interviewerAudioSource: 'system',
+          },
+        };
+      }
+      if (action.payload === 'system') {
+        return {
+          ...state,
+          appSettings: {
+            ...state.appSettings,
+            audioSource: action.payload,
+            myAudioSource: 'muted',
+            interviewerAudioSource: 'system',
+          },
+        };
+      }
+      return {
+        ...state,
+        appSettings: {
+          ...state.appSettings,
+          audioSource: action.payload,
+          myAudioSource: 'microphone',
+          interviewerAudioSource: 'muted',
+        },
+      };
+    case 'SET_MY_AUDIO_SOURCE':
+      return { ...state, appSettings: { ...state.appSettings, myAudioSource: action.payload } };
+    case 'SET_INTERVIEWER_AUDIO_SOURCE':
+      return { ...state, appSettings: { ...state.appSettings, interviewerAudioSource: action.payload } };
     case 'UPDATE_DOUBAO_CONFIG':
       return { ...state, doubaoConfig: { ...state.doubaoConfig, ...action.payload } };
+    case 'UPDATE_LOCAL_QWEN_CONFIG':
+      return { ...state, localQwenConfig: { ...state.localQwenConfig, ...action.payload } };
     case 'SET_CONNECTION_STATUS':
       return { ...state, connectionStatus: action.payload };
     case 'SET_TESTING':
@@ -116,8 +167,11 @@ export interface SettingsContextValue extends SettingsState {
   acknowledgePrivacy: () => void;
   setASRProvider: (p: ASRProvider) => void;
   setAudioSource: (s: AudioSource) => void;
+  setMyAudioSource: (s: SpeakerAudioSource) => void;
+  setInterviewerAudioSource: (s: SpeakerAudioSource) => void;
   updateAppSettings: (p: Partial<AppSettings>) => void;
   updateDoubaoConfig: (p: Partial<DoubaoASRConfig>) => void;
+  updateLocalQwenConfig: (p: Partial<LocalQwenASRConfig>) => void;
   testConnection: () => Promise<ConnectionTestResult>;
 }
 
@@ -138,6 +192,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storageService.set(STORAGE_KEYS.DOUBAO_ASR_CONFIG, toStore);
   }, [state.doubaoConfig]);
   useEffect(() => {
+    storageService.set(STORAGE_KEYS.LOCAL_QWEN_ASR_CONFIG, state.localQwenConfig);
+  }, [state.localQwenConfig]);
+  useEffect(() => {
     const root = document.documentElement;
     state.appSettings.theme === 'dark' ? root.classList.add('dark') : root.classList.remove('dark');
   }, [state.appSettings.theme]);
@@ -149,8 +206,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const acknowledgePrivacy = useCallback(() => dispatch({ type: 'ACKNOWLEDGE_PRIVACY' }), []);
   const setASRProvider = useCallback((p: ASRProvider) => dispatch({ type: 'SET_ASR_PROVIDER', payload: p }), []);
   const setAudioSource = useCallback((s: AudioSource) => dispatch({ type: 'SET_AUDIO_SOURCE', payload: s }), []);
+  const setMyAudioSource = useCallback((s: SpeakerAudioSource) => dispatch({ type: 'SET_MY_AUDIO_SOURCE', payload: s }), []);
+  const setInterviewerAudioSource = useCallback((s: SpeakerAudioSource) => dispatch({ type: 'SET_INTERVIEWER_AUDIO_SOURCE', payload: s }), []);
   const updateAppSettings = useCallback((p: Partial<AppSettings>) => dispatch({ type: 'SET_APP_SETTINGS', payload: p }), []);
   const updateDoubaoConfig = useCallback((p: Partial<DoubaoASRConfig>) => dispatch({ type: 'UPDATE_DOUBAO_CONFIG', payload: p }), []);
+  const updateLocalQwenConfig = useCallback((p: Partial<LocalQwenASRConfig>) => dispatch({ type: 'UPDATE_LOCAL_QWEN_CONFIG', payload: p }), []);
 
   const testConnection = useCallback(async (): Promise<ConnectionTestResult> => {
     dispatch({ type: 'SET_TESTING', payload: true });
@@ -169,7 +229,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const value: SettingsContextValue = {
     ...state, updateAISettings, setProvider, setTheme, setLanguage,
-    acknowledgePrivacy, setASRProvider, setAudioSource, updateAppSettings, updateDoubaoConfig, testConnection,
+    acknowledgePrivacy, setASRProvider, setAudioSource, setMyAudioSource,
+    setInterviewerAudioSource, updateAppSettings, updateDoubaoConfig, updateLocalQwenConfig, testConnection,
   };
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

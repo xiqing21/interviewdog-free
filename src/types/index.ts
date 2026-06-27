@@ -14,10 +14,11 @@ export type AIProvider =
   | 'custom';
 
 // ===== 语音识别服务商 =====
-export type ASRProvider = 'browser' | 'doubao';
+export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen';
 
 // ===== 音频源类型 =====
-export type AudioSource = 'system' | 'microphone';
+export type AudioSource = 'both' | 'system' | 'microphone';
+export type SpeakerAudioSource = 'microphone' | 'system' | 'muted';
 
 // ===== 面试回答模式 =====
 export type AnswerMode = 'concise' | 'detailed';
@@ -48,7 +49,13 @@ export interface AISettings {
 export interface DoubaoASRConfig {
   appId: string;
   accessToken: string;
-  cluster: string;
+  resourceId: string;
+}
+
+export interface LocalQwenASRConfig {
+  endpoint: string;
+  model: string;
+  hotwords: string;
 }
 
 // ===== 应用设置接口（v2 扩展） =====
@@ -58,14 +65,32 @@ export interface AppSettings {
   privacyAcknowledged: boolean;
   asrProvider: ASRProvider;
   audioSource: AudioSource;
+  myAudioSource: SpeakerAudioSource;
+  interviewerAudioSource: SpeakerAudioSource;
   defaultAnswerMode: AnswerMode;
   mergeTimeoutMs: number;
+  webSearchEnabled: boolean;
 }
 
 // ===== 简历与JD数据 =====
 export interface ResumeJDData {
   resume: string;
   jd: string;
+}
+
+export interface ResumeLibraryItem {
+  id: string;
+  name: string;
+  content: string;
+  tags?: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface KnowledgeProfile {
+  resumes: ResumeLibraryItem[];
+  expertKnowledge: string;
+  updatedAt?: number;
 }
 
 // ===== 模型信息（来自 /v1/models API） =====
@@ -81,10 +106,16 @@ export interface InterviewSession {
   id: string;
   name: string;
   createdAt: number;
+  updatedAt?: number;
+  archivedAt?: number;
   qaList: QAItem[];
+  transcriptLines?: TranscriptLine[];
+  review?: InterviewReview;
   answerMode: AnswerMode;
   resume?: string;
   jd?: string;
+  targetRole?: string;
+  focusAreas?: string[];
 }
 
 // ===== 面试项目摘要（列表用） =====
@@ -103,6 +134,21 @@ export interface QAItem {
   timestamp: number;
   isStreaming: boolean;
   error?: string;
+}
+
+export interface TranscriptLine {
+  id: string;
+  speaker: 'interviewer' | 'me';
+  text: string;
+  timestamp: number;
+}
+
+export interface InterviewReview {
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  followUps: string[];
+  generatedAt: number;
 }
 
 // ===== 笔试记录条目 =====

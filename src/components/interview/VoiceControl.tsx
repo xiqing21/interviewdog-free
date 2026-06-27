@@ -7,21 +7,22 @@ import { Box, IconButton, Typography, Chip } from '@mui/material';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 import ComputerIcon from '@mui/icons-material/Computer';
-import SmartphoneIcon from '@mui/icons-material/Smartphone';
+import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import { useInterview } from '../../hooks/useInterview';
 import { useSettings } from '../../hooks/useSettings';
 
 export function VoiceControl() {
   const { isListening, interimText, isMerging, error, startListening, stopListening } = useInterview();
   const { appSettings } = useSettings();
-  const isSystemAudio = appSettings.audioSource === 'system';
+  const bothMuted = appSettings.myAudioSource === 'muted' && appSettings.interviewerAudioSource === 'muted';
+  const hasSystemAudio = appSettings.myAudioSource === 'system' || appSettings.interviewerAudioSource === 'system';
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 2 }}>
       {/* 音频源指示 */}
       <Chip
-        icon={isSystemAudio ? <ComputerIcon /> : <SmartphoneIcon />}
-        label={isSystemAudio ? '系统音频（面试官）' : '麦克风'}
+        icon={bothMuted ? <VolumeOffIcon /> : hasSystemAudio ? <ComputerIcon /> : <MicIcon />}
+        label={`我：${sourceLabel(appSettings.myAudioSource)} / 面试官：${sourceLabel(appSettings.interviewerAudioSource)}`}
         size="small"
         variant="outlined"
         sx={{ mb: 1.5, opacity: 0.7 }}
@@ -30,6 +31,7 @@ export function VoiceControl() {
       {/* 录音按钮 */}
       <IconButton
         onClick={isListening ? stopListening : startListening}
+        disabled={bothMuted}
         className={isListening ? 'pulse-glow' : ''}
         sx={{
           width: 72, height: 72,
@@ -48,7 +50,7 @@ export function VoiceControl() {
           ? isMerging
             ? (interimText || '正在合并长问题...')
             : (interimText || '正在聆听...')
-          : '点击开始语音输入'}
+          : bothMuted ? '两路都已静音' : '点击开始语音输入'}
       </Typography>
 
       {/* 错误提示 */}
@@ -59,4 +61,10 @@ export function VoiceControl() {
       )}
     </Box>
   );
+}
+
+function sourceLabel(source: string): string {
+  if (source === 'system') return '系统音频';
+  if (source === 'microphone') return '麦克风';
+  return '静音';
 }

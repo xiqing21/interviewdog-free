@@ -11,6 +11,7 @@ import { PromptConfig } from './PromptConfig';
 import { ConnectionTest } from './ConnectionTest';
 import { AudioSourceSettings } from './AudioSourceSettings';
 import { DoubaoConfig } from './DoubaoConfig';
+import { LocalQwenConfig } from './LocalQwenConfig';
 import { ResumeJDSettings } from './ResumeJDSettings';
 
 export function SettingsPage() {
@@ -31,6 +32,7 @@ export function SettingsPage() {
       <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>🎤 语音识别</Typography>
       <AudioSourceSettings />
       <DoubaoConfig />
+      <LocalQwenConfig />
 
       <Divider />
 

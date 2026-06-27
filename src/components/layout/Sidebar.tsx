@@ -18,6 +18,7 @@ import { NavLink } from 'react-router-dom';
 import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import SettingsIcon from '@mui/icons-material/Settings';
+import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import PetsIcon from '@mui/icons-material/Pets';
@@ -28,6 +29,7 @@ import { useTheme } from '../../hooks/useTheme';
 const ICON_MAP: Record<string, ElementType> = {
   RecordVoiceOver: RecordVoiceOverIcon,
   EditNote: EditNoteIcon,
+  LibraryBooks: LibraryBooksIcon,
   Settings: SettingsIcon,
 };
 

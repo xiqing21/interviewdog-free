@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import type { QAItem } from '../../types';
 import { useInterview } from '../../hooks/useInterview';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
@@ -25,7 +26,7 @@ interface QACardProps {
 }
 
 export function QACard({ qa }: QACardProps) {
-  const { regenerateAnswer, editQuestion, isProcessing } = useInterview();
+  const { regenerateAnswer, editQuestion, deleteQuestion, isProcessing } = useInterview();
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(qa.question);
 
@@ -135,6 +136,16 @@ export function QACard({ qa }: QACardProps) {
             编辑问题
           </Button>
         )}
+        <Button
+          size="small"
+          color="error"
+          startIcon={<DeleteOutlineIcon />}
+          onClick={() => deleteQuestion(qa.id)}
+          disabled={isProcessing}
+          sx={{ ml: 'auto' }}
+        >
+          删除
+        </Button>
       </CardActions>
     </Card>
   );

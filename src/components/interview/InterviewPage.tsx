@@ -3,83 +3,743 @@
  * 集成 Session 管理、回答模式切换、语音控制、手动触发
  */
 
-import { Box, Alert, Button, Typography, TextField, IconButton, Paper } from '@mui/material';
+import { useState, useCallback, useEffect, useRef, type ChangeEvent } from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  FormControl,
+  FormControlLabel,
+  IconButton,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  Switch,
+  TextField,
+  Typography,
+  type SelectChangeEvent,
+} from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
+import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
+import HearingIcon from '@mui/icons-material/Hearing';
+import TuneIcon from '@mui/icons-material/Tune';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { Link } from 'react-router-dom';
-import { useState, useCallback } from 'react';
 import { VoiceControl } from './VoiceControl';
-import { QAHistory } from './QAHistory';
+import { QACard } from './QACard';
 import { SessionManager } from './SessionManager';
 import { AnswerModeToggle } from './AnswerModeToggle';
+import { MarkdownRenderer } from '../common/MarkdownRenderer';
+import { INTERVIEW_FOCUS_OPTIONS, INTERVIEW_ROLE_PRESETS, SPEAKER_AUDIO_SOURCES } from '../../constants';
 import { useSettings } from '../../hooks/useSettings';
 import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
+import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
+import type { ASRProvider, SpeakerAudioSource } from '../../types';
 
 export function InterviewPage() {
-  const { aiSettings } = useSettings();
-  const { activeSession } = useSession();
-  const { isProcessing, isListening, addManualQuestion } = useInterview();
+  const {
+    aiSettings,
+    appSettings,
+    setASRProvider,
+    setMyAudioSource,
+    setInterviewerAudioSource,
+    updateAppSettings,
+  } = useSettings();
+  const { activeSession, sessionSummaries } = useSession();
+  const {
+    isProcessing,
+    isListening,
+    interimText,
+    systemAudioReady,
+    transcriptLines,
+    qaList,
+    addManualQuestion,
+    triggerLatestTranscriptQuestion,
+    prepareSystemAudioShare,
+    deleteQuestion,
+    generateReview,
+    endInterview,
+  } = useInterview();
   const [manualInput, setManualInput] = useState('');
+  const [showSetup, setShowSetup] = useState(!activeSession);
+  const [showStartPrompt, setShowStartPrompt] = useState(Boolean(activeSession));
+  const [setupMode, setSetupMode] = useState<'new' | 'edit'>('new');
+  const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
+  const lastQaCountRef = useRef(qaList.length);
+
+  useEffect(() => {
+    lastQaCountRef.current = qaList.length;
+    setManualInput('');
+    setSelectedQaId(qaList[qaList.length - 1]?.id ?? null);
+  }, [activeSession?.id]);
+
+  useEffect(() => {
+    if (qaList.length === 0) {
+      setSelectedQaId(null);
+      lastQaCountRef.current = 0;
+      return;
+    }
+    const hasNewQuestion = qaList.length > lastQaCountRef.current;
+    if (hasNewQuestion || !selectedQaId || !qaList.some((qa) => qa.id === selectedQaId)) {
+      setSelectedQaId(qaList[qaList.length - 1].id);
+    }
+    lastQaCountRef.current = qaList.length;
+  }, [qaList, selectedQaId]);
 
   const handleManualSend = useCallback(() => {
     const q = manualInput.trim();
-    if (!q || isProcessing) return;
+    if (!q || isProcessing || !activeSession) return;
     addManualQuestion(q);
     setManualInput('');
-  }, [manualInput, isProcessing, addManualQuestion]);
+  }, [manualInput, isProcessing, activeSession, addManualQuestion]);
 
-  if (!aiSettings.apiKey) {
+  const handleTranscriptQuestion = useCallback((question: string) => {
+    if (!question.trim() || isProcessing || !aiSettings.apiKey) return;
+    void addManualQuestion(question.trim());
+  }, [addManualQuestion, aiSettings.apiKey, isProcessing]);
+
+  const handleInterviewerAudioSourceChange = useCallback((source: SpeakerAudioSource) => {
+    setInterviewerAudioSource(source);
+    if (source === 'system') {
+      void prepareSystemAudioShare();
+    }
+  }, [prepareSystemAudioShare, setInterviewerAudioSource]);
+
+  const selectedQa = selectedQaId
+    ? qaList.find((qa) => qa.id === selectedQaId) ?? null
+    : qaList[qaList.length - 1] ?? null;
+  const visibleQaList = [...qaList].reverse();
+  const hasTriggerableInterviewerText =
+    transcriptLines.some((line) => line.speaker === 'interviewer') ||
+    /^面试官[：:]/.test(interimText.trim());
+
+  if (showStartPrompt && activeSession && !showSetup) {
     return (
-      <Box sx={{ maxWidth: 800, mx: 'auto' }}>
-        <Alert severity="warning" action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
-          请先在设置中配置 API Key 后使用面试辅助功能。
-        </Alert>
+      <ProjectStartPrompt
+        activeName={activeSession.name}
+        sessionCount={sessionSummaries.length}
+        onContinue={() => setShowStartPrompt(false)}
+        onCreate={() => {
+          setSetupMode('new');
+          setShowSetup(true);
+          setShowStartPrompt(false);
+        }}
+      />
+    );
+  }
+
+  if (showSetup || !activeSession) {
+    return (
+      <Box sx={{ maxWidth: 980, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {!aiSettings.apiKey && (
+          <Alert severity="warning" action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
+            可以先准备项目和简历；正式生成答案前仍需配置 API Key。
+          </Alert>
+        )}
+        <InterviewSetup mode={setupMode} onDone={() => setShowSetup(false)} />
       </Box>
     );
   }
 
   return (
-    <Box sx={{ maxWidth: 800, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {/* Session 管理器 */}
-      <SessionManager />
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: {
+          xs: '1fr',
+          md: '180px minmax(0, 1fr) 220px',
+          xl: '260px minmax(0, 1fr) 300px',
+        },
+        gap: 2,
+        alignItems: 'start',
+      }}
+    >
+      <Paper key={`answer-${activeSession.id}`} sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <QuestionAnswerIcon color="primary" fontSize="small" />
+          <Typography variant="subtitle1" fontWeight={700}>面试官问题</Typography>
+          <Chip size="small" label={qaList.length} sx={{ ml: 'auto' }} />
+        </Box>
 
-      {!activeSession ? (
-        <Alert severity="info">请先创建一个面试项目开始面试。</Alert>
-      ) : (
-        <>
-          {/* 回答模式 + 语音控制 */}
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
-            <AnswerModeToggle />
-          </Box>
-          <VoiceControl />
+        <SessionManager />
+        <Button
+          fullWidth
+          size="small"
+          variant="outlined"
+          sx={{ mt: 1.5 }}
+          onClick={() => {
+            setSetupMode('edit');
+            setShowSetup(true);
+          }}
+        >
+          项目准备 / 简历岗位
+        </Button>
 
-          {/* 手动触发区域：未监听时显示 */}
-          {!isListening && (
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle2" gutterBottom color="text.secondary">
-                💡 手动触发 — 语音未触发时，可直接输入问题并生成答案
-              </Typography>
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <TextField
-                  fullWidth
+        <Box sx={{ mt: 2, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+          {activeSession.targetRole && <Chip size="small" label={activeSession.targetRole} />}
+          {activeSession.focusAreas?.map((focus) => <Chip key={focus} size="small" label={focus} variant="outlined" />)}
+        </Box>
+
+        <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {qaList.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              识别到的问题会出现在这里。
+            </Typography>
+          ) : (
+            visibleQaList.map((qa, index) => {
+              const selected = qa.id === selectedQa?.id;
+              const questionNumber = qaList.findIndex((item) => item.id === qa.id) + 1;
+              return (
+                <Box
+                key={qa.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedQaId(qa.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedQaId(qa.id);
+                  }
+                }}
+                sx={{
+                  p: 1.1,
+                  borderRadius: 1,
+                  border: '1px solid',
+                  borderColor: selected ? 'primary.main' : 'divider',
+                  bgcolor: selected ? 'action.selected' : 'background.paper',
+                  cursor: 'pointer',
+                  transition: 'border-color 120ms ease, background-color 120ms ease',
+                  '&:hover': {
+                    borderColor: selected ? 'primary.main' : 'text.secondary',
+                  },
+                }}
+              >
+                <Typography variant="caption" color={selected ? 'primary.main' : 'text.secondary'}>
+                  {index === 0 ? '最新问题' : `第 ${questionNumber} 题`}
+                </Typography>
+                <IconButton
                   size="small"
-                  placeholder="粘贴或输入面试官的问题..."
-                  value={manualInput}
-                  onChange={(e) => setManualInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
-                  multiline
-                  maxRows={3}
-                />
-                <IconButton color="primary" onClick={handleManualSend} disabled={!manualInput.trim() || isProcessing} sx={{ alignSelf: 'flex-end' }}>
-                  <SendIcon />
+                  color="error"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    deleteQuestion(qa.id);
+                  }}
+                  disabled={isProcessing}
+                  sx={{ float: 'right', width: 24, height: 24, mt: -0.5 }}
+                  aria-label="删除问题"
+                >
+                  <DeleteOutlineIcon fontSize="inherit" />
                 </IconButton>
+                <Typography variant="body2" sx={{ mt: 0.25 }} noWrap title={qa.question}>
+                  {qa.question}
+                </Typography>
               </Box>
-            </Paper>
+              );
+            })
           )}
+        </Box>
+      </Paper>
 
-          <QAHistory />
-        </>
-      )}
+      <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
+        {!aiSettings.apiKey && (
+          <Alert severity="warning" sx={{ mb: 2 }} action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
+            需要配置 API Key 后才能生成答案。
+          </Alert>
+        )}
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+          <Typography variant="h6" fontWeight={800}>AI 回答</Typography>
+          {isProcessing && <Chip size="small" color="primary" label="生成中" />}
+          {isListening && <Chip size="small" color="success" label="识别中" />}
+          {activeSession.archivedAt && <Chip size="small" color="default" label="已归档" />}
+        </Box>
+
+        {!selectedQa ? (
+          <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
+            <HearingIcon sx={{ fontSize: 48, mb: 1, opacity: 0.6 }} />
+            <Typography variant="subtitle1">等待第一道面试问题</Typography>
+            <Typography variant="body2" sx={{ mt: 0.5 }}>
+              开始语音识别，或在右侧手动输入问题。
+            </Typography>
+          </Box>
+        ) : (
+          <QACard qa={selectedQa} />
+        )}
+
+        {activeSession.archivedAt && activeSession.review?.summary && (
+          <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Typography variant="subtitle2" fontWeight={700}>面试复盘</Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => { void generateReview(); }}
+                disabled={isProcessing || !aiSettings.apiKey}
+                sx={{ ml: 'auto' }}
+              >
+                重新生成复盘总结
+              </Button>
+            </Box>
+            <MarkdownRenderer content={activeSession.review.summary} />
+          </Box>
+        )}
+
+        {activeSession.archivedAt && !activeSession.review?.summary && (
+          <Button
+            fullWidth
+            variant="outlined"
+            sx={{ mt: 2 }}
+            onClick={() => { void generateReview(); }}
+            disabled={isProcessing || !aiSettings.apiKey}
+          >
+            生成复盘总结
+          </Button>
+        )}
+      </Paper>
+
+      <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <TuneIcon color="primary" fontSize="small" />
+          <Typography variant="subtitle1" fontWeight={700}>双方对话记录</Typography>
+        </Box>
+
+        <Box
+          sx={{
+            p: 1.5,
+            borderRadius: 1,
+            border: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            mb: 2,
+            maxHeight: { xs: 260, md: 340 },
+            overflowY: 'auto',
+          }}
+        >
+          {interimText && (
+            <Box sx={{ mb: 1.25, color: 'text.secondary' }}>
+              <Chip size="small" label="识别中" sx={{ mr: 0.75 }} />
+              <Typography component="span" variant="body2">{interimText}</Typography>
+            </Box>
+          )}
+          {transcriptLines.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              双路转写会记录在这里：我说的话只留档，面试官问题会触发 AI。
+            </Typography>
+          ) : (
+            transcriptLines.slice(-10).map((line) => (
+              <Box key={line.id} sx={{ mb: 1.25 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.35 }}>
+                  <Chip
+                    size="small"
+                    color={line.speaker === 'interviewer' ? 'primary' : 'default'}
+                    label={line.speaker === 'interviewer' ? '面试官' : '我'}
+                  />
+                  {line.speaker === 'interviewer' && (
+                    <Button
+                      size="small"
+                      variant="text"
+                      onClick={() => handleTranscriptQuestion(line.text)}
+                      disabled={isProcessing || !aiSettings.apiKey}
+                      sx={{ minWidth: 0, px: 0.75 }}
+                    >
+                      触发
+                    </Button>
+                  )}
+                </Box>
+                <Typography variant="body2" sx={{ lineHeight: 1.55 }}>
+                  {line.text}
+                </Typography>
+              </Box>
+            ))
+          )}
+        </Box>
+
+        <Button
+          fullWidth
+          variant="outlined"
+          sx={{ mb: 1.5 }}
+          onClick={() => { void triggerLatestTranscriptQuestion(); }}
+          disabled={isProcessing || !aiSettings.apiKey || !hasTriggerableInterviewerText}
+        >
+          用当前/最近面试官问题触发
+        </Button>
+
+        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="手动输入或修正面试官问题..."
+            value={manualInput}
+            onChange={(e) => setManualInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
+            multiline
+            maxRows={4}
+          />
+          <IconButton
+            color="primary"
+            onClick={handleManualSend}
+            disabled={!manualInput.trim() || isProcessing || !aiSettings.apiKey}
+            sx={{ alignSelf: 'flex-end' }}
+          >
+            <SendIcon />
+          </IconButton>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+          <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
+          <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
+          <Chip size="small" label={`面试官：${sourceLabel(appSettings.interviewerAudioSource)}`} />
+          {appSettings.interviewerAudioSource === 'system' && (
+            <Chip
+              size="small"
+              color={systemAudioReady ? 'success' : 'warning'}
+              label={systemAudioReady ? '系统音频已共享' : '系统音频未共享'}
+            />
+          )}
+        </Box>
+
+        <Alert severity="info" sx={{ mb: 2 }}>
+          面试官选择“系统音频”时，点击开始会弹出 Chrome 的共享窗口/屏幕/标签页选择器；请选择腾讯会议或整个屏幕，并勾选共享音频。
+        </Alert>
+
+        {appSettings.interviewerAudioSource === 'system' && (
+          <Button
+            fullWidth
+            variant={systemAudioReady ? 'outlined' : 'contained'}
+            sx={{ mb: 2 }}
+            onClick={() => { void prepareSystemAudioShare(); }}
+            disabled={isListening}
+          >
+            {systemAudioReady ? '重新共享系统音频' : '先共享系统音频'}
+          </Button>
+        )}
+
+        {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'browser' && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            浏览器 ASR 只能识别麦克风，不能识别共享出来的系统音频。要识别微信/腾讯会议播放的面试官声音，请把识别引擎切到豆包 ASR 或 OpenAI 分片识别。
+          </Alert>
+        )}
+
+        {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'openai' && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            OpenAI 分片识别会使用已共享的系统音频，识别结果固定按“面试官”记录并自动触发答案，延迟约 4-6 秒。
+          </Alert>
+        )}
+
+        {appSettings.asrProvider === 'local-qwen' && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            本地 Qwen3-ASR 会连接你电脑上的 MLX 服务；先在设置里测试连通，再开始面试。
+          </Alert>
+        )}
+
+        <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+          <InputLabel>我的声音</InputLabel>
+          <Select
+            label="我的声音"
+            value={appSettings.myAudioSource}
+            onChange={(event: SelectChangeEvent) => setMyAudioSource(event.target.value as SpeakerAudioSource)}
+            disabled={isListening}
+          >
+            {SPEAKER_AUDIO_SOURCES.map((source) => (
+              <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
+            ))}
+          </Select>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            {SPEAKER_AUDIO_SOURCES.find((source) => source.key === appSettings.myAudioSource)?.desc}
+          </Typography>
+        </FormControl>
+
+        <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+          <InputLabel>面试官声音</InputLabel>
+          <Select
+            label="面试官声音"
+            value={appSettings.interviewerAudioSource}
+            onChange={(event: SelectChangeEvent) => handleInterviewerAudioSourceChange(event.target.value as SpeakerAudioSource)}
+            disabled={isListening}
+          >
+            {SPEAKER_AUDIO_SOURCES.map((source) => (
+              <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
+            ))}
+          </Select>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            {SPEAKER_AUDIO_SOURCES.find((source) => source.key === appSettings.interviewerAudioSource)?.desc}
+          </Typography>
+        </FormControl>
+
+        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+          <InputLabel>识别引擎</InputLabel>
+          <Select
+            label="识别引擎"
+            value={appSettings.asrProvider}
+            onChange={(event: SelectChangeEvent) => setASRProvider(event.target.value as ASRProvider)}
+            disabled={isListening}
+          >
+            <MenuItem value="doubao">豆包 ASR（推荐识别面试官系统音频）</MenuItem>
+            <MenuItem value="local-qwen">本地 Qwen3-ASR（MLX）</MenuItem>
+            <MenuItem value="openai">OpenAI Whisper（系统音频备用）</MenuItem>
+            <MenuItem value="browser">浏览器 ASR（适合麦克风）</MenuItem>
+          </Select>
+        </FormControl>
+
+        <FormControlLabel
+          control={
+            <Switch
+              checked={appSettings.webSearchEnabled}
+              onChange={(event) => updateAppSettings({ webSearchEnabled: event.target.checked })}
+            />
+          }
+          label="回答失败时联网搜索补充"
+          sx={{ mb: 1 }}
+        />
+        {appSettings.webSearchEnabled && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            正常先用简历和知识库回答；如果模型生成失败，会自动搜索网页摘要后重试一次。
+          </Alert>
+        )}
+
+        <AnswerModeToggle />
+        <VoiceControl />
+
+        <Button
+          fullWidth
+          color="error"
+          variant="contained"
+          sx={{ mt: 1.5 }}
+          onClick={() => { void endInterview(); }}
+          disabled={isProcessing || Boolean(activeSession.archivedAt)}
+        >
+          结束面试并归档
+        </Button>
+
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+          自动没触发时，可用最近面试官转写触发；也可手动修正问题后 Enter 发送。
+        </Typography>
+      </Paper>
     </Box>
+  );
+}
+
+function sourceLabel(source: SpeakerAudioSource): string {
+  if (source === 'system') return '系统音频';
+  if (source === 'microphone') return '麦克风';
+  return '静音';
+}
+
+function asrProviderLabel(provider: ASRProvider): string {
+  if (provider === 'doubao') return '豆包 ASR';
+  if (provider === 'local-qwen') return '本地 Qwen3-ASR';
+  if (provider === 'openai') return 'OpenAI 分片 ASR';
+  return '浏览器 ASR';
+}
+
+interface ProjectStartPromptProps {
+  activeName: string;
+  sessionCount: number;
+  onContinue: () => void;
+  onCreate: () => void;
+}
+
+function ProjectStartPrompt({
+  activeName,
+  sessionCount,
+  onContinue,
+  onCreate,
+}: ProjectStartPromptProps) {
+  return (
+    <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h5" fontWeight={800} gutterBottom>
+          开始一场新的面试吗？
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          当前有 {sessionCount} 个项目。上次项目是「{activeName}」，你可以继续它，也可以先新建一个项目再开始。
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+          <Button variant="contained" size="large" onClick={onCreate}>
+            新建面试项目
+          </Button>
+          <Button variant="outlined" size="large" onClick={onContinue}>
+            继续上次项目
+          </Button>
+        </Box>
+      </Paper>
+    </Box>
+  );
+}
+
+interface InterviewSetupProps {
+  mode: 'new' | 'edit';
+  onDone: () => void;
+}
+
+function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
+  const { activeSession, createSession, resume, jd, updateSessionProfile, updateSessionName } = useSession();
+  const editing = mode === 'edit' && Boolean(activeSession);
+  const currentRole = INTERVIEW_ROLE_PRESETS.find((role) => role.label === (editing ? activeSession?.targetRole : undefined));
+  const [projectName, setProjectName] = useState(editing ? activeSession?.name ?? '' : '');
+  const [selectedRole, setSelectedRole] = useState(currentRole?.key ?? INTERVIEW_ROLE_PRESETS[0].key);
+  const [resumeText, setResumeText] = useState(editing ? activeSession?.resume ?? resume : '');
+  const [jdText, setJdText] = useState(
+    editing
+      ? (activeSession?.jd ?? jd) || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd
+      : currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd,
+  );
+  const [focusAreas, setFocusAreas] = useState<string[]>(
+    editing && activeSession?.focusAreas?.length ? activeSession.focusAreas : ['SQL', '项目深挖'],
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [loadingPdf, setLoadingPdf] = useState(false);
+
+  const handleRoleChange = (event: SelectChangeEvent) => {
+    const nextRole = event.target.value;
+    const preset = INTERVIEW_ROLE_PRESETS.find((role) => role.key === nextRole);
+    setSelectedRole(nextRole as typeof selectedRole);
+    if (preset) {
+      setProjectName((current) => current || preset.label);
+      setJdText(preset.jd);
+      if (preset.key === 'web3') setFocusAreas(['Web3', '系统设计', '项目深挖']);
+      if (preset.key === 'bigdata') setFocusAreas(['SQL', '大数据', '项目深挖']);
+    }
+  };
+
+  const handleResumeUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setError(null);
+    if (!isPdfFile(file)) {
+      setError('仅支持 PDF 格式的简历文件。');
+      return;
+    }
+    if (file.size > MAX_PDF_SIZE) {
+      setError(`文件过大，最大支持 ${MAX_PDF_SIZE / 1024 / 1024}MB。`);
+      return;
+    }
+
+    setLoadingPdf(true);
+    try {
+      setResumeText(await parsePdf(file));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'PDF 解析失败');
+    } finally {
+      setLoadingPdf(false);
+      event.target.value = '';
+    }
+  };
+
+  const toggleFocus = (focus: string) => {
+    setFocusAreas((current) =>
+      current.includes(focus)
+        ? current.filter((item) => item !== focus)
+        : [...current, focus],
+    );
+  };
+
+  const startProject = () => {
+    const role = INTERVIEW_ROLE_PRESETS.find((item) => item.key === selectedRole);
+    const profile = {
+      resume: resumeText,
+      jd: jdText,
+      targetRole: role?.label ?? '',
+      focusAreas,
+    };
+    if (editing && activeSession) {
+      updateSessionProfile(profile);
+      updateSessionName(activeSession.id, projectName.trim() || role?.label || activeSession.name);
+    } else {
+      createSession(projectName.trim() || role?.label || '面试项目', profile);
+    }
+    onDone();
+  };
+
+  return (
+    <Paper sx={{ p: 3 }}>
+      <Typography variant="h5" fontWeight={800} gutterBottom>
+        {editing ? '项目准备：简历与岗位' : '第一步：准备新的面试项目'}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        先创建项目，放入简历和岗位方向；第二步进入项目后再开始识别面试官问题并生成答案。
+      </Typography>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+        <TextField
+          label="项目名称"
+          value={projectName}
+          onChange={(event) => setProjectName(event.target.value)}
+          placeholder="例如：大数据开发一面"
+        />
+        <FormControl>
+          <InputLabel>职位方向</InputLabel>
+          <Select label="职位方向" value={selectedRole} onChange={handleRoleChange}>
+            {INTERVIEW_ROLE_PRESETS.map((role) => (
+              <MenuItem key={role.key} value={role.key}>{role.label}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+
+      <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>考察方向</Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        {INTERVIEW_FOCUS_OPTIONS.map((focus) => (
+          <Chip
+            key={focus}
+            label={focus}
+            color={focusAreas.includes(focus) ? 'primary' : 'default'}
+            variant={focusAreas.includes(focus) ? 'filled' : 'outlined'}
+            onClick={() => toggleFocus(focus)}
+          />
+        ))}
+      </Box>
+
+      <Box sx={{ mt: 2, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Button variant="outlined" component="label" startIcon={<UploadFileIcon />} disabled={loadingPdf}>
+          {loadingPdf ? '解析中...' : '上传 PDF 简历'}
+          <input type="file" accept=".pdf" hidden onChange={handleResumeUpload} />
+        </Button>
+        <Typography variant="caption" color="text.secondary">
+          也可以直接粘贴简历文本。
+        </Typography>
+      </Box>
+
+      <TextField
+        fullWidth
+        multiline
+        minRows={5}
+        maxRows={12}
+        label="简历文本"
+        value={resumeText}
+        onChange={(event) => setResumeText(event.target.value)}
+        placeholder="粘贴你的简历，或上传 PDF 自动解析..."
+        sx={{ mt: 2 }}
+      />
+
+      <TextField
+        fullWidth
+        multiline
+        minRows={4}
+        maxRows={10}
+        label="岗位描述 / 面试目标"
+        value={jdText}
+        onChange={(event) => setJdText(event.target.value)}
+        sx={{ mt: 2 }}
+      />
+
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+        {editing && (
+          <Button sx={{ mr: 1 }} onClick={onDone}>
+            返回工作台
+          </Button>
+        )}
+        <Button variant="contained" size="large" onClick={startProject}>
+          {editing ? '保存并返回工作台' : '第二步：进入面试工作台'}
+        </Button>
+      </Box>
+    </Paper>
   );
 }
