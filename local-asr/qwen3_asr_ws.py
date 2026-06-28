@@ -30,6 +30,8 @@ from websockets.server import WebSocketServerProtocol
 
 
 DEFAULT_MODEL = ".models/Qwen3-ASR-1.7B-8bit"
+MODEL_CACHE: dict[str, Any] = {}
+INFERENCE_LOCK: asyncio.Lock | None = None
 
 
 @dataclass
@@ -64,7 +66,7 @@ class Qwen3AsrAdapter:
                 "mlx-qwen3-asr 未安装。请先运行 scripts/setup-local-qwen-asr.sh。"
             ) from exc
 
-        self.backend = Session(self.model)
+        self.backend = get_or_load_session(self.model, Session)
         self.state = self._init_streaming_state()
 
     def _init_streaming_state(self) -> Any:
@@ -99,6 +101,15 @@ class Qwen3AsrAdapter:
         else:
             self.state = self.backend.feed_audio(audio.astype(np.float32), self.state)
         return sanitize_transcript(str(getattr(self.state, "text", "") or "").strip())
+
+
+def get_or_load_session(model: str, session_cls: Any) -> Any:
+    cached = MODEL_CACHE.get(model)
+    if cached is not None:
+        return cached
+    session = session_cls(model)
+    MODEL_CACHE[model] = session
+    return session
 
 
 def sanitize_transcript(text: str) -> str:
@@ -145,7 +156,10 @@ async def send_json(ws: WebSocketServerProtocol, payload: dict[str, Any]) -> Non
 async def handle_client(ws: WebSocketServerProtocol) -> None:
     state = ClientState()
     adapter: Qwen3AsrAdapter | None = None
-    inference_lock = asyncio.Lock()
+    global INFERENCE_LOCK
+    if INFERENCE_LOCK is None:
+        INFERENCE_LOCK = asyncio.Lock()
+    inference_lock = INFERENCE_LOCK
 
     async def flush(is_final: bool) -> None:
         nonlocal adapter
