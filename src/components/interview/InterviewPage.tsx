@@ -37,6 +37,7 @@ import { INTERVIEW_FOCUS_OPTIONS, INTERVIEW_ROLE_PRESETS, SPEAKER_AUDIO_SOURCES 
 import { useSettings } from '../../hooks/useSettings';
 import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
+import { useKnowledge } from '../../hooks/useKnowledge';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
 import type { ASRProvider, SpeakerAudioSource } from '../../types';
 
@@ -315,14 +316,28 @@ export function InterviewPage() {
             borderColor: 'divider',
             bgcolor: 'background.paper',
             mb: 2,
-            maxHeight: { xs: 260, md: 340 },
+            height: { xs: 260, md: '34vh' },
+            minHeight: 240,
             overflowY: 'auto',
           }}
         >
           {interimText && (
-            <Box sx={{ mb: 1.25, color: 'text.secondary' }}>
-              <Chip size="small" label="识别中" sx={{ mr: 0.75 }} />
-              <Typography component="span" variant="body2">{interimText}</Typography>
+            <Box
+              sx={{
+                mb: 1,
+                p: 1,
+                borderRadius: 1,
+                bgcolor: 'action.hover',
+                border: '1px dashed',
+                borderColor: 'divider',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                <Chip size="small" label="识别中" />
+              </Box>
+              <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {interimText}
+              </Typography>
             </Box>
           )}
           {transcriptLines.length === 0 ? (
@@ -330,14 +345,27 @@ export function InterviewPage() {
               双路转写会记录在这里：我说的话只留档，面试官问题会触发 AI。
             </Typography>
           ) : (
-            transcriptLines.slice(-10).map((line) => (
-              <Box key={line.id} sx={{ mb: 1.25 }}>
+            transcriptLines.slice(-30).map((line) => (
+              <Box
+                key={line.id}
+                sx={{
+                  mb: 1,
+                  p: 1,
+                  borderRadius: 1,
+                  bgcolor: line.speaker === 'interviewer' ? 'rgba(98, 179, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid',
+                  borderColor: line.speaker === 'interviewer' ? 'primary.dark' : 'divider',
+                }}
+              >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.35 }}>
                   <Chip
                     size="small"
                     color={line.speaker === 'interviewer' ? 'primary' : 'default'}
                     label={line.speaker === 'interviewer' ? '面试官' : '我'}
                   />
+                  <Typography variant="caption" color="text.secondary">
+                    {formatTime(line.timestamp)}
+                  </Typography>
                   {line.speaker === 'interviewer' && (
                     <Button
                       size="small"
@@ -350,7 +378,7 @@ export function InterviewPage() {
                     </Button>
                   )}
                 </Box>
-                <Typography variant="body2" sx={{ lineHeight: 1.55 }}>
+                <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                   {line.text}
                 </Typography>
               </Box>
@@ -536,6 +564,15 @@ function asrProviderLabel(provider: ASRProvider): string {
   return '浏览器 ASR';
 }
 
+function formatTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 interface ProjectStartPromptProps {
   activeName: string;
   sessionCount: number;
@@ -578,11 +615,14 @@ interface InterviewSetupProps {
 
 function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
   const { activeSession, createSession, resume, jd, updateSessionProfile, updateSessionName } = useSession();
+  const { profile: knowledgeProfile } = useKnowledge();
   const editing = mode === 'edit' && Boolean(activeSession);
   const currentRole = INTERVIEW_ROLE_PRESETS.find((role) => role.label === (editing ? activeSession?.targetRole : undefined));
+  const newestResume = [...knowledgeProfile.resumes].sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const [projectName, setProjectName] = useState(editing ? activeSession?.name ?? '' : '');
   const [selectedRole, setSelectedRole] = useState(currentRole?.key ?? INTERVIEW_ROLE_PRESETS[0].key);
-  const [resumeText, setResumeText] = useState(editing ? activeSession?.resume ?? resume : '');
+  const [selectedResumeId, setSelectedResumeId] = useState(editing ? '' : newestResume?.id ?? '');
+  const [resumeText, setResumeText] = useState(editing ? activeSession?.resume ?? resume : newestResume?.content ?? resume);
   const [jdText, setJdText] = useState(
     editing
       ? (activeSession?.jd ?? jd) || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd
@@ -606,6 +646,13 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     }
   };
 
+  const handleResumeLibraryChange = (event: SelectChangeEvent) => {
+    const resumeId = event.target.value;
+    setSelectedResumeId(resumeId);
+    const selected = knowledgeProfile.resumes.find((item) => item.id === resumeId);
+    if (selected) setResumeText(selected.content);
+  };
+
   const handleResumeUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -623,6 +670,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     setLoadingPdf(true);
     try {
       setResumeText(await parsePdf(file));
+      setSelectedResumeId('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'PDF 解析失败');
     } finally {
@@ -698,12 +746,23 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
       </Box>
 
       <Box sx={{ mt: 2, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+        {knowledgeProfile.resumes.length > 0 && (
+          <FormControl size="small" sx={{ minWidth: 220 }}>
+            <InputLabel>引用简历库</InputLabel>
+            <Select label="引用简历库" value={selectedResumeId} onChange={handleResumeLibraryChange}>
+              <MenuItem value="">临时粘贴/上传内容</MenuItem>
+              {knowledgeProfile.resumes.map((item) => (
+                <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        )}
         <Button variant="outlined" component="label" startIcon={<UploadFileIcon />} disabled={loadingPdf}>
           {loadingPdf ? '解析中...' : '上传 PDF 简历'}
           <input type="file" accept=".pdf" hidden onChange={handleResumeUpload} />
         </Button>
         <Typography variant="caption" color="text.secondary">
-          也可以直接粘贴简历文本。
+          已有简历库会默认引用最近一份，也可以上传或粘贴临时覆盖。
         </Typography>
       </Box>
 
@@ -714,7 +773,10 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         maxRows={12}
         label="简历文本"
         value={resumeText}
-        onChange={(event) => setResumeText(event.target.value)}
+        onChange={(event) => {
+          setSelectedResumeId('');
+          setResumeText(event.target.value);
+        }}
         placeholder="粘贴你的简历，或上传 PDF 自动解析..."
         sx={{ mt: 2 }}
       />

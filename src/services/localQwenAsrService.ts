@@ -90,11 +90,13 @@ export function testConnection(config: LocalQwenASRConfig): Promise<{ success: b
 class LocalQwenSessionImpl implements LocalQwenSession {
   private ws: WebSocket | null = null;
   private connected = false;
+  private ready = false;
   private audioQueue: Int16Array[] = [];
 
   start(config: LocalQwenASRConfig, callbacks: LocalQwenCallbacks): void {
     this.stop();
     this.audioQueue = [];
+    this.ready = false;
     const endpoint = config.endpoint.trim();
     if (!endpoint) {
       callbacks.onError('请先配置本地 Qwen3-ASR WebSocket 地址。');
@@ -115,8 +117,6 @@ class LocalQwenSessionImpl implements LocalQwenSession {
         model: config.model,
         hotwords: parseHotwords(config.hotwords),
       }));
-      callbacks.onReady?.();
-      this.flushAudioQueue();
     };
 
     socket.onmessage = (event) => {
@@ -131,6 +131,12 @@ class LocalQwenSessionImpl implements LocalQwenSession {
         };
         if (data.type === 'error' || data.error) {
           callbacks.onError(data.error || '本地 Qwen3-ASR 返回错误。');
+          return;
+        }
+        if (data.type === 'ready') {
+          this.ready = true;
+          callbacks.onReady?.();
+          this.flushAudioQueue();
           return;
         }
         if (typeof data.text === 'string' && data.text.trim()) {
@@ -148,6 +154,7 @@ class LocalQwenSessionImpl implements LocalQwenSession {
     socket.onclose = (event) => {
       if (this.ws === socket) {
         this.connected = false;
+        this.ready = false;
         this.audioQueue = [];
         this.ws = null;
       }
@@ -160,7 +167,7 @@ class LocalQwenSessionImpl implements LocalQwenSession {
 
   sendAudio(pcm: Int16Array): void {
     if (!pcm.byteLength) return;
-    if (!this.ws || !this.connected || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || !this.connected || !this.ready || this.ws.readyState !== WebSocket.OPEN) {
       this.audioQueue.push(pcm.slice());
       this.audioQueue = this.audioQueue.slice(-80);
       return;
@@ -177,6 +184,7 @@ class LocalQwenSessionImpl implements LocalQwenSession {
     }
     this.ws = null;
     this.connected = false;
+    this.ready = false;
     this.audioQueue = [];
   }
 

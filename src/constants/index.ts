@@ -175,7 +175,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   myAudioSource: 'microphone',
   interviewerAudioSource: 'system',
   defaultAnswerMode: 'concise',
-  mergeTimeoutMs: 1500,
+  mergeTimeoutMs: 2500,
   webSearchEnabled: false,
 };
 
@@ -188,7 +188,7 @@ export const MAX_EXAM_RECORDS = 50;
 export const STREAM_TIMEOUT_MS = 120_000;
 export const API_TIMEOUT_MS = 30_000;
 export const MAX_SESSIONS = 20;
-export const MERGE_TIMEOUT_DEFAULT = 1500;
+export const MERGE_TIMEOUT_DEFAULT = 2500;
 
 // ===== 左侧导航菜单项 =====
 export const NAV_ITEMS = [

@@ -12,7 +12,7 @@ import { useInterview } from '../../hooks/useInterview';
 import { useSettings } from '../../hooks/useSettings';
 
 export function VoiceControl() {
-  const { isListening, interimText, isMerging, error, startListening, stopListening } = useInterview();
+  const { isListening, isMerging, error, startListening, stopListening } = useInterview();
   const { appSettings } = useSettings();
   const bothMuted = appSettings.myAudioSource === 'muted' && appSettings.interviewerAudioSource === 'muted';
   const hasSystemAudio = appSettings.myAudioSource === 'system' || appSettings.interviewerAudioSource === 'system';
@@ -48,8 +48,8 @@ export function VoiceControl() {
       <Typography sx={{ mt: 1.5, minHeight: 20, textAlign: 'center' }} color="text.secondary" variant="body2">
         {isListening
           ? isMerging
-            ? (interimText || '正在合并长问题...')
-            : (interimText || '正在聆听...')
+            ? '正在整理问题...'
+            : '正在聆听...'
           : bothMuted ? '两路都已静音' : '点击开始语音输入'}
       </Typography>
 

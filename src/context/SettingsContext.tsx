@@ -70,6 +70,9 @@ function getInitialState(): SettingsState {
     ...DEFAULT_APP_SETTINGS,
     ...storageService.get<AppSettings>(STORAGE_KEYS.APP_SETTINGS, DEFAULT_APP_SETTINGS),
   };
+  if (!appSettings.mergeTimeoutMs || appSettings.mergeTimeoutMs < 2200) {
+    appSettings.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
+  }
 
   const doubaoConfig: DoubaoASRConfig = {
     ...DEFAULT_DOUBAO_ASR_CONFIG,

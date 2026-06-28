@@ -76,7 +76,7 @@ class Qwen3AsrAdapter:
             context=self.context,
             language="zh",
             chunk_size_sec=0.8,
-            max_context_sec=30.0,
+            max_context_sec=8.0,
             sample_rate=16000,
             finalization_mode="latency",
             endpointing_mode="fixed",
@@ -186,7 +186,7 @@ async def handle_client(ws: WebSocketServerProtocol) -> None:
     async def silence_watcher() -> None:
         while True:
             await asyncio.sleep(0.25)
-            if adapter and state.pcm_buffer and time.time() - state.last_audio_at > 0.9:
+            if adapter and state.pcm_buffer and time.time() - state.last_audio_at > 1.8:
                 await flush(True)
 
     watcher = asyncio.create_task(silence_watcher())
@@ -209,7 +209,7 @@ async def handle_client(ws: WebSocketServerProtocol) -> None:
         state.pcm_buffer.append(pcm_bytes_to_float32(message))
         state.last_audio_at = time.time()
         total_samples = sum(chunk.size for chunk in state.pcm_buffer)
-        if total_samples >= state.sample_rate * 1.2:
+        if total_samples >= state.sample_rate * 1.8:
             await flush(False)
     except Exception as exc:
         await send_json(ws, {"type": "error", "error": str(exc)})

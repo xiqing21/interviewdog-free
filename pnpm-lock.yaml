@@ -30,7 +30,7 @@ importers:
         specifier: ^3.0.0
         version: 3.0.0
       pdfjs-dist:
-        specifier: ^4.9.155
+        specifier: 4.10.38
         version: 4.10.38
       react:
         specifier: ^18.3.1
