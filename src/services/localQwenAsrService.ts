@@ -7,100 +7,46 @@ export interface LocalQwenCallbacks {
   onReady?: () => void;
 }
 
-let ws: WebSocket | null = null;
-let connected = false;
-let audioQueue: Int16Array[] = [];
+export interface LocalQwenSession {
+  start: (config: LocalQwenASRConfig, callbacks: LocalQwenCallbacks) => void;
+  sendAudio: (pcm: Int16Array) => void;
+  stop: () => void;
+  isActive: () => boolean;
+}
+
+const activeSessions = new Set<LocalQwenSessionImpl>();
+let defaultSession: LocalQwenSessionImpl | null = null;
 
 export function isSupported(): boolean {
   return typeof WebSocket !== 'undefined';
 }
 
+export function createSession(): LocalQwenSession {
+  const session = new LocalQwenSessionImpl();
+  activeSessions.add(session);
+  return session;
+}
+
 export function isActive(): boolean {
-  return ws !== null && connected;
+  return Array.from(activeSessions).some((session) => session.isActive());
 }
 
 export function start(config: LocalQwenASRConfig, callbacks: LocalQwenCallbacks): void {
-  stop();
-  audioQueue = [];
-  const endpoint = config.endpoint.trim();
-  if (!endpoint) {
-    callbacks.onError('请先配置本地 Qwen3-ASR WebSocket 地址。');
-    return;
-  }
-
-  ws = new WebSocket(endpoint);
-  ws.binaryType = 'arraybuffer';
-
-  ws.onopen = () => {
-    connected = true;
-    ws?.send(JSON.stringify({
-      type: 'start',
-      sampleRate: 16000,
-      format: 'pcm_s16le',
-      model: config.model,
-      hotwords: parseHotwords(config.hotwords),
-    }));
-    callbacks.onReady?.();
-    flushAudioQueue();
-  };
-
-  ws.onmessage = (event) => {
-    if (typeof event.data !== 'string') return;
-    try {
-      const data = JSON.parse(event.data) as {
-        type?: string;
-        text?: string;
-        isFinal?: boolean;
-        final?: boolean;
-        error?: string;
-      };
-      if (data.type === 'error' || data.error) {
-        callbacks.onError(data.error || '本地 Qwen3-ASR 返回错误。');
-        return;
-      }
-      if (typeof data.text === 'string' && data.text.trim()) {
-        callbacks.onResult(data.text.trim(), Boolean(data.isFinal ?? data.final));
-      }
-    } catch {
-      callbacks.onError('本地 Qwen3-ASR 返回了无法解析的消息。');
-    }
-  };
-
-  ws.onerror = () => {
-    callbacks.onError('本地 Qwen3-ASR 连接失败，请确认本地服务已启动。');
-  };
-
-  ws.onclose = (event) => {
-    connected = false;
-    audioQueue = [];
-    ws = null;
-    if (event.code !== 1000 && event.reason) {
-      callbacks.onError(`本地 Qwen3-ASR 连接关闭 ${event.code}：${event.reason}`);
-    }
-    callbacks.onEnd();
-  };
+  if (!defaultSession) defaultSession = new LocalQwenSessionImpl();
+  activeSessions.add(defaultSession);
+  defaultSession.start(config, callbacks);
 }
 
 export function sendAudio(pcm: Int16Array): void {
-  if (!pcm.byteLength) return;
-  if (!ws || !connected || ws.readyState !== WebSocket.OPEN) {
-    audioQueue.push(pcm.slice());
-    audioQueue = audioQueue.slice(-80);
-    return;
-  }
-  ws.send(copyPcmBuffer(pcm));
+  defaultSession?.sendAudio(pcm);
 }
 
 export function stop(): void {
-  if (ws) {
-    try {
-      ws.send(JSON.stringify({ type: 'stop' }));
-    } catch {}
-    ws.close(1000, 'user stop');
+  for (const session of Array.from(activeSessions)) {
+    session.stop();
   }
-  ws = null;
-  connected = false;
-  audioQueue = [];
+  activeSessions.clear();
+  defaultSession = null;
 }
 
 export function testConnection(config: LocalQwenASRConfig): Promise<{ success: boolean; message: string }> {
@@ -141,10 +87,108 @@ export function testConnection(config: LocalQwenASRConfig): Promise<{ success: b
   });
 }
 
-function flushAudioQueue(): void {
-  const pending = audioQueue;
-  audioQueue = [];
-  for (const pcm of pending) sendAudio(pcm);
+class LocalQwenSessionImpl implements LocalQwenSession {
+  private ws: WebSocket | null = null;
+  private connected = false;
+  private audioQueue: Int16Array[] = [];
+
+  start(config: LocalQwenASRConfig, callbacks: LocalQwenCallbacks): void {
+    this.stop();
+    this.audioQueue = [];
+    const endpoint = config.endpoint.trim();
+    if (!endpoint) {
+      callbacks.onError('请先配置本地 Qwen3-ASR WebSocket 地址。');
+      return;
+    }
+
+    const socket = new WebSocket(endpoint);
+    this.ws = socket;
+    socket.binaryType = 'arraybuffer';
+
+    socket.onopen = () => {
+      if (this.ws !== socket) return;
+      this.connected = true;
+      socket.send(JSON.stringify({
+        type: 'start',
+        sampleRate: 16000,
+        format: 'pcm_s16le',
+        model: config.model,
+        hotwords: parseHotwords(config.hotwords),
+      }));
+      callbacks.onReady?.();
+      this.flushAudioQueue();
+    };
+
+    socket.onmessage = (event) => {
+      if (typeof event.data !== 'string') return;
+      try {
+        const data = JSON.parse(event.data) as {
+          type?: string;
+          text?: string;
+          isFinal?: boolean;
+          final?: boolean;
+          error?: string;
+        };
+        if (data.type === 'error' || data.error) {
+          callbacks.onError(data.error || '本地 Qwen3-ASR 返回错误。');
+          return;
+        }
+        if (typeof data.text === 'string' && data.text.trim()) {
+          callbacks.onResult(data.text.trim(), Boolean(data.isFinal ?? data.final));
+        }
+      } catch {
+        callbacks.onError('本地 Qwen3-ASR 返回了无法解析的消息。');
+      }
+    };
+
+    socket.onerror = () => {
+      callbacks.onError('本地 Qwen3-ASR 连接失败，请确认本地服务已启动。');
+    };
+
+    socket.onclose = (event) => {
+      if (this.ws === socket) {
+        this.connected = false;
+        this.audioQueue = [];
+        this.ws = null;
+      }
+      if (event.code !== 1000 && event.reason) {
+        callbacks.onError(`本地 Qwen3-ASR 连接关闭 ${event.code}：${event.reason}`);
+      }
+      callbacks.onEnd();
+    };
+  }
+
+  sendAudio(pcm: Int16Array): void {
+    if (!pcm.byteLength) return;
+    if (!this.ws || !this.connected || this.ws.readyState !== WebSocket.OPEN) {
+      this.audioQueue.push(pcm.slice());
+      this.audioQueue = this.audioQueue.slice(-80);
+      return;
+    }
+    this.ws.send(copyPcmBuffer(pcm));
+  }
+
+  stop(): void {
+    if (this.ws) {
+      try {
+        this.ws.send(JSON.stringify({ type: 'stop' }));
+      } catch {}
+      this.ws.close(1000, 'user stop');
+    }
+    this.ws = null;
+    this.connected = false;
+    this.audioQueue = [];
+  }
+
+  isActive(): boolean {
+    return this.ws !== null && this.connected;
+  }
+
+  private flushAudioQueue(): void {
+    const pending = this.audioQueue;
+    this.audioQueue = [];
+    for (const pcm of pending) this.sendAudio(pcm);
+  }
 }
 
 function copyPcmBuffer(pcm: Int16Array): ArrayBuffer {

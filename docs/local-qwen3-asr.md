@@ -30,9 +30,11 @@ mlx-community/Qwen3-ASR-1.7B-5bit
   "sampleRate": 16000,
   "format": "pcm_s16le",
   "model": ".models/Qwen3-ASR-1.7B-8bit",
-  "hotwords": ["大数据开发", "StarRocks", "Flink", "Fluss", "MLX", "量化", "湖仓一体"]
+  "hotwords": []
 }
 ```
+
+说明：当前 `mlx-qwen3-asr` 的 `context` 更像“前文上下文”，不是严格的热词 API。为了避免模型把“热词：...”直接识别进正文，bridge 默认不再把热词注入 context。
 
 随后前端持续发送二进制 `Int16Array` PCM 音频块。
 

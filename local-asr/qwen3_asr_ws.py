@@ -29,7 +29,7 @@ import websockets
 from websockets.server import WebSocketServerProtocol
 
 
-DEFAULT_MODEL = "mlx-community/Qwen3-ASR-1.7B-8bit"
+DEFAULT_MODEL = ".models/Qwen3-ASR-1.7B-8bit"
 
 
 @dataclass
@@ -47,7 +47,10 @@ class Qwen3AsrAdapter:
     def __init__(self, model: str, hotwords: list[str]) -> None:
         self.model = model
         self.hotwords = hotwords
-        self.context = "热词：" + "、".join(self.hotwords) if self.hotwords else ""
+        # mlx-qwen3-asr treats `context` as previous transcript/context. Passing
+        # "热词：..." here can be echoed into the transcript, so keep it empty
+        # until the backend exposes a dedicated hotword API.
+        self.context = ""
         self.backend: Any | None = None
         self.state: Any | None = None
         self.backend_kind = "session"
@@ -80,7 +83,9 @@ class Qwen3AsrAdapter:
         )
 
     def transcribe_chunk(self, audio: np.ndarray, sample_rate: int, is_final: bool) -> str:
-        if self.backend is None or self.state is None or audio.size == 0:
+        if self.backend is None or self.state is None:
+            return ""
+        if audio.size == 0 and not is_final:
             return ""
         if sample_rate != 16000:
             raise RuntimeError(f"当前 bridge 只接收 16kHz PCM，收到 {sample_rate}Hz。")
@@ -88,12 +93,22 @@ class Qwen3AsrAdapter:
             if audio.size:
                 self.state = self.backend.feed_audio(audio.astype(np.float32), self.state)
             self.state = self.backend.finish_streaming(self.state)
-            text = str(getattr(self.state, "text", "") or "").strip()
+            text = sanitize_transcript(str(getattr(self.state, "text", "") or "").strip())
             self.state = self._init_streaming_state()
             return text
         else:
             self.state = self.backend.feed_audio(audio.astype(np.float32), self.state)
-        return str(getattr(self.state, "text", "") or "").strip()
+        return sanitize_transcript(str(getattr(self.state, "text", "") or "").strip())
+
+
+def sanitize_transcript(text: str) -> str:
+    if not text:
+        return ""
+    for marker in ("热词：", "热词:", "关键词：", "关键词:"):
+        index = text.find(marker)
+        if index >= 0:
+            text = text[:index]
+    return text.strip(" ，,。；;：:\n\t")
 
 
 def extract_text(result: Any) -> str:
@@ -121,7 +136,10 @@ def pcm_bytes_to_float32(data: bytes) -> np.ndarray:
 
 
 async def send_json(ws: WebSocketServerProtocol, payload: dict[str, Any]) -> None:
-    await ws.send(json.dumps(payload, ensure_ascii=False))
+    try:
+        await ws.send(json.dumps(payload, ensure_ascii=False))
+    except websockets.ConnectionClosed:
+        return
 
 
 async def handle_client(ws: WebSocketServerProtocol) -> None:
@@ -145,6 +163,8 @@ async def handle_client(ws: WebSocketServerProtocol) -> None:
             # same event-loop thread where the Session was created.
             text = adapter.transcribe_chunk(audio, state.sample_rate, is_final)
             state.stream_dirty = not is_final
+            if is_final:
+                state.last_emit_text = ""
         if text and text != state.last_emit_text:
             state.last_emit_text = text
             await send_json(ws, {"text": text, "isFinal": is_final})

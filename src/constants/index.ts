@@ -146,7 +146,7 @@ export const DEFAULT_DOUBAO_ASR_CONFIG: DoubaoASRConfig = {
 export const DEFAULT_LOCAL_QWEN_ASR_CONFIG = {
   endpoint: 'ws://127.0.0.1:8766/ws',
   model: '.models/Qwen3-ASR-1.7B-8bit',
-  hotwords: '大数据开发、StarRocks、Flink、Fluss、MLX、量化、湖仓一体',
+  hotwords: '',
 };
 
 // 豆包 ASR WebSocket 地址

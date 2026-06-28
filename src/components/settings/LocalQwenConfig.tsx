@@ -41,6 +41,7 @@ export function LocalQwenConfig() {
         value={localQwenConfig.hotwords}
         onChange={(event) => updateLocalQwenConfig({ hotwords: event.target.value })}
         placeholder="大数据开发、StarRocks、Flink、Fluss、MLX、量化、湖仓一体"
+        helperText="可选。当前不会自动注入热词；如果填了也只作为后端参数发送，避免把“热词：...”识别进正文。"
       />
       <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
         <Button

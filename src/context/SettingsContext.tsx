@@ -86,6 +86,9 @@ function getInitialState(): SettingsState {
     ...DEFAULT_LOCAL_QWEN_ASR_CONFIG,
     ...storageService.get<LocalQwenASRConfig>(STORAGE_KEYS.LOCAL_QWEN_ASR_CONFIG, DEFAULT_LOCAL_QWEN_ASR_CONFIG),
   };
+  if (localQwenConfig.hotwords === '大数据开发、StarRocks、Flink、Fluss、MLX、量化、湖仓一体') {
+    localQwenConfig.hotwords = '';
+  }
 
   return { aiSettings, appSettings, doubaoConfig, localQwenConfig, connectionStatus: null, isTestingConnection: false };
 }

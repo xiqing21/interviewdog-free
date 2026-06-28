@@ -26,6 +26,7 @@ import * as systemAudioService from '../services/systemAudioService';
 import * as doubaoAsrService from '../services/doubaoAsrService';
 import * as openaiChunkAsrService from '../services/openaiChunkAsrService';
 import * as localQwenAsrService from '../services/localQwenAsrService';
+import type { LocalQwenSession } from '../services/localQwenAsrService';
 import { chat } from '../services/aiService';
 import { webSearch } from '../services/webSearchService';
 import { useSettings } from '../hooks/useSettings';
@@ -148,6 +149,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const pendingInterimNormalized = useRef('');
   const committedInterviewerQuestions = useRef<string[]>([]);
   const queuedQuestions = useRef<string[]>([]);
+  const qwenMicrophoneSession = useRef<LocalQwenSession | null>(null);
+  const qwenSystemAudioSession = useRef<LocalQwenSession | null>(null);
 
   // 持久化当前 session 的 qaList
   const qaList = activeSession?.qaList ?? [];
@@ -158,6 +161,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     doubaoAsrService.stop();
     openaiChunkAsrService.stop();
     localQwenAsrService.stop();
+    qwenMicrophoneSession.current = null;
+    qwenSystemAudioSession.current = null;
     if (mergeTimer.current) {
       clearTimeout(mergeTimer.current);
       mergeTimer.current = null;
@@ -296,6 +301,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   function cleanupInterimText(text: string): string {
     let current = text.trim();
+    current = current.replace(/(?:热词|关键词)[：:][\s\S]*$/g, '').trim();
     for (const previous of [...committedInterviewerQuestions.current].reverse()) {
       const normalizedCurrent = normalizeTranscriptText(current);
       const normalizedPrevious = normalizeTranscriptText(previous);
@@ -310,6 +316,12 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         continue;
       }
 
+      const previousIndex = current.indexOf(previous);
+      if (previousIndex >= 0) {
+        current = current.slice(previousIndex + previous.length).trim();
+        continue;
+      }
+
       if (normalizedCurrent.startsWith(normalizedPrevious) && normalizedPrevious.length > 8) {
         const ratio = normalizedPrevious.length / normalizedCurrent.length;
         if (ratio > 0.35) {
@@ -317,7 +329,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         }
       }
     }
-    return current;
+    return current.replace(/^[，。！？、,.!?;；:\s]+/, '').trim();
   }
 
   function textSimilarity(a: string, b: string): number {
@@ -724,16 +736,41 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       return false;
     }
     try {
+      qwenMicrophoneSession.current?.stop();
+      const session = localQwenAsrService.createSession();
+      qwenMicrophoneSession.current = session;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const cleanupStream = () => stream.getTracks().forEach((track) => track.stop());
-      localQwenAsrService.start(localQwenRef.current, {
+      let context: AudioContext | null = null;
+      let source: MediaStreamAudioSourceNode | null = null;
+      let processor: ScriptProcessorNode | null = null;
+      let silentGain: GainNode | null = null;
+      const cleanupStream = () => {
+        try { processor?.disconnect(); } catch {}
+        try { source?.disconnect(); } catch {}
+        try { silentGain?.disconnect(); } catch {}
+        processor = null;
+        source = null;
+        silentGain = null;
+        if (context) {
+          context.close().catch(() => {});
+          context = null;
+        }
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      session.start(localQwenRef.current, {
         onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
         onError: (e) => { cleanupStream(); dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
-        onEnd: () => { cleanupStream(); setListeningFromActiveSources(); },
+        onEnd: () => {
+          cleanupStream();
+          if (qwenMicrophoneSession.current === session) qwenMicrophoneSession.current = null;
+          setListeningFromActiveSources();
+        },
         onReady: () => {
-          const context = new AudioContext({ sampleRate: 16000 });
-          const source = context.createMediaStreamSource(stream);
-          const processor = context.createScriptProcessor(1024, 1, 1);
+          context = new AudioContext({ sampleRate: 16000 });
+          source = context.createMediaStreamSource(stream);
+          processor = context.createScriptProcessor(1024, 1, 1);
+          silentGain = context.createGain();
+          silentGain.gain.value = 0;
           processor.onaudioprocess = (event) => {
             const input = event.inputBuffer.getChannelData(0);
             const pcm = new Int16Array(input.length);
@@ -741,15 +778,18 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
               const s = Math.max(-1, Math.min(1, input[i]));
               pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
             }
-            localQwenAsrService.sendAudio(pcm);
+            session.sendAudio(pcm);
           };
           source.connect(processor);
-          processor.connect(context.destination);
+          processor.connect(silentGain);
+          silentGain.connect(context.destination);
         },
       });
       setListeningFromActiveSources();
       return true;
     } catch (error) {
+      qwenMicrophoneSession.current?.stop();
+      qwenMicrophoneSession.current = null;
       dispatch({ type: 'SET_ERROR', payload: `麦克风授权失败：${error instanceof Error ? error.message : '未知错误'}` });
       return false;
     }
@@ -791,15 +831,21 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         if (!prepared) return false;
       }
 
-      localQwenAsrService.start(localQwenRef.current, {
+      qwenSystemAudioSession.current?.stop();
+      const session = localQwenAsrService.createSession();
+      qwenSystemAudioSession.current = session;
+      session.start(localQwenRef.current, {
         onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
         onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
-        onEnd: () => setListeningFromActiveSources(),
+        onEnd: () => {
+          if (qwenSystemAudioSession.current === session) qwenSystemAudioSession.current = null;
+          setListeningFromActiveSources();
+        },
         onReady: () => {
           void systemAudioService.start({
-            onPcmData: (pcm) => localQwenAsrService.sendAudio(pcm),
-            onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); localQwenAsrService.stop(); setListeningFromActiveSources(); },
-            onEnd: () => { localQwenAsrService.stop(); setListeningFromActiveSources(); },
+            onPcmData: (pcm) => session.sendAudio(pcm),
+            onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); session.stop(); setListeningFromActiveSources(); },
+            onEnd: () => { session.stop(); setListeningFromActiveSources(); },
           });
         },
       });
@@ -889,7 +935,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }
 
     if (microphoneSpeaker) {
-      if (app.asrProvider === 'local-qwen' && !systemSpeaker) {
+      if (app.asrProvider === 'local-qwen') {
         started = (await startLocalQwenMicrophoneRecognition(microphoneSpeaker)) || started;
       } else if (app.asrProvider === 'openai' && !systemSpeaker) {
         started = (await startOpenAIMicrophoneRecognition(microphoneSpeaker)) || started;
