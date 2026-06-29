@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import { transcribeCloudAsr } from './cloud-asr';
 
 type GatewayProvider = 'gateway-doubao' | 'gateway-iflytek' | 'gateway-alibaba';
 
@@ -48,8 +47,6 @@ wss.on('connection', (client) => {
   let upstream: WebSocket | null = null;
   let started = false;
   let iflytekFirstFrame = true;
-  let alibabaPcmChunks: Buffer[] = [];
-  let alibabaBytes = 0;
   let config: Record<string, string | number> = {};
 
   const closeUpstream = () => {
@@ -81,7 +78,7 @@ wss.on('connection', (client) => {
       started = true;
       if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
       if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
-      if (provider === 'gateway-alibaba') send({ type: 'ready', provider, mode: 'chunk-fallback' });
+      if (provider === 'gateway-alibaba') startAlibaba(config, send, (ws) => { upstream = ws; }, speaker);
       return;
     }
 
@@ -117,13 +114,7 @@ wss.on('connection', (client) => {
           iflytekFirstFrame = false;
         }
       } else if (provider === 'gateway-alibaba') {
-        alibabaPcmChunks.push(pcm);
-        alibabaBytes += pcm.byteLength;
-        if (alibabaBytes >= SAMPLE_RATE * 2 * 3) {
-          void flushAlibaba(config, alibabaPcmChunks, speaker, send);
-          alibabaPcmChunks = [];
-          alibabaBytes = 0;
-        }
+        if (upstream?.readyState === WebSocket.OPEN) upstream.send(pcm);
       }
       return;
     }
@@ -133,7 +124,7 @@ wss.on('connection', (client) => {
       if (provider === 'gateway-iflytek' && upstream?.readyState === WebSocket.OPEN) {
         upstream.send(JSON.stringify({ data: { status: 2, format: 'audio/L16;rate=16000', encoding: 'raw', audio: '' } }));
       }
-      if (provider === 'gateway-alibaba' && alibabaBytes > 0) void flushAlibaba(config, alibabaPcmChunks, speaker, send);
+      if (provider === 'gateway-alibaba' && upstream?.readyState === WebSocket.OPEN) upstream.send(JSON.stringify(buildAlibabaControl('StopTranscription', config)));
       closeUpstream();
       send({ type: 'end' });
     }
@@ -220,24 +211,49 @@ function startIflytek(
   upstream.on('close', () => send({ type: 'end' }));
 }
 
-async function flushAlibaba(
+function startAlibaba(
   config: Record<string, string | number>,
-  chunks: Buffer[],
-  speaker: 'interviewer' | 'me',
   send: (payload: unknown) => void,
-): Promise<void> {
-  const pcm = Buffer.concat(chunks);
-  if (pcm.byteLength === 0) return;
-  const wav = encodeWav(pcm);
-  const text = await transcribeCloudAsr({
-    provider: 'alibaba',
-    config,
-    pcmBase64: pcm.toString('base64'),
-    pcmBytes: pcm.byteLength,
-    wavBase64: wav.toString('base64'),
-    wavBytes: wav.byteLength,
+  setUpstream: (ws: WebSocket) => void,
+  speaker: 'interviewer' | 'me',
+): void {
+  const token = str(config.alibabaToken);
+  const appKey = str(config.alibabaAppKey);
+  if (!token || !appKey) {
+    send({ type: 'error', message: 'Missing Alibaba AppKey or Token' });
+    return;
+  }
+  config.alibabaTaskId = crypto.randomUUID().replace(/-/g, '');
+  const upstream = new WebSocket(buildAlibabaUrl(config, token));
+  setUpstream(upstream);
+  upstream.on('open', () => {
+    upstream.send(JSON.stringify(buildAlibabaControl('StartTranscription', config)));
   });
-  if (text) send({ type: 'VoiceMessage', provider: 'gateway-alibaba', speaker, text, isFinal: true });
+  upstream.on('message', (raw) => {
+    const data = JSON.parse(raw.toString());
+    const name = str(data?.header?.name);
+    if (name === 'TranscriptionStarted') {
+      send({ type: 'ready', provider: 'gateway-alibaba' });
+      return;
+    }
+    if (name === 'TaskFailed') {
+      send({ type: 'error', message: data?.header?.status_text || '阿里云 NLS 识别失败' });
+      return;
+    }
+    const text = str(data?.payload?.result);
+    if (text) {
+      send({
+        type: 'VoiceMessage',
+        provider: 'gateway-alibaba',
+        speaker,
+        text,
+        isFinal: name === 'SentenceEnd' || name === 'TranscriptionCompleted',
+      });
+    }
+    if (name === 'TranscriptionCompleted') send({ type: 'end' });
+  });
+  upstream.on('error', (error) => send({ type: 'error', message: error instanceof Error ? error.message : 'Alibaba NLS upstream error' }));
+  upstream.on('close', () => send({ type: 'end' }));
 }
 
 function buildDoubaoFullRequest(): Buffer {
@@ -311,27 +327,40 @@ function buildIflytekUrl(apiKey: string, apiSecret: string): string {
   return `wss://${host}${path}?${params.toString()}`;
 }
 
-function encodeWav(pcm: Buffer): Buffer {
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcm.byteLength, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(SAMPLE_RATE, 24);
-  header.writeUInt32LE(SAMPLE_RATE * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(pcm.byteLength, 40);
-  return Buffer.concat([header, pcm]);
-}
-
 function toArrayBuffer(data: WebSocket.RawData): ArrayBuffer {
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data as any);
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+}
+
+function buildAlibabaUrl(config: Record<string, string | number>, token: string): string {
+  const endpoint = str(config.alibabaEndpoint) || 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1';
+  const url = new URL(endpoint.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));
+  if (url.pathname.includes('/stream/v1/asr')) url.pathname = '/ws/v1';
+  url.searchParams.set('token', token);
+  return url.toString();
+}
+
+function buildAlibabaControl(name: 'StartTranscription' | 'StopTranscription', config: Record<string, string | number>) {
+  const taskId = str(config.alibabaTaskId) || crypto.randomUUID().replace(/-/g, '');
+  return {
+    header: {
+      appkey: str(config.alibabaAppKey),
+      namespace: 'SpeechTranscriber',
+      name,
+      task_id: taskId,
+      message_id: crypto.randomUUID().replace(/-/g, ''),
+    },
+    payload: name === 'StartTranscription'
+      ? {
+          format: 'pcm',
+          sample_rate: SAMPLE_RATE,
+          enable_intermediate_result: true,
+          enable_punctuation_prediction: true,
+          enable_inverse_text_normalization: true,
+          max_sentence_silence: Math.max(500, Number(config.asrEndWindowSize) || 1500),
+        }
+      : {},
+  };
 }
 
 function str(value: unknown): string {

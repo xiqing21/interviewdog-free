@@ -118,7 +118,7 @@ function providerDescription(provider: ASRProvider): string {
     return '按面试狗架构：浏览器只采集 PCM，服务端 Gateway 长连接讯飞 WebIAT，适合和豆包做实时延迟对比。';
   }
   if (provider === 'gateway-alibaba') {
-    return '使用服务端 Gateway 接收 PCM 后调用阿里云识别；当前为兜底分片模式，后续可替换为阿里 NLS 实时流。';
+    return '按面试狗架构：浏览器只采集 PCM，服务端 Gateway 长连接阿里云 NLS 实时语音识别。';
   }
   if (provider === 'openai') {
     return '使用 OpenAI-compatible 音频转写接口，能识别 Chrome 共享的系统音频，但会有约 4-6 秒延迟。';
