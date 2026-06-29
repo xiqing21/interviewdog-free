@@ -23,10 +23,15 @@ export function KnowledgePage() {
     addResume,
     updateResume,
     deleteResume,
+    addKnowledgeItem,
+    updateKnowledgeItem,
+    deleteKnowledgeItem,
     setExpertKnowledge,
   } = useKnowledge();
   const [resumeName, setResumeName] = useState('');
   const [resumeText, setResumeText] = useState('');
+  const [knowledgeName, setKnowledgeName] = useState('');
+  const [knowledgeText, setKnowledgeText] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,6 +65,13 @@ export function KnowledgePage() {
     addResume(resumeName, resumeText);
     setResumeName('');
     setResumeText('');
+  };
+
+  const handleAddKnowledge = () => {
+    addKnowledgeItem(knowledgeName, knowledgeText);
+    setKnowledgeName('');
+    setKnowledgeText('');
+    if (profile.expertKnowledge) setExpertKnowledge('');
   };
 
   return (
@@ -146,20 +158,72 @@ export function KnowledgePage() {
       </Paper>
 
       <Paper sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>专家知识库</Typography>
+        <Typography variant="h6" gutterBottom>新增专家知识库</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          可以放项目亮点、技术栈总结、常见追问、行业知识、个人话术。AI 回答时会优先结合这些内容。
+          可以保存项目亮点、技术栈总结、常见追问、行业知识、个人话术。创建面试项目时可像简历一样多选挂载。
         </Typography>
+        <Button
+          variant="contained"
+          startIcon={<SaveIcon />}
+          disabled={!knowledgeText.trim()}
+          onClick={handleAddKnowledge}
+          sx={{ mb: 2 }}
+        >
+          保存到专家库
+        </Button>
+        <TextField
+          fullWidth
+          label="知识库名称"
+          value={knowledgeName}
+          onChange={(event) => setKnowledgeName(event.target.value)}
+          placeholder="例如：Flink 实时数仓 / Web3 合约安全 / 电力业务指标"
+          sx={{ mb: 2 }}
+        />
         <TextField
           fullWidth
           multiline
-          minRows={10}
-          maxRows={24}
-          label="专家知识库"
-          value={profile.expertKnowledge}
-          onChange={(event) => setExpertKnowledge(event.target.value)}
+          minRows={5}
+          maxRows={14}
+          label="知识库内容"
+          value={knowledgeText}
+          onChange={(event) => setKnowledgeText(event.target.value)}
           placeholder="例如：Flink CDC -> Fluss -> Paimon -> StarRocks 链路经验；电力大数据指标体系；Web3 项目安全经验..."
         />
+      </Paper>
+
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>专家库</Typography>
+        {profile.expertKnowledgeItems.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">还没有保存专家知识库。</Typography>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {profile.expertKnowledgeItems.map((item) => (
+              <Box key={item.id} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 1 }}>
+                  <TextField
+                    size="small"
+                    label="名称"
+                    value={item.name}
+                    onChange={(event) => updateKnowledgeItem(item.id, { name: event.target.value })}
+                    sx={{ flexGrow: 1 }}
+                  />
+                  <Chip size="small" label={`${item.content.length} 字`} />
+                  <IconButton color="error" onClick={() => deleteKnowledgeItem(item.id)} aria-label="删除专家知识库">
+                    <DeleteOutlineIcon />
+                  </IconButton>
+                </Box>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  maxRows={10}
+                  value={item.content}
+                  onChange={(event) => updateKnowledgeItem(item.id, { content: event.target.value })}
+                />
+              </Box>
+            ))}
+          </Box>
+        )}
       </Paper>
 
       <Divider />

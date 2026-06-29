@@ -9,6 +9,7 @@
 ### 🎙️ 面试辅助
 - **实时语音识别**：利用浏览器 Web Speech API，实时将面试官语音转为文字
 - **实时 ASR Gateway**：支持服务端 WebSocket 接入豆包/讯飞/阿里，系统音频识别延迟更低，详见 [实时 ASR Gateway 优化说明](docs/realtime-asr-gateway.md)
+- **远程同步资料库**：登录后可同步简历库、专家库、面试记录和复盘，详见 [Supabase 同步与简历解析说明](docs/supabase-sync-and-resume-parsing.md)
 - **AI 自动解答**：识别到问题后自动发送给你的 AI，流式输出专业解答
 - **上下文关联**：支持多轮对话上下文（最多5轮），追问也能准确回答
 - **手动编辑**：支持手动输入/编辑问题，灵活应对各种场景

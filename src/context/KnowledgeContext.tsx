@@ -6,7 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import type { KnowledgeProfile, ResumeLibraryItem } from '../types';
+import type { KnowledgeLibraryItem, KnowledgeProfile, ResumeLibraryItem } from '../types';
 import { DEFAULT_KNOWLEDGE_PROFILE, STORAGE_KEYS } from '../constants';
 import * as storageService from '../services/storageService';
 import * as profileSyncService from '../services/profileSyncService';
@@ -21,6 +21,9 @@ export interface KnowledgeContextValue extends KnowledgeState {
   addResume: (name: string, content: string, tags?: string[]) => void;
   updateResume: (id: string, patch: Partial<Pick<ResumeLibraryItem, 'name' | 'content' | 'tags'>>) => void;
   deleteResume: (id: string) => void;
+  addKnowledgeItem: (name: string, content: string, tags?: string[]) => void;
+  updateKnowledgeItem: (id: string, patch: Partial<Pick<KnowledgeLibraryItem, 'name' | 'content' | 'tags'>>) => void;
+  deleteKnowledgeItem: (id: string) => void;
   setExpertKnowledge: (text: string) => void;
 }
 
@@ -32,11 +35,9 @@ function generateId(): string {
 }
 
 function getInitialState(): KnowledgeState {
+  const stored = storageService.get<KnowledgeProfile>(STORAGE_KEYS.KNOWLEDGE_PROFILE, DEFAULT_KNOWLEDGE_PROFILE);
   return {
-    profile: {
-      ...DEFAULT_KNOWLEDGE_PROFILE,
-      ...storageService.get<KnowledgeProfile>(STORAGE_KEYS.KNOWLEDGE_PROFILE, DEFAULT_KNOWLEDGE_PROFILE),
-    },
+    profile: normalizeProfile({ ...DEFAULT_KNOWLEDGE_PROFILE, ...stored }),
     syncError: null,
   };
 }
@@ -145,6 +146,38 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     });
   }, [updateProfile]);
 
+  const addKnowledgeItem = useCallback((name: string, content: string, tags: string[] = []) => {
+    const trimmed = content.trim();
+    if (!trimmed) return;
+    const now = Date.now();
+    const item: KnowledgeLibraryItem = {
+      id: generateId(),
+      name: name.trim() || `专家知识库 ${new Date(now).toLocaleDateString('zh-CN')}`,
+      content: trimmed,
+      tags,
+      createdAt: now,
+      updatedAt: now,
+    };
+    updateProfile({ expertKnowledgeItems: [...stateRef.current.profile.expertKnowledgeItems, item] });
+  }, [updateProfile]);
+
+  const updateKnowledgeItem = useCallback((
+    id: string,
+    patch: Partial<Pick<KnowledgeLibraryItem, 'name' | 'content' | 'tags'>>,
+  ) => {
+    updateProfile({
+      expertKnowledgeItems: stateRef.current.profile.expertKnowledgeItems.map((item) =>
+        item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item,
+      ),
+    });
+  }, [updateProfile]);
+
+  const deleteKnowledgeItem = useCallback((id: string) => {
+    updateProfile({
+      expertKnowledgeItems: stateRef.current.profile.expertKnowledgeItems.filter((item) => item.id !== id),
+    });
+  }, [updateProfile]);
+
   const setExpertKnowledge = useCallback((text: string) => {
     updateProfile({ expertKnowledge: text });
   }, [updateProfile]);
@@ -156,6 +189,9 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         addResume,
         updateResume,
         deleteResume,
+        addKnowledgeItem,
+        updateKnowledgeItem,
+        deleteKnowledgeItem,
         setExpertKnowledge,
       }}
     >
@@ -165,6 +201,37 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
 }
 
 function mergeProfile(local: KnowledgeProfile, remote: KnowledgeProfile): KnowledgeProfile {
-  if ((remote.updatedAt ?? 0) > (local.updatedAt ?? 0)) return remote;
-  return local;
+  const normalizedLocal = normalizeProfile(local);
+  const normalizedRemote = normalizeProfile(remote);
+  if ((normalizedRemote.updatedAt ?? 0) > (normalizedLocal.updatedAt ?? 0)) return normalizedRemote;
+  return normalizedLocal;
+}
+
+function normalizeProfile(profile: KnowledgeProfile): KnowledgeProfile {
+  const expertKnowledgeItems = profile.expertKnowledgeItems ?? [];
+  const legacyText = profile.expertKnowledge?.trim() ?? '';
+  if (expertKnowledgeItems.length > 0 || !legacyText) {
+    return {
+      ...DEFAULT_KNOWLEDGE_PROFILE,
+      ...profile,
+      resumes: profile.resumes ?? [],
+      expertKnowledgeItems,
+      expertKnowledge: profile.expertKnowledge ?? '',
+    };
+  }
+
+  const now = profile.updatedAt ?? Date.now();
+  return {
+    ...DEFAULT_KNOWLEDGE_PROFILE,
+    ...profile,
+    resumes: profile.resumes ?? [],
+    expertKnowledgeItems: [{
+      id: 'legacy-expert-knowledge',
+      name: '默认专家知识库',
+      content: legacyText,
+      createdAt: now,
+      updatedAt: now,
+    }],
+    expertKnowledge: profile.expertKnowledge ?? '',
+  };
 }

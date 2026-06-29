@@ -755,6 +755,9 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
   const editing = mode === 'edit' && Boolean(activeSession);
   const currentRole = INTERVIEW_ROLE_PRESETS.find((role) => role.label === (editing ? activeSession?.targetRole : undefined));
   const newestResume = [...knowledgeProfile.resumes].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const defaultKnowledgeIds = editing
+    ? activeSession?.expertKnowledgeIds ?? []
+    : knowledgeProfile.expertKnowledgeItems.map((item) => item.id);
   const composeResumeText = useCallback((resumeIds: string[]) => {
     const selected = resumeIds
       .map((id) => knowledgeProfile.resumes.find((item) => item.id === id))
@@ -763,9 +766,22 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
       .map((item) => `### ${item.name}\n${item.content}`)
       .join('\n\n');
   }, [knowledgeProfile.resumes]);
+  const composeKnowledgeText = useCallback((knowledgeIds: string[]) => {
+    const selected = knowledgeIds
+      .map((id) => knowledgeProfile.expertKnowledgeItems.find((item) => item.id === id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    return selected
+      .map((item) => `### ${item.name}\n${item.content}`)
+      .join('\n\n');
+  }, [knowledgeProfile.expertKnowledgeItems]);
   const [projectName, setProjectName] = useState(editing ? activeSession?.name ?? '' : '');
   const [selectedRole, setSelectedRole] = useState(currentRole?.key ?? INTERVIEW_ROLE_PRESETS[0].key);
-  const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>(editing || !newestResume ? [] : [newestResume.id]);
+  const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>(
+    editing
+      ? activeSession?.resumeIds ?? []
+      : newestResume ? [newestResume.id] : [],
+  );
+  const [selectedKnowledgeIds, setSelectedKnowledgeIds] = useState<string[]>(defaultKnowledgeIds);
   const [resumeText, setResumeText] = useState(
     editing
       ? activeSession?.resume ?? resume
@@ -777,6 +793,11 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     editing
       ? (activeSession?.jd ?? jd) || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd
       : currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd,
+  );
+  const [expertKnowledgeText, setExpertKnowledgeText] = useState(
+    editing
+      ? activeSession?.expertKnowledge ?? composeKnowledgeText(defaultKnowledgeIds)
+      : composeKnowledgeText(defaultKnowledgeIds),
   );
   const [focusAreas, setFocusAreas] = useState<string[]>(
     editing && activeSession?.focusAreas?.length ? activeSession.focusAreas : ['SQL', '项目深挖'],
@@ -801,6 +822,13 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     const resumeIds = typeof value === 'string' ? value.split(',') : value;
     setSelectedResumeIds(resumeIds);
     setResumeText(resumeIds.length ? composeResumeText(resumeIds) : '');
+  };
+
+  const handleKnowledgeLibraryChange = (event: SelectChangeEvent<string[]>) => {
+    const value = event.target.value;
+    const knowledgeIds = typeof value === 'string' ? value.split(',') : value;
+    setSelectedKnowledgeIds(knowledgeIds);
+    setExpertKnowledgeText(knowledgeIds.length ? composeKnowledgeText(knowledgeIds) : '');
   };
 
   const handleResumeUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -841,9 +869,12 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     const role = INTERVIEW_ROLE_PRESETS.find((item) => item.key === selectedRole);
     const profile = {
       resume: resumeText,
+      resumeIds: selectedResumeIds,
       jd: jdText,
       targetRole: role?.label ?? '',
       focusAreas,
+      expertKnowledge: expertKnowledgeText,
+      expertKnowledgeIds: selectedKnowledgeIds,
     };
     if (editing && activeSession) {
       updateSessionProfile(profile);
@@ -932,6 +963,36 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         </Typography>
       </Box>
 
+      {knowledgeProfile.expertKnowledgeItems.length > 0 && (
+        <Box sx={{ mt: 2 }}>
+          <FormControl size="small" fullWidth>
+            <InputLabel>引用专家库（可多选）</InputLabel>
+            <Select
+              multiple
+              label="引用专家库（可多选）"
+              value={selectedKnowledgeIds}
+              onChange={handleKnowledgeLibraryChange}
+              renderValue={(selected) => {
+                const names = selected
+                  .map((id) => knowledgeProfile.expertKnowledgeItems.find((item) => item.id === id)?.name)
+                  .filter(Boolean);
+                return names.length ? names.join('、') : '不挂载专家库';
+              }}
+            >
+              {knowledgeProfile.expertKnowledgeItems.map((item) => (
+                <MenuItem key={item.id} value={item.id}>
+                  <Checkbox checked={selectedKnowledgeIds.includes(item.id)} />
+                  <ListItemText
+                    primary={item.name}
+                    secondary={`${item.content.length.toLocaleString('zh-CN')} 字`}
+                  />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Box>
+      )}
+
       <TextField
         fullWidth
         multiline
@@ -944,6 +1005,21 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
           setResumeText(event.target.value);
         }}
         placeholder="粘贴你的简历，或上传 PDF 自动解析..."
+        sx={{ mt: 2 }}
+      />
+
+      <TextField
+        fullWidth
+        multiline
+        minRows={4}
+        maxRows={10}
+        label="本项目挂载的专家知识库"
+        value={expertKnowledgeText}
+        onChange={(event) => {
+          setSelectedKnowledgeIds([]);
+          setExpertKnowledgeText(event.target.value);
+        }}
+        placeholder="可从专家库多选带入，也可以在本项目里临时补充..."
         sx={{ mt: 2 }}
       />
 

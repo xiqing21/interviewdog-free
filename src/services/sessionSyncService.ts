@@ -9,9 +9,12 @@ type SessionRow = {
   archived_at: string | null;
   answer_mode: InterviewSession['answerMode'];
   resume: string | null;
+  resume_ids?: string[] | null;
   jd: string | null;
   target_role: string | null;
   focus_areas: string[];
+  expert_knowledge?: string | null;
+  expert_knowledge_ids?: string[] | null;
   qa_list: InterviewSession['qaList'];
   transcript_lines: NonNullable<InterviewSession['transcriptLines']>;
   review: InterviewSession['review'] | null;
@@ -37,7 +40,7 @@ export async function syncSession(session: InterviewSession): Promise<void> {
   const userId = userResult.data.user?.id;
   if (!userId) return;
 
-  const { error } = await supabase.from('interview_sessions').upsert({
+  const payload = {
     id: session.id,
     user_id: userId,
     name: session.name,
@@ -46,13 +49,41 @@ export async function syncSession(session: InterviewSession): Promise<void> {
     archived_at: session.archivedAt ? new Date(session.archivedAt).toISOString() : null,
     answer_mode: session.answerMode,
     resume: session.resume ?? null,
+    resume_ids: session.resumeIds ?? [],
     jd: session.jd ?? null,
     target_role: session.targetRole ?? null,
     focus_areas: session.focusAreas ?? [],
+    expert_knowledge: session.expertKnowledge ?? null,
+    expert_knowledge_ids: session.expertKnowledgeIds ?? [],
     qa_list: session.qaList,
     transcript_lines: session.transcriptLines ?? [],
     review: session.review ?? null,
-  });
+  };
+
+  const { error } = await supabase.from('interview_sessions').upsert(payload);
+  if (error && (
+    error.message.includes('resume_ids') ||
+    error.message.includes('expert_knowledge')
+  )) {
+    const { error: fallbackError } = await supabase.from('interview_sessions').upsert({
+      id: session.id,
+      user_id: userId,
+      name: session.name,
+      created_at: new Date(session.createdAt).toISOString(),
+      updated_at: new Date(session.updatedAt ?? Date.now()).toISOString(),
+      archived_at: session.archivedAt ? new Date(session.archivedAt).toISOString() : null,
+      answer_mode: session.answerMode,
+      resume: session.resume ?? null,
+      jd: session.jd ?? null,
+      target_role: session.targetRole ?? null,
+      focus_areas: session.focusAreas ?? [],
+      qa_list: session.qaList,
+      transcript_lines: session.transcriptLines ?? [],
+      review: session.review ?? null,
+    });
+    if (fallbackError) throw fallbackError;
+    return;
+  }
   if (error) throw error;
 }
 
@@ -71,9 +102,12 @@ function rowToSession(row: SessionRow): InterviewSession {
     archivedAt: row.archived_at ? new Date(row.archived_at).getTime() : undefined,
     answerMode: row.answer_mode,
     resume: row.resume ?? undefined,
+    resumeIds: row.resume_ids ?? [],
     jd: row.jd ?? undefined,
     targetRole: row.target_role ?? undefined,
     focusAreas: row.focus_areas ?? [],
+    expertKnowledge: row.expert_knowledge ?? undefined,
+    expertKnowledgeIds: row.expert_knowledge_ids ?? [],
     qaList: row.qa_list ?? [],
     transcriptLines: row.transcript_lines ?? [],
     review: row.review ?? undefined,

@@ -234,19 +234,14 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }
 
     const knowledge = knowledgeRef.current;
-    const resumeLibrary = knowledge.resumes
-      .filter((item) => item.content.trim())
-      .slice(-5)
-      .map((item) => `### ${item.name}\n${item.content.slice(0, 6000)}`)
-      .join('\n\n');
-    if (resumeLibrary || knowledge.expertKnowledge.trim()) {
-      prompt += '\n\n## 全局简历库与专家知识库';
-      if (resumeLibrary) {
-        prompt += `\n${resumeLibrary}`;
-      }
-      if (knowledge.expertKnowledge.trim()) {
-        prompt += `\n\n### 专家知识库\n${knowledge.expertKnowledge.slice(0, 10000)}`;
-      }
+    const sessionKnowledge = session?.expertKnowledge?.trim();
+    const legacyKnowledge = knowledge.expertKnowledge?.trim();
+    const fallbackKnowledge = !sessionKnowledge && !session?.expertKnowledgeIds?.length
+      ? legacyKnowledge
+      : '';
+    const expertKnowledge = sessionKnowledge || fallbackKnowledge;
+    if (expertKnowledge) {
+      prompt += `\n\n## 当前项目挂载的专家知识库\n${expertKnowledge.slice(0, 12000)}`;
       prompt += '\n\n回答时请优先结合这些材料，提炼成自然口述，不要机械照抄。';
     }
 

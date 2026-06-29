@@ -211,7 +211,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
 
 // ===== 默认简历JD数据 =====
 export const DEFAULT_RESUME_JD = { resume: '', jd: '' };
-export const DEFAULT_KNOWLEDGE_PROFILE = { resumes: [], expertKnowledge: '' };
+export const DEFAULT_KNOWLEDGE_PROFILE = { resumes: [], expertKnowledgeItems: [], expertKnowledge: '' };
 
 // ===== 业务常量 =====
 export const MAX_EXAM_RECORDS = 50;

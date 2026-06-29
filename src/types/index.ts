@@ -115,8 +115,19 @@ export interface ResumeLibraryItem {
   updatedAt: number;
 }
 
+export interface KnowledgeLibraryItem {
+  id: string;
+  name: string;
+  content: string;
+  tags?: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface KnowledgeProfile {
   resumes: ResumeLibraryItem[];
+  expertKnowledgeItems: KnowledgeLibraryItem[];
+  /** @deprecated Legacy single text knowledge field kept for migration compatibility. */
   expertKnowledge: string;
   updatedAt?: number;
 }
@@ -141,9 +152,12 @@ export interface InterviewSession {
   review?: InterviewReview;
   answerMode: AnswerMode;
   resume?: string;
+  resumeIds?: string[];
   jd?: string;
   targetRole?: string;
   focusAreas?: string[];
+  expertKnowledge?: string;
+  expertKnowledgeIds?: string[];
 }
 
 // ===== 面试项目摘要（列表用） =====

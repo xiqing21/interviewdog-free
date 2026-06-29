@@ -79,6 +79,9 @@ export interface SessionContextValue extends SessionState {
 export interface InterviewSessionProfile extends ResumeJDData {
   targetRole: string;
   focusAreas: string[];
+  resumeIds?: string[];
+  expertKnowledge?: string;
+  expertKnowledgeIds?: string[];
 }
 
 export const SessionContext = createContext<SessionContextValue | null>(null);
@@ -169,9 +172,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       transcriptLines: [],
       answerMode: 'detailed',
       resume: profile?.resume ?? stateRef.current.resume,
+      resumeIds: profile?.resumeIds ?? [],
       jd: profile?.jd ?? stateRef.current.jd,
       targetRole: profile?.targetRole,
       focusAreas: profile?.focusAreas ?? [],
+      expertKnowledge: profile?.expertKnowledge,
+      expertKnowledgeIds: profile?.expertKnowledgeIds ?? [],
     };
     setState({
       sessions: [...stateRef.current.sessions, session],
@@ -245,9 +251,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ? {
               ...s,
               resume: profile.resume ?? s.resume,
+              resumeIds: profile.resumeIds ?? s.resumeIds,
               jd: profile.jd ?? s.jd,
               targetRole: profile.targetRole ?? s.targetRole,
               focusAreas: profile.focusAreas ?? s.focusAreas,
+              expertKnowledge: profile.expertKnowledge ?? s.expertKnowledge,
+              expertKnowledgeIds: profile.expertKnowledgeIds ?? s.expertKnowledgeIds,
               updatedAt: Date.now(),
             }
           : s,

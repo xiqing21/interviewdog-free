@@ -2,7 +2,7 @@
  * Sidebar — Left navigation panel with logo, nav links, version, and theme toggle.
  */
 
-import { type ElementType } from 'react';
+import { useState, type ElementType } from 'react';
 import {
   Box,
   List,
@@ -22,6 +22,8 @@ import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import PetsIcon from '@mui/icons-material/Pets';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { NAV_ITEMS } from '../../constants';
 import { useTheme } from '../../hooks/useTheme';
 
@@ -35,37 +37,54 @@ const ICON_MAP: Record<string, ElementType> = {
 
 export function Sidebar() {
   const { mode, toggleTheme } = useTheme();
+  const [collapsed, setCollapsed] = useState(false);
+  const width = collapsed ? 72 : 220;
 
   return (
     <Box
       sx={{
-        width: 220,
+        width,
         flexShrink: 0,
         borderRight: 1,
         borderColor: 'divider',
         display: 'flex',
         flexDirection: 'column',
         bgcolor: 'background.paper',
+        transition: 'width 160ms ease',
       }}
     >
       {/* Logo / Title */}
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
         <PetsIcon color="primary" />
-        <Typography variant="h6" fontWeight={700}>
-          面试狗
-        </Typography>
-        <Typography
-          variant="caption"
-          color="text.secondary"
-          sx={{ ml: 'auto' }}
-        >
-          免费版
-        </Typography>
+        {!collapsed && (
+          <>
+            <Typography variant="h6" fontWeight={700}>
+              面试狗
+            </Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: 'auto' }}
+            >
+              免费版
+            </Typography>
+          </>
+        )}
       </Box>
       <Divider />
 
+      <Box sx={{ p: 1, display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end' }}>
+        <IconButton
+          size="small"
+          onClick={() => setCollapsed((value) => !value)}
+          aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
+        >
+          {collapsed ? <ChevronRightIcon fontSize="small" /> : <ChevronLeftIcon fontSize="small" />}
+        </IconButton>
+      </Box>
+
       {/* Navigation */}
-      <List sx={{ flexGrow: 1, pt: 1 }}>
+      <List sx={{ flexGrow: 1, pt: 0 }}>
         {NAV_ITEMS.map((item) => {
           const Icon = ICON_MAP[item.icon];
           return (
@@ -76,17 +95,19 @@ export function Sidebar() {
             >
               {({ isActive }) => (
                 <ListItem disablePadding>
-                  <ListItemButton selected={isActive}>
-                    <ListItemIcon sx={{ minWidth: 36 }}>
+                  <ListItemButton selected={isActive} sx={{ justifyContent: collapsed ? 'center' : 'flex-start', px: collapsed ? 1 : 2 }}>
+                    <ListItemIcon sx={{ minWidth: collapsed ? 0 : 36, color: 'inherit' }}>
                       {Icon && <Icon fontSize="small" />}
                     </ListItemIcon>
-                    <ListItemText
-                      primary={item.label}
-                      primaryTypographyProps={{
-                        fontSize: 14,
-                        fontWeight: isActive ? 600 : 400,
-                      }}
-                    />
+                    {!collapsed && (
+                      <ListItemText
+                        primary={item.label}
+                        primaryTypographyProps={{
+                          fontSize: 14,
+                          fontWeight: isActive ? 600 : 400,
+                        }}
+                      />
+                    )}
                   </ListItemButton>
                 </ListItem>
               )}
@@ -103,12 +124,14 @@ export function Sidebar() {
           p: 1.5,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: collapsed ? 'center' : 'space-between',
         }}
       >
-        <Typography variant="caption" color="text.secondary">
-          v1.0.0
-        </Typography>
+        {!collapsed && (
+          <Typography variant="caption" color="text.secondary">
+            v1.0.0
+          </Typography>
+        )}
         <IconButton onClick={toggleTheme} size="small">
           {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
         </IconButton>
