@@ -74,9 +74,7 @@ function getInitialState(): SettingsState {
   if (!appSettings.mergeTimeoutMs || appSettings.mergeTimeoutMs < 2200) {
     appSettings.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
   }
-  if (appSettings.asrProvider === 'doubao' && appSettings.mergeTimeoutMs < 6000) {
-    appSettings.mergeTimeoutMs = DOUBAO_MERGE_TIMEOUT_DEFAULT;
-  }
+  Object.assign(appSettings, normalizeAppSettings(appSettings));
 
   const doubaoConfig: DoubaoASRConfig = {
     ...DEFAULT_DOUBAO_ASR_CONFIG,
@@ -100,6 +98,17 @@ function getInitialState(): SettingsState {
   return { aiSettings, appSettings, doubaoConfig, localQwenConfig, connectionStatus: null, isTestingConnection: false };
 }
 
+function normalizeAppSettings(settings: AppSettings): AppSettings {
+  const normalized = { ...settings };
+  if (!normalized.mergeTimeoutMs || normalized.mergeTimeoutMs < 2200) {
+    normalized.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
+  }
+  if (normalized.asrProvider === 'doubao' && normalized.mergeTimeoutMs < DOUBAO_MERGE_TIMEOUT_DEFAULT) {
+    normalized.mergeTimeoutMs = DOUBAO_MERGE_TIMEOUT_DEFAULT;
+  }
+  return normalized;
+}
+
 function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
   switch (action.type) {
     case 'UPDATE_AI_SETTINGS':
@@ -111,7 +120,7 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
       return { ...state, aiSettings: { ...state.aiSettings, provider: action.payload, baseUrl: d.baseUrl || state.aiSettings.baseUrl, textModel: d.textModel || state.aiSettings.textModel, visionModel: d.visionModel || state.aiSettings.visionModel } };
     }
     case 'SET_APP_SETTINGS':
-      return { ...state, appSettings: { ...state.appSettings, ...action.payload } };
+      return { ...state, appSettings: normalizeAppSettings({ ...state.appSettings, ...action.payload }) };
     case 'SET_THEME':
       return { ...state, appSettings: { ...state.appSettings, theme: action.payload } };
     case 'SET_LANGUAGE':
@@ -121,14 +130,10 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
     case 'SET_ASR_PROVIDER':
       return {
         ...state,
-        appSettings: {
+        appSettings: normalizeAppSettings({
           ...state.appSettings,
           asrProvider: action.payload,
-          mergeTimeoutMs:
-            action.payload === 'doubao' && state.appSettings.mergeTimeoutMs < 6000
-              ? DOUBAO_MERGE_TIMEOUT_DEFAULT
-              : state.appSettings.mergeTimeoutMs,
-        },
+        }),
       };
     case 'SET_AUDIO_SOURCE':
       if (action.payload === 'both') {

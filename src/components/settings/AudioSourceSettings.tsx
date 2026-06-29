@@ -76,20 +76,20 @@ export function AudioSourceSettings() {
       </FormControl>
 
       <FormControl fullWidth sx={{ mt: 2 }}>
-        <InputLabel>问题合并超时 (ms)</InputLabel>
+        <InputLabel>句内停顿容忍 (ms)</InputLabel>
         <Select
-          label="问题合并超时 (ms)"
+          label="句内停顿容忍 (ms)"
           value={String(appSettings.mergeTimeoutMs)}
           onChange={(e: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(e.target.value) })}
         >
           <MenuItem value="1000">1000ms - 浏览器快速</MenuItem>
           <MenuItem value="2500">2500ms - 通用默认</MenuItem>
           <MenuItem value="5000">5000ms - 长句</MenuItem>
-          <MenuItem value="8000">8000ms - 豆包推荐</MenuItem>
+          <MenuItem value="8000">8000ms - 豆包推荐，允许自然停顿</MenuItem>
           <MenuItem value="12000">12000ms - 豆包长问题</MenuItem>
         </Select>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-          连续语音无新输入达到此时长后，自动将缓存的片段合并为一个完整问题发送；豆包长句建议 8000ms 以上。
+          面试官说话中途停顿不会立即触发；只有超过这个静默窗口，才把缓存内容合并成一个问题并生成答案。豆包模式最低按 8000ms 处理。
         </Typography>
       </FormControl>
     </Paper>
