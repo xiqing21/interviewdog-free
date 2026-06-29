@@ -599,7 +599,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   function commitInterimQuestion(): string {
     const question = cleanupInterimText(pendingInterimQuestion.current);
-    if (!question) return '';
+    if (!question || !isLikelyQuestionText(question)) return '';
     pendingInterimQuestion.current = '';
     pendingInterimNormalized.current = '';
     clearInterimCommitTimer();
@@ -608,6 +608,24 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_MERGING', payload: false });
     void sendQuestion(question);
     return question;
+  }
+
+  function scheduleInterimQuestionCommit(text: string): void {
+    const cleaned = cleanupInterimText(text);
+    const normalized = normalizeTranscriptText(cleaned);
+    if (!cleaned || !normalized || !isLikelyQuestionText(cleaned)) return;
+
+    if (normalized === pendingInterimNormalized.current) {
+      pendingInterimQuestion.current = cleaned;
+      return;
+    }
+
+    pendingInterimQuestion.current = cleaned;
+    pendingInterimNormalized.current = normalized;
+    clearInterimCommitTimer();
+    interimCommitTimer.current = setTimeout(() => {
+      commitInterimQuestion();
+    }, appRef.current.mergeTimeoutMs || MERGE_TIMEOUT_DEFAULT);
   }
 
   function extractInterimQuestion(): string {
@@ -680,6 +698,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         const cleaned = cleanupInterimText(text);
         if (!cleaned) return;
         dispatch({ type: 'SET_INTERIM', payload: `面试官：${cleaned}` });
+        scheduleInterimQuestionCommit(cleaned);
       } else {
         dispatch({ type: 'SET_INTERIM', payload: labeledText });
       }

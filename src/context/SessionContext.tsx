@@ -167,7 +167,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updatedAt: Date.now(),
       qaList: [],
       transcriptLines: [],
-      answerMode: 'concise',
+      answerMode: 'detailed',
       resume: profile?.resume ?? stateRef.current.resume,
       jd: profile?.jd ?? stateRef.current.jd,
       targetRole: profile?.targetRole,

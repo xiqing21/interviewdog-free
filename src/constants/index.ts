@@ -30,7 +30,7 @@ export const STORAGE_KEYS = {
 
 /** 面试辅助默认提示词 — 简洁模式 */
 export const DEFAULT_INTERVIEW_PROMPT_CONCISE =
-  '你是一位资深面试助手。请用面试口吻回答，默认控制在 3-5 个要点或 30-60 秒表达内。不要只给一句话；即使是简洁模式，也要完整覆盖结论、关键依据和一个贴合简历/岗位的亮点。';
+  '你是一位资深面试助手。请用面试口吻回答，默认控制在 4-6 个要点或 60-90 秒表达内。不要只给一句话；即使是简洁模式，也要完整覆盖开场结论、关键依据、项目例子、量化结果和一个贴合简历/岗位的亮点。';
 
 /** 面试辅助默认提示词 — 详细模式 */
 export const DEFAULT_INTERVIEW_PROMPT_DETAILED =
@@ -84,7 +84,7 @@ export const PROVIDER_ORDER: AIProvider[] = [
 
 // ===== 回答模式配置 =====
 export const ANSWER_MODES = [
-  { key: 'concise' as const, label: '简洁模式', desc: '3-5个口述要点', prompt: DEFAULT_INTERVIEW_PROMPT_CONCISE },
+  { key: 'concise' as const, label: '简洁模式', desc: '4-6个口述要点', prompt: DEFAULT_INTERVIEW_PROMPT_CONCISE },
   { key: 'detailed' as const, label: '详细模式', desc: '展开项目、细节和追问', prompt: DEFAULT_INTERVIEW_PROMPT_DETAILED },
 ];
 
@@ -160,7 +160,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   textModel: 'gpt-4o',
   visionModel: 'gpt-4o',
   streaming: true,
-  interviewSystemPrompt: DEFAULT_INTERVIEW_PROMPT_CONCISE,
+  interviewSystemPrompt: DEFAULT_INTERVIEW_PROMPT_DETAILED,
   examSystemPrompt: DEFAULT_EXAM_PROMPT,
   contextWindowSize: 5,
 };
@@ -174,7 +174,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   audioSource: 'both',
   myAudioSource: 'microphone',
   interviewerAudioSource: 'system',
-  defaultAnswerMode: 'concise',
+  defaultAnswerMode: 'detailed',
   mergeTimeoutMs: 2500,
   webSearchEnabled: false,
 };
