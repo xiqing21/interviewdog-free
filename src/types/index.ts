@@ -15,7 +15,8 @@ export type AIProvider =
 
 // ===== 语音识别服务商 =====
 export type CloudASRProvider = 'baidu' | 'google' | 'alibaba' | 'iflytek' | 'glm';
-export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen' | 'mimo' | CloudASRProvider;
+export type ASRGatewayProvider = 'gateway-doubao' | 'gateway-iflytek' | 'gateway-alibaba';
+export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen' | 'mimo' | CloudASRProvider | ASRGatewayProvider;
 
 // ===== 音频源类型 =====
 export type AudioSource = 'both' | 'system' | 'microphone';

@@ -66,6 +66,9 @@ export function AudioSourceSettings() {
           onChange={(e: SelectChangeEvent) => setASRProvider(e.target.value as ASRProvider)}
         >
           <MenuItem value="browser">浏览器原生（免费）</MenuItem>
+          <MenuItem value="gateway-doubao">Gateway 豆包实时（服务端 WS）</MenuItem>
+          <MenuItem value="gateway-iflytek">Gateway 讯飞实时（服务端 WS）</MenuItem>
+          <MenuItem value="gateway-alibaba">Gateway 阿里云（服务端兜底）</MenuItem>
           <MenuItem value="doubao">豆包 ASR（火山引擎 - 更准确）</MenuItem>
           <MenuItem value="local-qwen">本地 Qwen3-ASR（MLX）</MenuItem>
           <MenuItem value="mimo">MiMo-V2.5-ASR（小米，分片）</MenuItem>
@@ -107,6 +110,15 @@ export function AudioSourceSettings() {
 function providerDescription(provider: ASRProvider): string {
   if (provider === 'doubao') {
     return '使用豆包实时语音识别，准确率更高，需配置下方豆包 ASR 凭证。';
+  }
+  if (provider === 'gateway-doubao') {
+    return '按面试狗架构：浏览器只采集 PCM，服务端 Gateway 长连接豆包流式 ASR，并按停顿窗口回传问题。';
+  }
+  if (provider === 'gateway-iflytek') {
+    return '按面试狗架构：浏览器只采集 PCM，服务端 Gateway 长连接讯飞 WebIAT，适合和豆包做实时延迟对比。';
+  }
+  if (provider === 'gateway-alibaba') {
+    return '使用服务端 Gateway 接收 PCM 后调用阿里云识别；当前为兜底分片模式，后续可替换为阿里 NLS 实时流。';
   }
   if (provider === 'openai') {
     return '使用 OpenAI-compatible 音频转写接口，能识别 Chrome 共享的系统音频，但会有约 4-6 秒延迟。';

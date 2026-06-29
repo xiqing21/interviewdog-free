@@ -458,7 +458,7 @@ export function InterviewPage() {
 
         {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'browser' && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            浏览器 ASR 只能识别麦克风，不能识别共享出来的系统音频。要识别微信/腾讯会议播放的面试官声音，请把识别引擎切到豆包 ASR 或 OpenAI 分片识别。
+            浏览器 ASR 只能识别麦克风，不能识别共享出来的系统音频。要识别微信/腾讯会议播放的面试官声音，请优先切到 Gateway 豆包/讯飞，或使用豆包 ASR、OpenAI 分片识别。
           </Alert>
         )}
 
@@ -516,6 +516,9 @@ export function InterviewPage() {
             onChange={(event: SelectChangeEvent) => setASRProvider(event.target.value as ASRProvider)}
             disabled={isListening}
           >
+            <MenuItem value="gateway-doubao">Gateway 豆包实时（服务端 WS）</MenuItem>
+            <MenuItem value="gateway-iflytek">Gateway 讯飞实时（服务端 WS）</MenuItem>
+            <MenuItem value="gateway-alibaba">Gateway 阿里云（服务端兜底）</MenuItem>
             <MenuItem value="doubao">豆包 ASR（推荐识别面试官系统音频）</MenuItem>
             <MenuItem value="local-qwen">本地 Qwen3-ASR（MLX）</MenuItem>
             <MenuItem value="mimo">MiMo-V2.5-ASR（分片测试）</MenuItem>
@@ -610,6 +613,9 @@ function sourceLabel(source: SpeakerAudioSource): string {
 }
 
 function asrProviderLabel(provider: ASRProvider): string {
+  if (provider === 'gateway-doubao') return 'Gateway 豆包';
+  if (provider === 'gateway-iflytek') return 'Gateway 讯飞';
+  if (provider === 'gateway-alibaba') return 'Gateway 阿里';
   if (provider === 'doubao') return '豆包 ASR';
   if (provider === 'local-qwen') return '本地 Qwen3-ASR';
   if (provider === 'mimo') return 'MiMo-V2.5-ASR';

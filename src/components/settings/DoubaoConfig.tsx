@@ -13,7 +13,7 @@ export function DoubaoConfig() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<DoubaoAsrTestResult | null>(null);
 
-  if (appSettings.asrProvider !== 'doubao') return null;
+  if (appSettings.asrProvider !== 'doubao' && appSettings.asrProvider !== 'gateway-doubao') return null;
 
   return (
     <Paper sx={{ p: 3 }}>

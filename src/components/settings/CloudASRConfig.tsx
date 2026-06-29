@@ -1,7 +1,7 @@
 import { Paper, TextField, Typography, Box, FormControl, InputLabel, MenuItem, Select, type SelectChangeEvent } from '@mui/material';
 import { useSettings } from '../../hooks/useSettings';
 
-const CLOUD_PROVIDERS = ['baidu', 'google', 'alibaba', 'iflytek', 'glm'];
+const CLOUD_PROVIDERS = ['baidu', 'google', 'alibaba', 'iflytek', 'glm', 'gateway-iflytek', 'gateway-alibaba'];
 
 export function CloudASRConfig() {
   const { appSettings, cloudAsrConfig, updateCloudASRConfig } = useSettings();
@@ -11,7 +11,7 @@ export function CloudASRConfig() {
     <Paper sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>云 ASR 配置</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        百度、Google、阿里、讯飞、GLM 均按本地 PCM 分片识别。先填当前选择引擎对应的凭证即可。
+        百度、Google、阿里、讯飞、GLM 均可按本地 PCM 分片识别；Gateway 讯飞/阿里会复用这里的凭证。
       </Typography>
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2 }}>
         <FormControl fullWidth>
@@ -48,7 +48,7 @@ export function CloudASRConfig() {
         </Box>
       )}
 
-      {appSettings.asrProvider === 'alibaba' && (
+      {(appSettings.asrProvider === 'alibaba' || appSettings.asrProvider === 'gateway-alibaba') && (
         <Box sx={{ mt: 2, display: 'grid', gap: 2 }}>
           <TextField label="阿里云 AppKey" value={cloudAsrConfig.alibabaAppKey} onChange={(e) => updateCloudASRConfig({ alibabaAppKey: e.target.value })} />
           <TextField label="阿里云 Token" type="password" value={cloudAsrConfig.alibabaToken} onChange={(e) => updateCloudASRConfig({ alibabaToken: e.target.value })} />
@@ -56,7 +56,7 @@ export function CloudASRConfig() {
         </Box>
       )}
 
-      {appSettings.asrProvider === 'iflytek' && (
+      {(appSettings.asrProvider === 'iflytek' || appSettings.asrProvider === 'gateway-iflytek') && (
         <Box sx={{ mt: 2, display: 'grid', gap: 2 }}>
           <TextField label="讯飞 AppID" value={cloudAsrConfig.iflytekAppId} onChange={(e) => updateCloudASRConfig({ iflytekAppId: e.target.value })} />
           <TextField label="讯飞 API Key" type="password" value={cloudAsrConfig.iflytekApiKey} onChange={(e) => updateCloudASRConfig({ iflytekApiKey: e.target.value })} />

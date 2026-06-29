@@ -13,7 +13,7 @@ import {
   useEffect,
   type ReactNode,
 } from 'react';
-import type { QAItem, ChatMessage, TranscriptLine, InterviewReview, SpeakerAudioSource, CloudASRProvider, ASRProvider } from '../types';
+import type { QAItem, ChatMessage, TranscriptLine, InterviewReview, SpeakerAudioSource, CloudASRProvider, ASRGatewayProvider, ASRProvider } from '../types';
 import {
   STORAGE_KEYS,
   MERGE_TIMEOUT_DEFAULT,
@@ -28,6 +28,7 @@ import * as openaiChunkAsrService from '../services/openaiChunkAsrService';
 import * as localQwenAsrService from '../services/localQwenAsrService';
 import * as mimoAsrService from '../services/mimoAsrService';
 import * as cloudAsrService from '../services/cloudAsrService';
+import * as asrGatewayService from '../services/asrGatewayService';
 import type { LocalQwenSession } from '../services/localQwenAsrService';
 import { chat } from '../services/aiService';
 import { webSearch } from '../services/webSearchService';
@@ -167,7 +168,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     localQwenAsrService.stop();
     mimoAsrService.stop();
     cloudAsrService.stop();
-    cloudAsrService.stop();
+    asrGatewayService.stop();
     qwenMicrophoneSession.current = null;
     qwenSystemAudioSession.current = null;
     if (mergeTimer.current) {
@@ -726,7 +727,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         openaiChunkAsrService.isActive() ||
         localQwenAsrService.isActive() ||
         mimoAsrService.isActive() ||
-        cloudAsrService.isActive(),
+        cloudAsrService.isActive() ||
+        asrGatewayService.isActive(),
     });
     dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: systemAudioService.isActive() });
   }
@@ -766,6 +768,20 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   async function startCloudMicrophoneRecognition(provider: CloudASRProvider, speaker: 'interviewer' | 'me'): Promise<boolean> {
     const ok = await cloudAsrService.startMicrophone(provider, cloudAsrRef.current, {
+      onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
+      onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+      onEnd: () => setListeningFromActiveSources(),
+    });
+    setListeningFromActiveSources();
+    return ok;
+  }
+
+  async function startGatewayMicrophoneRecognition(provider: ASRGatewayProvider, speaker: 'interviewer' | 'me'): Promise<boolean> {
+    const ok = await asrGatewayService.startMicrophone(provider, speaker, {
+      doubaoConfig: doubaoRef.current,
+      cloudAsrConfig: cloudAsrRef.current,
+      asrEndWindowSize: appRef.current.mergeTimeoutMs,
+    }, {
       onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
       onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
       onEnd: () => setListeningFromActiveSources(),
@@ -857,6 +873,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         localQwenAsrService.stop();
         mimoAsrService.stop();
         cloudAsrService.stop();
+        asrGatewayService.stop();
         dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
         setListeningFromActiveSources();
       },
@@ -981,6 +998,38 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       return true;
     }
 
+    if (isGatewayAsrProvider(appRef.current.asrProvider)) {
+      if (!asrGatewayService.isSupported() || !systemAudioService.isSupported()) {
+        dispatch({ type: 'SET_ERROR', payload: '当前浏览器不支持系统音频捕获或 WebSocket。请使用 Chrome，并在弹窗中选择共享音频。' });
+        return false;
+      }
+
+      if (!systemAudioService.isActive()) {
+        const prepared = await prepareSystemAudioShare();
+        if (!prepared) return false;
+      }
+
+      const provider = appRef.current.asrProvider;
+      asrGatewayService.start(provider, speaker, {
+        doubaoConfig: doubaoRef.current,
+        cloudAsrConfig: cloudAsrRef.current,
+        asrEndWindowSize: appRef.current.mergeTimeoutMs,
+      }, {
+        onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
+        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+        onEnd: () => setListeningFromActiveSources(),
+        onReady: () => {
+          void systemAudioService.start({
+            onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
+            onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
+            onEnd: () => { asrGatewayService.stop(); setListeningFromActiveSources(); },
+          });
+        },
+      });
+      setListeningFromActiveSources();
+      return true;
+    }
+
     const config = doubaoRef.current;
     if (!config.appId || !config.accessToken) {
       dispatch({ type: 'SET_ERROR', payload: '系统音频识别需要先在设置中配置豆包 ASR 的 App ID 和 Access Token。' });
@@ -1026,7 +1075,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (systemSpeaker && app.asrProvider === 'browser') {
       dispatch({
         type: 'SET_ERROR',
-        payload: '浏览器识别引擎只能识别麦克风，不能识别 Chrome 共享出来的系统音频。要识别微信/腾讯会议等系统音频，请把识别引擎切到豆包 ASR、本地 Qwen3-ASR、MiMo/云厂商 ASR 或 OpenAI 分片识别；或者把面试官声音改成麦克风。',
+        payload: '浏览器识别引擎只能识别麦克风，不能识别 Chrome 共享出来的系统音频。要识别微信/腾讯会议等系统音频，请把识别引擎切到 Gateway 豆包/讯飞、豆包 ASR、本地 Qwen3-ASR、MiMo/云厂商 ASR 或 OpenAI 分片识别；或者把面试官声音改成麦克风。',
       });
       dispatch({ type: 'SET_LISTENING', payload: false });
       return;
@@ -1043,6 +1092,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         started = (await startMiMoMicrophoneRecognition(microphoneSpeaker)) || started;
       } else if (isCloudAsrProvider(app.asrProvider)) {
         started = (await startCloudMicrophoneRecognition(app.asrProvider, microphoneSpeaker)) || started;
+      } else if (isGatewayAsrProvider(app.asrProvider)) {
+        started = systemSpeaker
+          ? startMicrophoneRecognition(microphoneSpeaker) || started
+          : (await startGatewayMicrophoneRecognition(app.asrProvider, microphoneSpeaker)) || started;
       } else if (app.asrProvider === 'openai' && !systemSpeaker) {
         started = (await startOpenAIMicrophoneRecognition(microphoneSpeaker)) || started;
       } else {
@@ -1065,6 +1118,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   function isCloudAsrProvider(provider: ASRProvider): provider is CloudASRProvider {
     return provider === 'baidu' || provider === 'google' || provider === 'alibaba' || provider === 'iflytek' || provider === 'glm';
+  }
+
+  function isGatewayAsrProvider(provider: ASRProvider): provider is ASRGatewayProvider {
+    return provider === 'gateway-doubao' || provider === 'gateway-iflytek' || provider === 'gateway-alibaba';
   }
 
   function resolveMicrophoneSpeaker(
@@ -1136,6 +1193,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     localQwenAsrService.stop();
     mimoAsrService.stop();
     cloudAsrService.stop();
+    asrGatewayService.stop();
     dispatch({ type: 'SET_LISTENING', payload: false });
     dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
     commitInterimQuestion();
@@ -1166,6 +1224,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     openaiChunkAsrService.stop();
     localQwenAsrService.stop();
     mimoAsrService.stop();
+    cloudAsrService.stop();
+    asrGatewayService.stop();
     dispatch({ type: 'SET_LISTENING', payload: false });
     // 立即 flush 合并缓冲区
     commitInterimQuestion();
