@@ -1,5 +1,4 @@
 import { createServer } from 'node:http';
-import type { IncomingMessage } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
