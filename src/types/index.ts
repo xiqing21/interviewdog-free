@@ -29,7 +29,7 @@ export type AnswerMode = 'concise' | 'detailed';
 export type ExamType = 'coding' | 'choice' | 'chart' | 'logic' | 'english';
 
 // ===== 主题模式类型 =====
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'dark' | 'light' | 'clay' | 'midnight' | 'forest' | 'mono';
 
 // ===== 语言类型 =====
 export type Language = 'zh' | 'en';
@@ -98,6 +98,7 @@ export interface AppSettings {
   defaultAnswerMode: AnswerMode;
   mergeTimeoutMs: number;
   webSearchEnabled: boolean;
+  asrHotwords: string;
 }
 
 // ===== 简历与JD数据 =====
@@ -176,6 +177,16 @@ export interface QAItem {
   timestamp: number;
   isStreaming: boolean;
   error?: string;
+  searchResults?: WebSearchResult[];
+  generationMode?: AnswerGenerationMode;
+}
+
+export type AnswerGenerationMode = 'normal' | 'concise' | 'detailed' | 'star' | 'star-no-context';
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
 }
 
 export interface TranscriptLine {

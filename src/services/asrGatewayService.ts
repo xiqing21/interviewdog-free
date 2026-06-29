@@ -12,6 +12,7 @@ type GatewayConfig = {
   doubaoConfig: DoubaoASRConfig;
   cloudAsrConfig: CloudASRConfig;
   asrEndWindowSize: number;
+  hotwords?: string;
 };
 
 let ws: WebSocket | null = null;
@@ -50,7 +51,10 @@ export function start(
       provider,
       speaker,
       asrEndWindowSize: config.asrEndWindowSize,
-      config: buildProviderConfig(provider, config),
+      config: {
+        ...buildProviderConfig(provider, config),
+        hotwords: config.hotwords ?? '',
+      },
     }));
   };
   ws.onmessage = (event) => {

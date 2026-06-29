@@ -10,7 +10,7 @@ type StartMessage = {
   provider: GatewayProvider;
   speaker?: 'interviewer' | 'me';
   asrEndWindowSize?: number;
-  config?: Record<string, string | number>;
+  config?: Record<string, string | number | string[]>;
 };
 
 type AudioMessage = {
@@ -47,7 +47,7 @@ wss.on('connection', (client) => {
   let upstream: WebSocket | null = null;
   let started = false;
   let iflytekFirstFrame = true;
-  let config: Record<string, string | number> = {};
+  let config: Record<string, string | number | string[]> = {};
 
   const closeUpstream = () => {
     if (upstream && (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING)) {
@@ -135,7 +135,7 @@ wss.on('connection', (client) => {
 });
 
 function startDoubao(
-  config: Record<string, string | number>,
+  config: Record<string, string | number | string[]>,
   send: (payload: unknown) => void,
   setUpstream: (ws: WebSocket) => void,
   speaker: 'interviewer' | 'me',
@@ -160,7 +160,7 @@ function startDoubao(
   });
   setUpstream(upstream);
   upstream.on('open', () => {
-    upstream.send(buildDoubaoFullRequest());
+    upstream.send(buildDoubaoFullRequest(config));
     send({ type: 'ready', provider: 'gateway-doubao' });
   });
   upstream.on('message', (data) => {
@@ -181,7 +181,7 @@ function startDoubao(
 }
 
 function startIflytek(
-  config: Record<string, string | number>,
+  config: Record<string, string | number | string[]>,
   send: (payload: unknown) => void,
   setUpstream: (ws: WebSocket) => void,
   speaker: 'interviewer' | 'me',
@@ -212,7 +212,7 @@ function startIflytek(
 }
 
 function startAlibaba(
-  config: Record<string, string | number>,
+  config: Record<string, string | number | string[]>,
   send: (payload: unknown) => void,
   setUpstream: (ws: WebSocket) => void,
   speaker: 'interviewer' | 'me',
@@ -256,11 +256,20 @@ function startAlibaba(
   upstream.on('close', () => send({ type: 'end' }));
 }
 
-function buildDoubaoFullRequest(): Buffer {
+function buildDoubaoFullRequest(config: Record<string, string | number | string[]>): Buffer {
+  const hotwords = parseHotwords(config.hotwords);
   const payload = zlib.gzipSync(Buffer.from(JSON.stringify({
     user: { uid: 'interview-copilot-gateway' },
     audio: { format: 'pcm', rate: SAMPLE_RATE, bits: 16, channel: 1, language: 'zh-CN' },
-    request: { model_name: 'bigmodel', enable_itn: true, enable_ddc: false, enable_punc: true, show_utterances: true, result_type: 'full' },
+    request: {
+      model_name: 'bigmodel',
+      enable_itn: true,
+      enable_ddc: false,
+      enable_punc: true,
+      show_utterances: true,
+      result_type: 'full',
+      ...(hotwords.length ? { hotwords } : {}),
+    },
   })));
   return buildDoubaoFrame(MESSAGE_TYPE.FULL_CLIENT_REQUEST, MESSAGE_FLAGS.NONE, SERIALIZATION.JSON, COMPRESSION.GZIP, payload);
 }
@@ -332,7 +341,7 @@ function toArrayBuffer(data: WebSocket.RawData): ArrayBuffer {
   return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
 }
 
-function buildAlibabaUrl(config: Record<string, string | number>, token: string): string {
+function buildAlibabaUrl(config: Record<string, string | number | string[]>, token: string): string {
   const endpoint = str(config.alibabaEndpoint) || 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1';
   const url = new URL(endpoint.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:'));
   if (url.pathname.includes('/stream/v1/asr')) url.pathname = '/ws/v1';
@@ -340,7 +349,7 @@ function buildAlibabaUrl(config: Record<string, string | number>, token: string)
   return url.toString();
 }
 
-function buildAlibabaControl(name: 'StartTranscription' | 'StopTranscription', config: Record<string, string | number>) {
+function buildAlibabaControl(name: 'StartTranscription' | 'StopTranscription', config: Record<string, string | number | string[]>) {
   const taskId = str(config.alibabaTaskId) || crypto.randomUUID().replace(/-/g, '');
   return {
     header: {
@@ -365,6 +374,18 @@ function buildAlibabaControl(name: 'StartTranscription' | 'StopTranscription', c
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseHotwords(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean).slice(0, 50);
+  }
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/[,，、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 50);
 }
 
 export default server;

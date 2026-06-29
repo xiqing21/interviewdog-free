@@ -73,6 +73,9 @@ async function googleAsr(body: CloudAsrBody): Promise<string> {
         sampleRateHertz: 16000,
         languageCode: str(body.config?.language) || 'zh-CN',
         enableAutomaticPunctuation: true,
+        ...(parseHotwords(body.config?.hotwords).length
+          ? { speechContexts: [{ phrases: parseHotwords(body.config?.hotwords) }] }
+          : {}),
       },
       audio: { content: body.pcmBase64 },
     }),
@@ -178,4 +181,13 @@ function buildIflytekUrl(apiKey: string, apiSecret: string): string {
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function parseHotwords(value: unknown): string[] {
+  if (typeof value !== 'string') return [];
+  return value
+    .split(/[,，、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 50);
 }

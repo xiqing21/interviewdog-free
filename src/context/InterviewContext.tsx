@@ -13,7 +13,18 @@ import {
   useEffect,
   type ReactNode,
 } from 'react';
-import type { QAItem, ChatMessage, TranscriptLine, InterviewReview, SpeakerAudioSource, CloudASRProvider, ASRGatewayProvider, ASRProvider } from '../types';
+import type {
+  AnswerGenerationMode,
+  QAItem,
+  ChatMessage,
+  TranscriptLine,
+  InterviewReview,
+  SpeakerAudioSource,
+  CloudASRProvider,
+  ASRGatewayProvider,
+  ASRProvider,
+  WebSearchResult,
+} from '../types';
 import {
   STORAGE_KEYS,
   MERGE_TIMEOUT_DEFAULT,
@@ -102,7 +113,8 @@ export interface InterviewContextValue extends InterviewState {
   startListening: () => void;
   stopListening: () => void;
   sendQuestion: (question: string) => Promise<void>;
-  regenerateAnswer: (id: string, newQuestion?: string) => Promise<void>;
+  regenerateAnswer: (id: string, options?: RegenerateAnswerOptions) => Promise<void>;
+  stopGeneration: () => void;
   editQuestion: (id: string, question: string) => void;
   deleteQuestion: (id: string) => void;
   addManualQuestion: (question: string) => Promise<void>;
@@ -111,6 +123,11 @@ export interface InterviewContextValue extends InterviewState {
   generateReview: () => Promise<void>;
   endInterview: () => Promise<void>;
   clearHistory: () => void;
+}
+
+export interface RegenerateAnswerOptions {
+  question?: string;
+  mode?: AnswerGenerationMode;
 }
 
 export const InterviewContext = createContext<InterviewContextValue | null>(null);
@@ -156,6 +173,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const queuedQuestions = useRef<string[]>([]);
   const qwenMicrophoneSession = useRef<LocalQwenSession | null>(null);
   const qwenSystemAudioSession = useRef<LocalQwenSession | null>(null);
+  const generationAbortController = useRef<AbortController | null>(null);
+  const generationRunId = useRef(0);
 
   // 持久化当前 session 的 qaList
   const qaList = activeSession?.qaList ?? [];
@@ -253,6 +272,65 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     return results
       .map((item, index) => `${index + 1}. ${item.title}\n${item.snippet}\n${item.url}`)
       .join('\n\n');
+  }
+
+  function parseHotwords(text: string): string[] {
+    return text
+      .split(/[,，、\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .slice(0, 30);
+  }
+
+  function withGlobalHotwords(config: typeof cloudAsrRef.current): typeof cloudAsrRef.current {
+    const hotwords = appRef.current.asrHotwords?.trim();
+    return hotwords ? { ...config, hotwords } : config;
+  }
+
+  function withGlobalQwenHotwords(config: typeof localQwenRef.current): typeof localQwenRef.current {
+    const hotwords = appRef.current.asrHotwords?.trim();
+    return hotwords ? { ...config, hotwords } : config;
+  }
+
+  function modeInstruction(mode: AnswerGenerationMode): string {
+    if (mode === 'concise') {
+      return '请用简洁模式重新生成：控制在 4-6 个口述要点内，但必须覆盖结论、依据、项目例子和落地结果。';
+    }
+    if (mode === 'detailed') {
+      return '请用详细模式重新生成：明显展开，按背景、方案、技术细节、结果、可追问点组织，适合 1.5-3 分钟口述。';
+    }
+    if (mode === 'star') {
+      return '请用 STAR 结构生成：Situation 背景、Task 任务、Action 行动、Result 结果。每一段都要自然口语化，突出我做了什么、为什么这么做、结果如何。';
+    }
+    if (mode === 'star-no-context') {
+      return '请清除简历和专家库上下文，只基于问题本身，用 STAR 结构重新生成一个通用但可信的回答。';
+    }
+    return '请生成可直接口述的面试答案。';
+  }
+
+  function buildPromptForMode(mode: AnswerGenerationMode): string {
+    if (mode === 'star-no-context') {
+      return `${modeInstruction(mode)}\n不要引用简历、专家知识库或历史项目材料；可以使用最近双方对话帮助理解问题。`;
+    }
+    return `${buildSystemPrompt()}\n\n${modeInstruction(mode)}`;
+  }
+
+  function isAbortError(error: unknown): boolean {
+    return error instanceof DOMException && error.name === 'AbortError';
+  }
+
+  function stopActiveGeneration(): void {
+    generationAbortController.current?.abort();
+    generationAbortController.current = null;
+    generationRunId.current += 1;
+  }
+
+  function updateQA(id: string, patch: Partial<QAItem>): void {
+    const sess = sessionRef.current;
+    if (!sess) return;
+    updateSessionQAList(
+      sess.qaList.map((qa) => qa.id === id ? { ...qa, ...patch } : qa),
+    );
   }
 
   function addTranscriptLine(line: TranscriptLine): void {
@@ -393,7 +471,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }
 
     const id = generateId();
-    const qaItem: QAItem = { id, question: trimmed, answer: '', timestamp: Date.now(), isStreaming: true };
+    const qaItem: QAItem = { id, question: trimmed, answer: '', timestamp: Date.now(), isStreaming: true, generationMode: 'normal' };
 
     // 添加到 session
     const sess = sessionRef.current;
@@ -402,134 +480,45 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       updateSessionQAList(newQaList);
     }
 
-    dispatch({ type: 'SET_PROCESSING', payload: true });
-    dispatch({ type: 'SET_ERROR', payload: null });
-
-    const settings = aiRef.current;
-    const messages: ChatMessage[] = [
-      { role: 'system', content: buildSystemPrompt() },
-    ];
-
-    const contextSize = settings.contextWindowSize;
-    const currentQA = sessionRef.current?.qaList ?? [];
-    const recentQA = currentQA.slice(-contextSize);
-    for (const qa of recentQA) {
-      if (qa.id === id) continue;
-      messages.push({ role: 'user', content: qa.question });
-      if (qa.answer) messages.push({ role: 'assistant', content: qa.answer });
-    }
-    const transcriptContext = buildTranscriptContext();
-    messages.push({
-      role: 'user',
-      content: transcriptContext
-        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题生成答案。\n\n${transcriptContext}\n\n请回答面试官最新问题：${trimmed}`
-        : trimmed,
-    });
-
-    let accumulated = '';
-    try {
-      const runChat = async (chatMessages: ChatMessage[]) => chat(chatMessages, settings, (chunk: string) => {
-        accumulated += chunk;
-        const sess2 = sessionRef.current;
-        if (sess2) {
-          updateSessionQAList(
-            sess2.qaList.map((qa) =>
-              qa.id === id ? { ...qa, answer: accumulated, isStreaming: true } : qa,
-            ),
-          );
-        }
-      });
-      await runChat(messages);
-      const sess3 = sessionRef.current;
-      if (sess3) {
-        updateSessionQAList(
-          sess3.qaList.map((qa) =>
-            qa.id === id ? { ...qa, answer: accumulated, isStreaming: false } : qa,
-          ),
-        );
-      }
-    } catch (error) {
-      if (appRef.current.webSearchEnabled) {
-        try {
-          const results = await webSearch(trimmed);
-          accumulated = '';
-          const retryMessages: ChatMessage[] = [
-            { role: 'system', content: `${buildSystemPrompt()}\n\n已启用联网搜索补充。请结合搜索摘要回答；如果搜索结果质量一般，请明确以简历/知识库为主。` },
-            {
-              role: 'user',
-              content: `面试官问题：${trimmed}\n\n联网搜索摘要：\n${formatSearchResults(results)}\n\n请生成可直接口述的面试答案。`,
-            },
-          ];
-          await chat(retryMessages, settings, (chunk: string) => {
-            accumulated += chunk;
-            const sessRetry = sessionRef.current;
-            if (sessRetry) {
-              updateSessionQAList(
-                sessRetry.qaList.map((qa) =>
-                  qa.id === id ? { ...qa, answer: accumulated, isStreaming: true, error: undefined } : qa,
-                ),
-              );
-            }
-          });
-          const sessRetryDone = sessionRef.current;
-          if (sessRetryDone) {
-            updateSessionQAList(
-              sessRetryDone.qaList.map((qa) =>
-                qa.id === id ? { ...qa, answer: accumulated, isStreaming: false, error: undefined } : qa,
-              ),
-            );
-          }
-          return;
-        } catch (searchError) {
-          const errMsg = `生成回答失败，联网搜索补充也失败：${searchError instanceof Error ? searchError.message : '未知错误'}`;
-          const sess4 = sessionRef.current;
-          if (sess4) {
-            updateSessionQAList(
-              sess4.qaList.map((qa) =>
-                qa.id === id ? { ...qa, error: errMsg, isStreaming: false } : qa,
-              ),
-            );
-          }
-          dispatch({ type: 'SET_ERROR', payload: errMsg });
-          return;
-        }
-      }
-      const errMsg = error instanceof Error ? error.message : '生成回答时发生未知错误';
-      const sess4 = sessionRef.current;
-      if (sess4) {
-        updateSessionQAList(
-          sess4.qaList.map((qa) =>
-            qa.id === id ? { ...qa, error: errMsg, isStreaming: false } : qa,
-          ),
-        );
-      }
-      dispatch({ type: 'SET_ERROR', payload: errMsg });
-    } finally {
-      dispatch({ type: 'SET_PROCESSING', payload: false });
-      const nextQuestion = queuedQuestions.current.shift();
-      if (nextQuestion) {
-        window.setTimeout(() => {
-          void sendQuestion(nextQuestion);
-        }, 0);
-      }
-    }
+    await runAnswerGeneration(id, trimmed, 'normal', { queueNext: true });
   }, [updateSessionQAList]);
 
   // ===== 重新生成答案 =====
-  const regenerateAnswer = useCallback(async (id: string, newQuestion?: string) => {
-    if (isProcessingRef.current) return;
+  const regenerateAnswer = useCallback(async (id: string, options: RegenerateAnswerOptions = {}) => {
+    stopActiveGeneration();
     const sess = sessionRef.current;
     if (!sess) return;
     const qaItem = sess.qaList.find((q) => q.id === id);
     if (!qaItem) return;
 
-    const question = newQuestion ?? qaItem.question;
+    const question = options.question ?? qaItem.question;
+    await runAnswerGeneration(id, question, options.mode ?? 'normal');
+  }, [updateSessionQAList]);
+
+  async function runAnswerGeneration(
+    id: string,
+    question: string,
+    mode: AnswerGenerationMode,
+    options: { queueNext?: boolean } = {},
+  ): Promise<void> {
+    stopActiveGeneration();
+    const controller = new AbortController();
+    generationAbortController.current = controller;
+    const runId = generationRunId.current;
     dispatch({ type: 'SET_PROCESSING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
+    updateQA(id, {
+      question,
+      answer: '',
+      error: undefined,
+      isStreaming: true,
+      generationMode: mode,
+      searchResults: undefined,
+    });
 
     const settings = aiRef.current;
     const messages: ChatMessage[] = [
-      { role: 'system', content: buildSystemPrompt() },
+      { role: 'system', content: buildPromptForMode(mode) },
     ];
     const allQA = sessionRef.current?.qaList ?? [];
     const itemIndex = allQA.findIndex((q) => q.id === id);
@@ -539,48 +528,67 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       if (qa.answer) messages.push({ role: 'assistant', content: qa.answer });
     }
     const transcriptContext = buildTranscriptContext();
+    let searchResults: WebSearchResult[] = [];
+    if (appRef.current.webSearchEnabled) {
+      try {
+        searchResults = await webSearch(question, controller.signal);
+        if (runId === generationRunId.current && searchResults.length) {
+          updateQA(id, { searchResults });
+        }
+      } catch (searchError) {
+        if (!isAbortError(searchError)) {
+          updateQA(id, { searchResults: [] });
+        }
+      }
+    }
+
+    const searchContext = searchResults.length
+      ? `\n\n联网搜索结果：\n${formatSearchResults(searchResults)}\n\n请把搜索结果作为补充资料使用；如与简历/专家库冲突，以候选人真实经历优先。`
+      : '';
+    const hotwords = parseHotwords(appRef.current.asrHotwords);
+    const hotwordContext = hotwords.length ? `\n\n语音识别热词/专业词：${hotwords.join('、')}` : '';
     messages.push({
       role: 'user',
       content: transcriptContext
-        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题重新生成答案。\n\n${transcriptContext}\n\n请回答面试官问题：${question}`
-        : question,
+        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题生成答案。\n\n${transcriptContext}${searchContext}${hotwordContext}\n\n请回答面试官问题：${question}`
+        : `面试官问题：${question}${searchContext}${hotwordContext}`,
     });
 
     let accumulated = '';
     try {
       await chat(messages, settings, (chunk: string) => {
+        if (runId !== generationRunId.current) return;
         accumulated += chunk;
-        const s2 = sessionRef.current;
-        if (s2) {
-          updateSessionQAList(
-            s2.qaList.map((q) =>
-              q.id === id ? { ...q, answer: accumulated, isStreaming: true } : q,
-            ),
-          );
-        }
-      });
-      const s3 = sessionRef.current;
-      if (s3) {
-        updateSessionQAList(
-          s3.qaList.map((q) =>
-            q.id === id ? { ...q, answer: accumulated, isStreaming: false } : q,
-          ),
-        );
+        updateQA(id, { answer: accumulated, isStreaming: true, error: undefined });
+      }, controller.signal);
+      if (runId === generationRunId.current) {
+        updateQA(id, { answer: accumulated, isStreaming: false, error: undefined });
       }
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : '未知错误';
-      const s4 = sessionRef.current;
-      if (s4) {
-        updateSessionQAList(
-          s4.qaList.map((q) =>
-            q.id === id ? { ...q, error: errMsg, isStreaming: false } : q,
-          ),
-        );
+      if (isAbortError(error)) {
+        if (runId === generationRunId.current) {
+          updateQA(id, { isStreaming: false, error: '已打断，正在切换到新的生成方式。' });
+        }
+        return;
       }
+      const errMsg = error instanceof Error ? error.message : '未知错误';
+      updateQA(id, { error: errMsg, isStreaming: false });
+      dispatch({ type: 'SET_ERROR', payload: errMsg });
     } finally {
-      dispatch({ type: 'SET_PROCESSING', payload: false });
+      if (runId === generationRunId.current) {
+        generationAbortController.current = null;
+        dispatch({ type: 'SET_PROCESSING', payload: false });
+        if (options.queueNext) {
+          const nextQuestion = queuedQuestions.current.shift();
+          if (nextQuestion) {
+            window.setTimeout(() => {
+              void sendQuestion(nextQuestion);
+            }, 0);
+          }
+        }
+      }
     }
-  }, [updateSessionQAList]);
+  }
 
   // ===== 问题合并逻辑 =====
   function flushMergeBuffer() {
@@ -762,7 +770,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   }
 
   async function startCloudMicrophoneRecognition(provider: CloudASRProvider, speaker: 'interviewer' | 'me'): Promise<boolean> {
-    const ok = await cloudAsrService.startMicrophone(provider, cloudAsrRef.current, {
+    const ok = await cloudAsrService.startMicrophone(provider, withGlobalHotwords(cloudAsrRef.current), {
       onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
       onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
       onEnd: () => setListeningFromActiveSources(),
@@ -776,6 +784,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       doubaoConfig: doubaoRef.current,
       cloudAsrConfig: cloudAsrRef.current,
       asrEndWindowSize: appRef.current.mergeTimeoutMs,
+      hotwords: appRef.current.asrHotwords,
     }, {
       onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
       onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
@@ -812,7 +821,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         }
         stream.getTracks().forEach((track) => track.stop());
       };
-      session.start(localQwenRef.current, {
+      session.start(withGlobalQwenHotwords(localQwenRef.current), {
         onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
         onError: (e) => { cleanupStream(); dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
         onEnd: () => {
@@ -892,7 +901,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       qwenSystemAudioSession.current?.stop();
       const session = localQwenAsrService.createSession();
       qwenSystemAudioSession.current = session;
-      session.start(localQwenRef.current, {
+      session.start(withGlobalQwenHotwords(localQwenRef.current), {
         onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
         onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
         onEnd: () => {
@@ -979,7 +988,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       }
 
       const provider = appRef.current.asrProvider;
-      cloudAsrService.start(provider, cloudAsrRef.current, {
+      cloudAsrService.start(provider, withGlobalHotwords(cloudAsrRef.current), {
         onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
         onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
         onEnd: () => setListeningFromActiveSources(),
@@ -1007,8 +1016,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       const provider = appRef.current.asrProvider;
       asrGatewayService.start(provider, speaker, {
         doubaoConfig: doubaoRef.current,
-        cloudAsrConfig: cloudAsrRef.current,
+        cloudAsrConfig: withGlobalHotwords(cloudAsrRef.current),
         asrEndWindowSize: appRef.current.mergeTimeoutMs,
+        hotwords: appRef.current.asrHotwords,
       }, {
         onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
         onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
@@ -1230,7 +1240,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   // ===== 其余方法 =====
   const addManualQuestion = useCallback((q: string) => sendQuestion(q), [sendQuestion]);
 
-  const editQuestion = useCallback((id: string, q: string) => { void regenerateAnswer(id, q); }, [regenerateAnswer]);
+  const editQuestion = useCallback((id: string, q: string) => { void regenerateAnswer(id, { question: q }); }, [regenerateAnswer]);
 
   const deleteQuestion = useCallback((id: string) => {
     const sess = sessionRef.current;
@@ -1261,6 +1271,17 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_ERROR', payload: null });
   }, [updateSessionQAList, updateSessionTranscriptLines]);
 
+  const stopGeneration = useCallback(() => {
+    stopActiveGeneration();
+    dispatch({ type: 'SET_PROCESSING', payload: false });
+    const sess = sessionRef.current;
+    if (sess) {
+      updateSessionQAList(sess.qaList.map((qa) => (
+        qa.isStreaming ? { ...qa, isStreaming: false, error: '已手动停止生成。' } : qa
+      )));
+    }
+  }, [updateSessionQAList]);
+
   const value: InterviewContextValue = {
     ...state,
     qaList,
@@ -1268,6 +1289,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     stopListening,
     sendQuestion,
     regenerateAnswer,
+    stopGeneration,
     editQuestion,
     deleteQuestion,
     addManualQuestion,

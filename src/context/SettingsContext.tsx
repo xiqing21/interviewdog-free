@@ -33,6 +33,7 @@ import {
   DEFAULT_CLOUD_ASR_CONFIG,
   STORAGE_KEYS,
   PROVIDER_DEFAULTS,
+  THEME_OPTIONS,
 } from '../constants';
 import * as storageService from '../services/storageService';
 import { obfuscate, deobfuscate } from '../services/cryptoService';
@@ -126,6 +127,9 @@ function getInitialState(): SettingsState {
 
 function normalizeAppSettings(settings: AppSettings): AppSettings {
   const normalized = { ...settings };
+  if (!THEME_OPTIONS.some((option) => option.key === normalized.theme)) {
+    normalized.theme = DEFAULT_APP_SETTINGS.theme;
+  }
   if (!normalized.mergeTimeoutMs || normalized.mergeTimeoutMs < 1000) {
     normalized.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
   }
@@ -261,7 +265,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [state.cloudAsrConfig]);
   useEffect(() => {
     const root = document.documentElement;
-    state.appSettings.theme === 'dark' ? root.classList.add('dark') : root.classList.remove('dark');
+    const darkThemes: ThemeMode[] = ['dark', 'midnight', 'forest', 'mono'];
+    darkThemes.includes(state.appSettings.theme) ? root.classList.add('dark') : root.classList.remove('dark');
   }, [state.appSettings.theme]);
 
   const updateAISettings = useCallback((p: Partial<AISettings>) => dispatch({ type: 'UPDATE_AI_SETTINGS', payload: p }), []);

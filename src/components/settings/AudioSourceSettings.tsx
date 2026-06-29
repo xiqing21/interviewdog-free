@@ -2,10 +2,22 @@
  * AudioSourceSettings — 音频源 & ASR 服务商配置
  */
 
+import { useState } from 'react';
 import {
-  Paper, Typography, FormControl, InputLabel, Select, MenuItem,
+  Box,
+  Button,
+  IconButton,
+  Paper,
+  Typography,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
   type SelectChangeEvent,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import type { ASRProvider, SpeakerAudioSource } from '../../types';
 import { SPEAKER_AUDIO_SOURCES } from '../../constants';
 import { useSettings } from '../../hooks/useSettings';
@@ -18,6 +30,30 @@ export function AudioSourceSettings() {
     setInterviewerAudioSource,
     updateAppSettings,
   } = useSettings();
+  const [newHotword, setNewHotword] = useState('');
+
+  const hotwords = parseHotwords(appSettings.asrHotwords);
+
+  const updateHotwords = (nextHotwords: string[]): void => {
+    updateAppSettings({ asrHotwords: serializeHotwords(nextHotwords) });
+  };
+
+  const handleHotwordChange = (index: number, value: string): void => {
+    const nextHotwords = [...hotwords];
+    nextHotwords[index] = value;
+    updateHotwords(nextHotwords);
+  };
+
+  const handleAddHotword = (): void => {
+    const trimmed = newHotword.trim();
+    if (!trimmed) return;
+    updateHotwords([...hotwords, trimmed]);
+    setNewHotword('');
+  };
+
+  const handleDeleteHotword = (index: number): void => {
+    updateHotwords(hotwords.filter((_, itemIndex) => itemIndex !== index));
+  };
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -84,6 +120,62 @@ export function AudioSourceSettings() {
         </Typography>
       </FormControl>
 
+      <Box sx={{ mt: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+          <Box>
+            <Typography variant="subtitle2" fontWeight={800}>语音识别热词</Typography>
+            <Typography variant="caption" color="text.secondary">
+              可自定义增删改；Gateway 豆包/本地 Qwen/云分片会随启动配置传递，AI 回答也会同步参考这些专业词。
+            </Typography>
+          </Box>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1, mb: 1.25 }}>
+          <TextField
+            fullWidth
+            label="新增热词"
+            value={newHotword}
+            onChange={(event) => setNewHotword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                handleAddHotword();
+              }
+            }}
+            placeholder="Fluss / StarRocks / 实时数仓"
+          />
+          <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddHotword} sx={{ flexShrink: 0 }}>
+            添加
+          </Button>
+        </Box>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+          {hotwords.map((word, index) => (
+            <Box key={index} sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+              <TextField
+                fullWidth
+                label={`热词 ${index + 1}`}
+                value={word}
+                onChange={(event) => handleHotwordChange(index, event.target.value)}
+                onBlur={() => updateHotwords(hotwords)}
+                placeholder="Fluss"
+              />
+              <IconButton
+                size="small"
+                color="error"
+                aria-label={`删除热词 ${word || index + 1}`}
+                onClick={() => handleDeleteHotword(index)}
+              >
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          ))}
+          {hotwords.length === 0 && (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+              还没有热词，建议先添加 Fluss、Flink、StarRocks、Paimon、湖仓一体。
+            </Typography>
+          )}
+        </Box>
+      </Box>
+
       <FormControl fullWidth sx={{ mt: 2 }}>
         <InputLabel>句内停顿容忍 (ms)</InputLabel>
         <Select
@@ -105,6 +197,25 @@ export function AudioSourceSettings() {
       </FormControl>
     </Paper>
   );
+}
+
+function parseHotwords(text: string): string[] {
+  return text
+    .split(/[,，、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function serializeHotwords(items: string[]): string {
+  const seen = new Set<string>();
+  return items
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item || seen.has(item.toLowerCase())) return false;
+      seen.add(item.toLowerCase());
+      return true;
+    })
+    .join('、');
 }
 
 function providerDescription(provider: ASRProvider): string {

@@ -11,6 +11,7 @@ import type {
   DoubaoASRConfig,
   MiMoASRConfig,
   CloudASRConfig,
+  ThemeMode,
 } from '../types';
 
 // ===== localStorage 存储键名 =====
@@ -207,11 +208,21 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   defaultAnswerMode: 'detailed',
   mergeTimeoutMs: 2500,
   webSearchEnabled: false,
+  asrHotwords: 'Fluss、Flink、StarRocks',
 };
 
 // ===== 默认简历JD数据 =====
 export const DEFAULT_RESUME_JD = { resume: '', jd: '' };
 export const DEFAULT_KNOWLEDGE_PROFILE = { resumes: [], expertKnowledgeItems: [], expertKnowledge: '' };
+
+export const THEME_OPTIONS: Array<{ key: ThemeMode; label: string; desc: string }> = [
+  { key: 'dark', label: '深色工作台', desc: '默认深色，高对比，适合长时间面试。' },
+  { key: 'light', label: '清爽浅色', desc: '浅色背景，白天使用更轻。' },
+  { key: 'clay', label: '粘土拟态', desc: '柔和立体控件，视觉更轻松。' },
+  { key: 'midnight', label: '午夜蓝', desc: '更沉稳的蓝黑界面，突出转写和答案。' },
+  { key: 'forest', label: '森林绿', desc: '低饱和绿色，适合复盘和阅读。' },
+  { key: 'mono', label: '黑白极简', desc: '减少色彩干扰，偏工具感。' },
+];
 
 // ===== 业务常量 =====
 export const MAX_EXAM_RECORDS = 50;
