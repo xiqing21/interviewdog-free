@@ -10,6 +10,10 @@ import {
   Button,
   Checkbox,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormControl,
   FormControlLabel,
   IconButton,
@@ -41,7 +45,7 @@ import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
-import type { ASRProvider, SpeakerAudioSource } from '../../types';
+import type { ASRProvider, InterviewSession, SpeakerAudioSource } from '../../types';
 
 export function InterviewPage() {
   const {
@@ -52,7 +56,7 @@ export function InterviewPage() {
     setInterviewerAudioSource,
     updateAppSettings,
   } = useSettings();
-  const { activeSession, sessionSummaries } = useSession();
+  const { activeSession, sessions, sessionSummaries, switchSession } = useSession();
   const {
     isProcessing,
     isListening,
@@ -72,6 +76,7 @@ export function InterviewPage() {
   const [showStartPrompt, setShowStartPrompt] = useState(Boolean(activeSession));
   const [setupMode, setSetupMode] = useState<'new' | 'edit'>('new');
   const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const lastQaCountRef = useRef(qaList.length);
 
   useEffect(() => {
@@ -119,6 +124,7 @@ export function InterviewPage() {
   const hasTriggerableInterviewerText =
     transcriptLines.some((line) => line.speaker === 'interviewer') ||
     /^面试官[：:]/.test(interimText.trim());
+  const visibleTranscriptLines = [...transcriptLines.slice(-30)].reverse();
 
   if (showStartPrompt && activeSession && !showSetup) {
     return (
@@ -129,6 +135,11 @@ export function InterviewPage() {
         onCreate={() => {
           setSetupMode('new');
           setShowSetup(true);
+          setShowStartPrompt(false);
+        }}
+        sessions={sessions}
+        onOpenSession={(id) => {
+          switchSession(id);
           setShowStartPrompt(false);
         }}
       />
@@ -149,6 +160,7 @@ export function InterviewPage() {
   }
 
   return (
+    <>
     <Box
       sx={{
         display: 'grid',
@@ -259,6 +271,22 @@ export function InterviewPage() {
           {isProcessing && <Chip size="small" color="primary" label="生成中" />}
           {isListening && <Chip size="small" color="success" label="识别中" />}
           {activeSession.archivedAt && <Chip size="small" color="default" label="已归档" />}
+          {activeSession.archivedAt && activeSession.review?.summary && (
+            <Button size="small" variant="outlined" sx={{ ml: 'auto' }} onClick={() => setReviewOpen(true)}>
+              查看复盘
+            </Button>
+          )}
+          {activeSession.archivedAt && !activeSession.review?.summary && (
+            <Button
+              size="small"
+              variant="outlined"
+              sx={{ ml: 'auto' }}
+              onClick={() => { void generateReview(); }}
+              disabled={isProcessing || !aiSettings.apiKey}
+            >
+              生成复盘
+            </Button>
+          )}
         </Box>
 
         {!selectedQa ? (
@@ -273,35 +301,6 @@ export function InterviewPage() {
           <QACard qa={selectedQa} />
         )}
 
-        {activeSession.archivedAt && activeSession.review?.summary && (
-          <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-              <Typography variant="subtitle2" fontWeight={700}>面试复盘</Typography>
-              <Button
-                size="small"
-                variant="outlined"
-                onClick={() => { void generateReview(); }}
-                disabled={isProcessing || !aiSettings.apiKey}
-                sx={{ ml: 'auto' }}
-              >
-                重新生成复盘总结
-              </Button>
-            </Box>
-            <MarkdownRenderer content={activeSession.review.summary} />
-          </Box>
-        )}
-
-        {activeSession.archivedAt && !activeSession.review?.summary && (
-          <Button
-            fullWidth
-            variant="outlined"
-            sx={{ mt: 2 }}
-            onClick={() => { void generateReview(); }}
-            disabled={isProcessing || !aiSettings.apiKey}
-          >
-            生成复盘总结
-          </Button>
-        )}
       </Paper>
 
       <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
@@ -336,18 +335,27 @@ export function InterviewPage() {
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
                 <Chip size="small" label="识别中" />
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => { void triggerLatestTranscriptQuestion(); }}
+                  disabled={isProcessing || !aiSettings.apiKey || !/^面试官[：:]/.test(interimText.trim())}
+                  sx={{ minWidth: 0, px: 0.75 }}
+                >
+                  触发
+                </Button>
               </Box>
               <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {interimText}
               </Typography>
             </Box>
           )}
-          {transcriptLines.length === 0 ? (
+          {transcriptLines.length === 0 && !interimText ? (
             <Typography variant="body2" color="text.secondary">
               双路转写会记录在这里：我说的话只留档，面试官问题会触发 AI。
             </Typography>
           ) : (
-            transcriptLines.slice(-30).map((line) => (
+            visibleTranscriptLines.map((line) => (
               <Box
                 key={line.id}
                 sx={{
@@ -570,6 +578,22 @@ export function InterviewPage() {
         </Typography>
       </Paper>
     </Box>
+    <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} maxWidth="md" fullWidth>
+      <DialogTitle>面试复盘</DialogTitle>
+      <DialogContent dividers>
+        <MarkdownRenderer content={activeSession.review?.summary ?? '暂无复盘总结。'} />
+      </DialogContent>
+      <DialogActions>
+        <Button
+          onClick={() => { void generateReview(); }}
+          disabled={isProcessing || !aiSettings.apiKey}
+        >
+          重新生成
+        </Button>
+        <Button variant="contained" onClick={() => setReviewOpen(false)}>关闭</Button>
+      </DialogActions>
+    </Dialog>
+    </>
   );
 }
 
@@ -600,6 +624,8 @@ interface ProjectStartPromptProps {
   sessionCount: number;
   onContinue: () => void;
   onCreate: () => void;
+  sessions: InterviewSession[];
+  onOpenSession: (id: string) => void;
 }
 
 function ProjectStartPrompt({
@@ -607,7 +633,13 @@ function ProjectStartPrompt({
   sessionCount,
   onContinue,
   onCreate,
+  sessions,
+  onOpenSession,
 }: ProjectStartPromptProps) {
+  const recentSessions = [...sessions]
+    .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
+    .slice(0, 8);
+
   return (
     <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Paper sx={{ p: 3 }}>
@@ -626,8 +658,72 @@ function ProjectStartPrompt({
           </Button>
         </Box>
       </Paper>
+
+      {recentSessions.length > 0 && (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" fontWeight={800} gutterBottom>
+            历史面试
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {recentSessions.map((session) => (
+              <Box
+                key={session.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenSession(session.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onOpenSession(session.id);
+                  }
+                }}
+                sx={{
+                  p: 1.5,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  cursor: 'pointer',
+                  bgcolor: 'background.paper',
+                  '&:hover': { borderColor: 'primary.main', bgcolor: 'action.hover' },
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
+                  <Typography variant="subtitle2" fontWeight={700}>{session.name}</Typography>
+                  <Chip size="small" label={`${session.qaList.length} 轮`} />
+                  {session.archivedAt && <Chip size="small" label="已归档" />}
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                    {formatTimeOrDate(session.updatedAt ?? session.createdAt)}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary" noWrap title={sessionBrief(session)}>
+                  {sessionBrief(session)}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+        </Paper>
+      )}
     </Box>
   );
+}
+
+function sessionBrief(session: InterviewSession): string {
+  if (session.review?.summary) return trimSingleLine(session.review.summary);
+  const latestQa = session.qaList[session.qaList.length - 1];
+  if (latestQa) return trimSingleLine(`最近问题：${latestQa.question}`);
+  if (session.targetRole) return `岗位：${session.targetRole}`;
+  return '暂无问答记录';
+}
+
+function trimSingleLine(text: string): string {
+  return text.replace(/\s+/g, ' ').slice(0, 120);
+}
+
+function formatTimeOrDate(timestamp: number): string {
+  const date = new Date(timestamp);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return formatTime(timestamp);
+  return date.toLocaleDateString('zh-CN');
 }
 
 interface InterviewSetupProps {
