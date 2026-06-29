@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/doubao-asr.ts": {
+      "regions": ["hnd1"]
+    }
+  }
+}

@@ -8,11 +8,13 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   FormControl,
   FormControlLabel,
   IconButton,
   InputLabel,
+  ListItemText,
   MenuItem,
   Paper,
   Select,
@@ -619,10 +621,24 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
   const editing = mode === 'edit' && Boolean(activeSession);
   const currentRole = INTERVIEW_ROLE_PRESETS.find((role) => role.label === (editing ? activeSession?.targetRole : undefined));
   const newestResume = [...knowledgeProfile.resumes].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const composeResumeText = useCallback((resumeIds: string[]) => {
+    const selected = resumeIds
+      .map((id) => knowledgeProfile.resumes.find((item) => item.id === id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    return selected
+      .map((item) => `### ${item.name}\n${item.content}`)
+      .join('\n\n');
+  }, [knowledgeProfile.resumes]);
   const [projectName, setProjectName] = useState(editing ? activeSession?.name ?? '' : '');
   const [selectedRole, setSelectedRole] = useState(currentRole?.key ?? INTERVIEW_ROLE_PRESETS[0].key);
-  const [selectedResumeId, setSelectedResumeId] = useState(editing ? '' : newestResume?.id ?? '');
-  const [resumeText, setResumeText] = useState(editing ? activeSession?.resume ?? resume : newestResume?.content ?? resume);
+  const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>(editing || !newestResume ? [] : [newestResume.id]);
+  const [resumeText, setResumeText] = useState(
+    editing
+      ? activeSession?.resume ?? resume
+      : newestResume
+        ? composeResumeText([newestResume.id])
+        : resume,
+  );
   const [jdText, setJdText] = useState(
     editing
       ? (activeSession?.jd ?? jd) || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd
@@ -646,11 +662,11 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     }
   };
 
-  const handleResumeLibraryChange = (event: SelectChangeEvent) => {
-    const resumeId = event.target.value;
-    setSelectedResumeId(resumeId);
-    const selected = knowledgeProfile.resumes.find((item) => item.id === resumeId);
-    if (selected) setResumeText(selected.content);
+  const handleResumeLibraryChange = (event: SelectChangeEvent<string[]>) => {
+    const value = event.target.value;
+    const resumeIds = typeof value === 'string' ? value.split(',') : value;
+    setSelectedResumeIds(resumeIds);
+    setResumeText(resumeIds.length ? composeResumeText(resumeIds) : '');
   };
 
   const handleResumeUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -670,7 +686,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     setLoadingPdf(true);
     try {
       setResumeText(await parsePdf(file));
-      setSelectedResumeId('');
+      setSelectedResumeIds([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'PDF 解析失败');
     } finally {
@@ -747,12 +763,28 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
 
       <Box sx={{ mt: 2, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
         {knowledgeProfile.resumes.length > 0 && (
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel>引用简历库</InputLabel>
-            <Select label="引用简历库" value={selectedResumeId} onChange={handleResumeLibraryChange}>
-              <MenuItem value="">临时粘贴/上传内容</MenuItem>
+          <FormControl size="small" sx={{ minWidth: 260 }}>
+            <InputLabel>引用简历库（可多选）</InputLabel>
+            <Select
+              multiple
+              label="引用简历库（可多选）"
+              value={selectedResumeIds}
+              onChange={handleResumeLibraryChange}
+              renderValue={(selected) => {
+                const names = selected
+                  .map((id) => knowledgeProfile.resumes.find((item) => item.id === id)?.name)
+                  .filter(Boolean);
+                return names.length ? names.join('、') : '临时粘贴/上传内容';
+              }}
+            >
               {knowledgeProfile.resumes.map((item) => (
-                <MenuItem key={item.id} value={item.id}>{item.name}</MenuItem>
+                <MenuItem key={item.id} value={item.id}>
+                  <Checkbox checked={selectedResumeIds.includes(item.id)} />
+                  <ListItemText
+                    primary={item.name}
+                    secondary={`${item.content.length.toLocaleString('zh-CN')} 字`}
+                  />
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -762,7 +794,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
           <input type="file" accept=".pdf" hidden onChange={handleResumeUpload} />
         </Button>
         <Typography variant="caption" color="text.secondary">
-          已有简历库会默认引用最近一份，也可以上传或粘贴临时覆盖。
+          已有简历库会默认引用最近一份；可多选引用，上传或手动编辑会改为临时内容。
         </Typography>
       </Box>
 
@@ -774,7 +806,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         label="简历文本"
         value={resumeText}
         onChange={(event) => {
-          setSelectedResumeId('');
+          setSelectedResumeIds([]);
           setResumeText(event.target.value);
         }}
         placeholder="粘贴你的简历，或上传 PDF 自动解析..."

@@ -27,6 +27,7 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_DOUBAO_ASR_CONFIG,
   DEFAULT_LOCAL_QWEN_ASR_CONFIG,
+  DOUBAO_MERGE_TIMEOUT_DEFAULT,
   STORAGE_KEYS,
   PROVIDER_DEFAULTS,
 } from '../constants';
@@ -73,6 +74,9 @@ function getInitialState(): SettingsState {
   if (!appSettings.mergeTimeoutMs || appSettings.mergeTimeoutMs < 2200) {
     appSettings.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
   }
+  if (appSettings.asrProvider === 'doubao' && appSettings.mergeTimeoutMs < 6000) {
+    appSettings.mergeTimeoutMs = DOUBAO_MERGE_TIMEOUT_DEFAULT;
+  }
 
   const doubaoConfig: DoubaoASRConfig = {
     ...DEFAULT_DOUBAO_ASR_CONFIG,
@@ -115,7 +119,17 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
     case 'ACKNOWLEDGE_PRIVACY':
       return { ...state, appSettings: { ...state.appSettings, privacyAcknowledged: true } };
     case 'SET_ASR_PROVIDER':
-      return { ...state, appSettings: { ...state.appSettings, asrProvider: action.payload } };
+      return {
+        ...state,
+        appSettings: {
+          ...state.appSettings,
+          asrProvider: action.payload,
+          mergeTimeoutMs:
+            action.payload === 'doubao' && state.appSettings.mergeTimeoutMs < 6000
+              ? DOUBAO_MERGE_TIMEOUT_DEFAULT
+              : state.appSettings.mergeTimeoutMs,
+        },
+      };
     case 'SET_AUDIO_SOURCE':
       if (action.payload === 'both') {
         return {

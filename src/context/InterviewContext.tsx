@@ -17,6 +17,7 @@ import type { QAItem, ChatMessage, TranscriptLine, InterviewReview, SpeakerAudio
 import {
   STORAGE_KEYS,
   MERGE_TIMEOUT_DEFAULT,
+  DOUBAO_MERGE_TIMEOUT_DEFAULT,
   RESUME_JD_PROMPT_TEMPLATE,
   ANSWER_MODES,
 } from '../constants';
@@ -625,7 +626,16 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     clearInterimCommitTimer();
     interimCommitTimer.current = setTimeout(() => {
       commitInterimQuestion();
-    }, appRef.current.mergeTimeoutMs || MERGE_TIMEOUT_DEFAULT);
+    }, getQuestionCommitTimeout());
+  }
+
+  function getQuestionCommitTimeout(): number {
+    const app = appRef.current;
+    const configured = app.mergeTimeoutMs || MERGE_TIMEOUT_DEFAULT;
+    if (app.asrProvider === 'doubao') {
+      return Math.max(configured, DOUBAO_MERGE_TIMEOUT_DEFAULT);
+    }
+    return configured;
   }
 
   function extractInterimQuestion(): string {
@@ -670,8 +680,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_INTERIM', payload: '' });
         return;
       }
-      const app = appRef.current;
-      const timeout = app.mergeTimeoutMs || MERGE_TIMEOUT_DEFAULT;
+      const timeout = getQuestionCommitTimeout();
       const questionText = cleanupInterimText(text);
       if (!questionText) {
         dispatch({ type: 'SET_INTERIM', payload: '' });

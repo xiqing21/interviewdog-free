@@ -189,6 +189,7 @@ export const STREAM_TIMEOUT_MS = 120_000;
 export const API_TIMEOUT_MS = 30_000;
 export const MAX_SESSIONS = 20;
 export const MERGE_TIMEOUT_DEFAULT = 2500;
+export const DOUBAO_MERGE_TIMEOUT_DEFAULT = 8000;
 
 // ===== 左侧导航菜单项 =====
 export const NAV_ITEMS = [
