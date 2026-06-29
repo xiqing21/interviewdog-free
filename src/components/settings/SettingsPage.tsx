@@ -12,6 +12,7 @@ import { ConnectionTest } from './ConnectionTest';
 import { AudioSourceSettings } from './AudioSourceSettings';
 import { DoubaoConfig } from './DoubaoConfig';
 import { LocalQwenConfig } from './LocalQwenConfig';
+import { MiMoConfig } from './MiMoConfig';
 import { ResumeJDSettings } from './ResumeJDSettings';
 
 export function SettingsPage() {
@@ -33,6 +34,7 @@ export function SettingsPage() {
       <AudioSourceSettings />
       <DoubaoConfig />
       <LocalQwenConfig />
+      <MiMoConfig />
 
       <Divider />
 

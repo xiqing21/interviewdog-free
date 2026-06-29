@@ -26,6 +26,7 @@ import * as systemAudioService from '../services/systemAudioService';
 import * as doubaoAsrService from '../services/doubaoAsrService';
 import * as openaiChunkAsrService from '../services/openaiChunkAsrService';
 import * as localQwenAsrService from '../services/localQwenAsrService';
+import * as mimoAsrService from '../services/mimoAsrService';
 import type { LocalQwenSession } from '../services/localQwenAsrService';
 import { chat } from '../services/aiService';
 import { webSearch } from '../services/webSearchService';
@@ -114,7 +115,7 @@ export const InterviewContext = createContext<InterviewContextValue | null>(null
 
 // ===== Provider =====
 export function InterviewProvider({ children }: { children: ReactNode }) {
-  const { aiSettings, appSettings, doubaoConfig, localQwenConfig } = useSettings();
+  const { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig } = useSettings();
   const { profile: knowledgeProfile } = useKnowledge();
   const {
     activeSession,
@@ -132,6 +133,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const appRef = useRef(appSettings); appRef.current = appSettings;
   const doubaoRef = useRef(doubaoConfig); doubaoRef.current = doubaoConfig;
   const localQwenRef = useRef(localQwenConfig); localQwenRef.current = localQwenConfig;
+  const mimoRef = useRef(mimoConfig); mimoRef.current = mimoConfig;
   const sessionRef = useRef(activeSession); sessionRef.current = activeSession;
   const resumeRef = useRef(resume); resumeRef.current = resume;
   const jdRef = useRef(jd); jdRef.current = jd;
@@ -161,6 +163,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     doubaoAsrService.stop();
     openaiChunkAsrService.stop();
     localQwenAsrService.stop();
+    mimoAsrService.stop();
     qwenMicrophoneSession.current = null;
     qwenSystemAudioSession.current = null;
     if (mergeTimer.current) {
@@ -717,7 +720,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         systemAudioService.isProcessing() ||
         doubaoAsrService.isActive() ||
         openaiChunkAsrService.isActive() ||
-        localQwenAsrService.isActive(),
+        localQwenAsrService.isActive() ||
+        mimoAsrService.isActive(),
     });
     dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: systemAudioService.isActive() });
   }
@@ -737,6 +741,16 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   async function startOpenAIMicrophoneRecognition(speaker: 'interviewer' | 'me'): Promise<boolean> {
     const ok = await openaiChunkAsrService.startMicrophone(aiRef.current, {
+      onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
+      onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+      onEnd: () => setListeningFromActiveSources(),
+    });
+    setListeningFromActiveSources();
+    return ok;
+  }
+
+  async function startMiMoMicrophoneRecognition(speaker: 'interviewer' | 'me'): Promise<boolean> {
+    const ok = await mimoAsrService.startMicrophone(mimoRef.current, {
       onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
       onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
       onEnd: () => setListeningFromActiveSources(),
@@ -826,6 +840,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         doubaoAsrService.stop();
         openaiChunkAsrService.stop();
         localQwenAsrService.stop();
+        mimoAsrService.stop();
         dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
         setListeningFromActiveSources();
       },
@@ -894,6 +909,36 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       return ok;
     }
 
+    if (appRef.current.asrProvider === 'mimo') {
+      if (!systemAudioService.isSupported()) {
+        dispatch({ type: 'SET_ERROR', payload: '当前浏览器不支持系统音频捕获。请使用 Chrome，并在弹窗中选择共享音频。' });
+        return false;
+      }
+
+      if (!systemAudioService.isActive()) {
+        const prepared = await prepareSystemAudioShare();
+        if (!prepared) return false;
+      }
+
+      const ok = mimoAsrService.start(mimoRef.current, {
+        onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
+        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+        onEnd: () => setListeningFromActiveSources(),
+      });
+      if (!ok) {
+        setListeningFromActiveSources();
+        return false;
+      }
+
+      void systemAudioService.start({
+        onPcmData: (pcm) => mimoAsrService.sendAudio(pcm),
+        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); mimoAsrService.stop(); setListeningFromActiveSources(); },
+        onEnd: () => { mimoAsrService.stop(); setListeningFromActiveSources(); },
+      });
+      setListeningFromActiveSources();
+      return true;
+    }
+
     const config = doubaoRef.current;
     if (!config.appId || !config.accessToken) {
       dispatch({ type: 'SET_ERROR', payload: '系统音频识别需要先在设置中配置豆包 ASR 的 App ID 和 Access Token。' });
@@ -939,7 +984,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (systemSpeaker && app.asrProvider === 'browser') {
       dispatch({
         type: 'SET_ERROR',
-        payload: '浏览器识别引擎只能识别麦克风，不能识别 Chrome 共享出来的系统音频。要识别微信/腾讯会议等系统音频，请把识别引擎切到豆包 ASR、本地 Qwen3-ASR 或 OpenAI 分片识别；或者把面试官声音改成麦克风。',
+        payload: '浏览器识别引擎只能识别麦克风，不能识别 Chrome 共享出来的系统音频。要识别微信/腾讯会议等系统音频，请把识别引擎切到豆包 ASR、本地 Qwen3-ASR、MiMo ASR 或 OpenAI 分片识别；或者把面试官声音改成麦克风。',
       });
       dispatch({ type: 'SET_LISTENING', payload: false });
       return;
@@ -952,6 +997,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (microphoneSpeaker) {
       if (app.asrProvider === 'local-qwen') {
         started = (await startLocalQwenMicrophoneRecognition(microphoneSpeaker)) || started;
+      } else if (app.asrProvider === 'mimo') {
+        started = (await startMiMoMicrophoneRecognition(microphoneSpeaker)) || started;
       } else if (app.asrProvider === 'openai' && !systemSpeaker) {
         started = (await startOpenAIMicrophoneRecognition(microphoneSpeaker)) || started;
       } else {
@@ -1039,6 +1086,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     doubaoAsrService.stop();
     openaiChunkAsrService.stop();
     localQwenAsrService.stop();
+    mimoAsrService.stop();
     dispatch({ type: 'SET_LISTENING', payload: false });
     dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
     commitInterimQuestion();
@@ -1068,6 +1116,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     doubaoAsrService.stop();
     openaiChunkAsrService.stop();
     localQwenAsrService.stop();
+    mimoAsrService.stop();
     dispatch({ type: 'SET_LISTENING', payload: false });
     // 立即 flush 合并缓冲区
     commitInterimQuestion();

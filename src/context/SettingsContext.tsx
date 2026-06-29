@@ -21,12 +21,14 @@ import type {
   SpeakerAudioSource,
   DoubaoASRConfig,
   LocalQwenASRConfig,
+  MiMoASRConfig,
 } from '../types';
 import {
   DEFAULT_AI_SETTINGS,
   DEFAULT_APP_SETTINGS,
   DEFAULT_DOUBAO_ASR_CONFIG,
   DEFAULT_LOCAL_QWEN_ASR_CONFIG,
+  DEFAULT_MIMO_ASR_CONFIG,
   STORAGE_KEYS,
   PROVIDER_DEFAULTS,
 } from '../constants';
@@ -40,6 +42,7 @@ export interface SettingsState {
   appSettings: AppSettings;
   doubaoConfig: DoubaoASRConfig;
   localQwenConfig: LocalQwenASRConfig;
+  mimoConfig: MiMoASRConfig;
   connectionStatus: ConnectionTestResult | null;
   isTestingConnection: boolean;
 }
@@ -58,6 +61,7 @@ type SettingsAction =
   | { type: 'SET_INTERVIEWER_AUDIO_SOURCE'; payload: SpeakerAudioSource }
   | { type: 'UPDATE_DOUBAO_CONFIG'; payload: Partial<DoubaoASRConfig> }
   | { type: 'UPDATE_LOCAL_QWEN_CONFIG'; payload: Partial<LocalQwenASRConfig> }
+  | { type: 'UPDATE_MIMO_CONFIG'; payload: Partial<MiMoASRConfig> }
   | { type: 'SET_CONNECTION_STATUS'; payload: ConnectionTestResult | null }
   | { type: 'SET_TESTING'; payload: boolean };
 
@@ -94,7 +98,15 @@ function getInitialState(): SettingsState {
     localQwenConfig.hotwords = '';
   }
 
-  return { aiSettings, appSettings, doubaoConfig, localQwenConfig, connectionStatus: null, isTestingConnection: false };
+  const mimoConfig: MiMoASRConfig = {
+    ...DEFAULT_MIMO_ASR_CONFIG,
+    ...storageService.get<MiMoASRConfig>(STORAGE_KEYS.MIMO_ASR_CONFIG, DEFAULT_MIMO_ASR_CONFIG),
+  };
+  if (mimoConfig.apiKey) {
+    mimoConfig.apiKey = deobfuscate(mimoConfig.apiKey);
+  }
+
+  return { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig, connectionStatus: null, isTestingConnection: false };
 }
 
 function normalizeAppSettings(settings: AppSettings): AppSettings {
@@ -171,6 +183,8 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
       return { ...state, doubaoConfig: { ...state.doubaoConfig, ...action.payload } };
     case 'UPDATE_LOCAL_QWEN_CONFIG':
       return { ...state, localQwenConfig: { ...state.localQwenConfig, ...action.payload } };
+    case 'UPDATE_MIMO_CONFIG':
+      return { ...state, mimoConfig: { ...state.mimoConfig, ...action.payload } };
     case 'SET_CONNECTION_STATUS':
       return { ...state, connectionStatus: action.payload };
     case 'SET_TESTING':
@@ -193,6 +207,7 @@ export interface SettingsContextValue extends SettingsState {
   updateAppSettings: (p: Partial<AppSettings>) => void;
   updateDoubaoConfig: (p: Partial<DoubaoASRConfig>) => void;
   updateLocalQwenConfig: (p: Partial<LocalQwenASRConfig>) => void;
+  updateMiMoConfig: (p: Partial<MiMoASRConfig>) => void;
   testConnection: () => Promise<ConnectionTestResult>;
 }
 
@@ -216,6 +231,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storageService.set(STORAGE_KEYS.LOCAL_QWEN_ASR_CONFIG, state.localQwenConfig);
   }, [state.localQwenConfig]);
   useEffect(() => {
+    const toStore = { ...state.mimoConfig, apiKey: obfuscate(state.mimoConfig.apiKey) };
+    storageService.set(STORAGE_KEYS.MIMO_ASR_CONFIG, toStore);
+  }, [state.mimoConfig]);
+  useEffect(() => {
     const root = document.documentElement;
     state.appSettings.theme === 'dark' ? root.classList.add('dark') : root.classList.remove('dark');
   }, [state.appSettings.theme]);
@@ -232,6 +251,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const updateAppSettings = useCallback((p: Partial<AppSettings>) => dispatch({ type: 'SET_APP_SETTINGS', payload: p }), []);
   const updateDoubaoConfig = useCallback((p: Partial<DoubaoASRConfig>) => dispatch({ type: 'UPDATE_DOUBAO_CONFIG', payload: p }), []);
   const updateLocalQwenConfig = useCallback((p: Partial<LocalQwenASRConfig>) => dispatch({ type: 'UPDATE_LOCAL_QWEN_CONFIG', payload: p }), []);
+  const updateMiMoConfig = useCallback((p: Partial<MiMoASRConfig>) => dispatch({ type: 'UPDATE_MIMO_CONFIG', payload: p }), []);
 
   const testConnection = useCallback(async (): Promise<ConnectionTestResult> => {
     dispatch({ type: 'SET_TESTING', payload: true });
@@ -251,7 +271,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const value: SettingsContextValue = {
     ...state, updateAISettings, setProvider, setTheme, setLanguage,
     acknowledgePrivacy, setASRProvider, setAudioSource, setMyAudioSource,
-    setInterviewerAudioSource, updateAppSettings, updateDoubaoConfig, updateLocalQwenConfig, testConnection,
+    setInterviewerAudioSource, updateAppSettings, updateDoubaoConfig, updateLocalQwenConfig, updateMiMoConfig, testConnection,
   };
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

@@ -518,6 +518,7 @@ export function InterviewPage() {
           >
             <MenuItem value="doubao">豆包 ASR（推荐识别面试官系统音频）</MenuItem>
             <MenuItem value="local-qwen">本地 Qwen3-ASR（MLX）</MenuItem>
+            <MenuItem value="mimo">MiMo-V2.5-ASR（分片测试）</MenuItem>
             <MenuItem value="openai">OpenAI Whisper（系统音频备用）</MenuItem>
             <MenuItem value="browser">浏览器 ASR（适合麦克风）</MenuItem>
           </Select>
@@ -606,6 +607,7 @@ function sourceLabel(source: SpeakerAudioSource): string {
 function asrProviderLabel(provider: ASRProvider): string {
   if (provider === 'doubao') return '豆包 ASR';
   if (provider === 'local-qwen') return '本地 Qwen3-ASR';
+  if (provider === 'mimo') return 'MiMo-V2.5-ASR';
   if (provider === 'openai') return 'OpenAI 分片 ASR';
   return '浏览器 ASR';
 }

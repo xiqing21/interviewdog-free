@@ -68,6 +68,7 @@ export function AudioSourceSettings() {
           <MenuItem value="browser">浏览器原生（免费）</MenuItem>
           <MenuItem value="doubao">豆包 ASR（火山引擎 - 更准确）</MenuItem>
           <MenuItem value="local-qwen">本地 Qwen3-ASR（MLX）</MenuItem>
+          <MenuItem value="mimo">MiMo-V2.5-ASR（小米，分片）</MenuItem>
           <MenuItem value="openai">OpenAI Whisper（系统音频备用）</MenuItem>
         </Select>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -107,6 +108,9 @@ function providerDescription(provider: ASRProvider): string {
   }
   if (provider === 'local-qwen') {
     return '使用本机 MLX Qwen3-ASR 服务识别音频，低延迟、可热词增强，需要先启动本地 WebSocket 服务。';
+  }
+  if (provider === 'mimo') {
+    return '使用小米 MiMo-V2.5-ASR 音频接口，按 WAV 分片识别，可用于和豆包延迟/准确率对比。';
   }
   return '使用浏览器内置 Web Speech API，免费但只能稳定识别麦克风。';
 }

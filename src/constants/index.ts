@@ -9,6 +9,7 @@ import type {
   ProviderDefault,
   AIProvider,
   DoubaoASRConfig,
+  MiMoASRConfig,
 } from '../types';
 
 // ===== localStorage 存储键名 =====
@@ -19,6 +20,7 @@ export const STORAGE_KEYS = {
   EXAM_RECORDS: 'interviewdog_exam_records',
   DOUBAO_ASR_CONFIG: 'interviewdog_doubao_asr',
   LOCAL_QWEN_ASR_CONFIG: 'interviewdog_local_qwen_asr',
+  MIMO_ASR_CONFIG: 'interviewdog_mimo_asr',
   SESSIONS: 'interviewdog_sessions',
   ACTIVE_SESSION_ID: 'interviewdog_active_session',
   RESUME_JD: 'interviewdog_resume_jd',
@@ -147,6 +149,14 @@ export const DEFAULT_LOCAL_QWEN_ASR_CONFIG = {
   endpoint: 'ws://127.0.0.1:8766/ws',
   model: '.models/Qwen3-ASR-1.7B-8bit',
   hotwords: '',
+};
+
+export const DEFAULT_MIMO_ASR_CONFIG: MiMoASRConfig = {
+  apiKey: '',
+  baseUrl: 'https://api.xiaomimimo.com/v1',
+  model: 'mimo-v2.5-asr',
+  language: 'auto',
+  chunkMs: 2500,
 };
 
 // 豆包 ASR WebSocket 地址

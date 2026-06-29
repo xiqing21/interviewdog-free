@@ -14,7 +14,7 @@ export type AIProvider =
   | 'custom';
 
 // ===== 语音识别服务商 =====
-export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen';
+export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen' | 'mimo';
 
 // ===== 音频源类型 =====
 export type AudioSource = 'both' | 'system' | 'microphone';
@@ -56,6 +56,14 @@ export interface LocalQwenASRConfig {
   endpoint: string;
   model: string;
   hotwords: string;
+}
+
+export interface MiMoASRConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  language: 'auto' | 'zh' | 'en';
+  chunkMs: number;
 }
 
 // ===== 应用设置接口（v2 扩展） =====
