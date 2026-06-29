@@ -27,7 +27,6 @@ import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_DOUBAO_ASR_CONFIG,
   DEFAULT_LOCAL_QWEN_ASR_CONFIG,
-  DOUBAO_MERGE_TIMEOUT_DEFAULT,
   STORAGE_KEYS,
   PROVIDER_DEFAULTS,
 } from '../constants';
@@ -100,11 +99,8 @@ function getInitialState(): SettingsState {
 
 function normalizeAppSettings(settings: AppSettings): AppSettings {
   const normalized = { ...settings };
-  if (!normalized.mergeTimeoutMs || normalized.mergeTimeoutMs < 2200) {
+  if (!normalized.mergeTimeoutMs || normalized.mergeTimeoutMs < 1000) {
     normalized.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
-  }
-  if (normalized.asrProvider === 'doubao' && normalized.mergeTimeoutMs < DOUBAO_MERGE_TIMEOUT_DEFAULT) {
-    normalized.mergeTimeoutMs = DOUBAO_MERGE_TIMEOUT_DEFAULT;
   }
   return normalized;
 }

@@ -17,7 +17,6 @@ import type { QAItem, ChatMessage, TranscriptLine, InterviewReview, SpeakerAudio
 import {
   STORAGE_KEYS,
   MERGE_TIMEOUT_DEFAULT,
-  DOUBAO_MERGE_TIMEOUT_DEFAULT,
   RESUME_JD_PROMPT_TEMPLATE,
   ANSWER_MODES,
 } from '../constants';
@@ -631,11 +630,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   function getQuestionCommitTimeout(): number {
     const app = appRef.current;
-    const configured = app.mergeTimeoutMs || MERGE_TIMEOUT_DEFAULT;
-    if (app.asrProvider === 'doubao') {
-      return Math.max(configured, DOUBAO_MERGE_TIMEOUT_DEFAULT);
-    }
-    return configured;
+    return app.mergeTimeoutMs || MERGE_TIMEOUT_DEFAULT;
   }
 
   function extractInterimQuestion(): string {

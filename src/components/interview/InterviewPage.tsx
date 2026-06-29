@@ -515,6 +515,26 @@ export function InterviewPage() {
           </Select>
         </FormControl>
 
+        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+          <InputLabel>句内停顿容忍</InputLabel>
+          <Select
+            label="句内停顿容忍"
+            value={String(appSettings.mergeTimeoutMs)}
+            onChange={(event: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(event.target.value) })}
+          >
+            <MenuItem value="1000">1.0 秒</MenuItem>
+            <MenuItem value="1500">1.5 秒</MenuItem>
+            <MenuItem value="2000">2.0 秒</MenuItem>
+            <MenuItem value="2500">2.5 秒</MenuItem>
+            <MenuItem value="5000">5.0 秒</MenuItem>
+            <MenuItem value="8000">8.0 秒</MenuItem>
+            <MenuItem value="12000">12.0 秒</MenuItem>
+          </Select>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            面试中可随时调整，新的识别片段会按当前值合并触发。
+          </Typography>
+        </FormControl>
+
         <FormControlLabel
           control={
             <Switch

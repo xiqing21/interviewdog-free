@@ -83,13 +83,15 @@ export function AudioSourceSettings() {
           onChange={(e: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(e.target.value) })}
         >
           <MenuItem value="1000">1000ms - 浏览器快速</MenuItem>
+          <MenuItem value="1500">1500ms - 快速停顿</MenuItem>
+          <MenuItem value="2000">2000ms - 自然停顿</MenuItem>
           <MenuItem value="2500">2500ms - 通用默认</MenuItem>
           <MenuItem value="5000">5000ms - 长句</MenuItem>
-          <MenuItem value="8000">8000ms - 豆包推荐，允许自然停顿</MenuItem>
-          <MenuItem value="12000">12000ms - 豆包长问题</MenuItem>
+          <MenuItem value="8000">8000ms - 很稳但较慢</MenuItem>
+          <MenuItem value="12000">12000ms - 超长停顿</MenuItem>
         </Select>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-          面试官说话中途停顿不会立即触发；只有超过这个静默窗口，才把缓存内容合并成一个问题并生成答案。豆包模式最低按 8000ms 处理。
+          面试官说话中途停顿不会立即触发；只有超过这个静默窗口，才把缓存内容合并成一个问题并生成答案。豆包也会严格按这里的设置执行。
         </Typography>
       </FormControl>
     </Paper>
