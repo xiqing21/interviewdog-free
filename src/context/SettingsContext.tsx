@@ -22,6 +22,7 @@ import type {
   DoubaoASRConfig,
   LocalQwenASRConfig,
   MiMoASRConfig,
+  CloudASRConfig,
 } from '../types';
 import {
   DEFAULT_AI_SETTINGS,
@@ -29,6 +30,7 @@ import {
   DEFAULT_DOUBAO_ASR_CONFIG,
   DEFAULT_LOCAL_QWEN_ASR_CONFIG,
   DEFAULT_MIMO_ASR_CONFIG,
+  DEFAULT_CLOUD_ASR_CONFIG,
   STORAGE_KEYS,
   PROVIDER_DEFAULTS,
 } from '../constants';
@@ -43,6 +45,7 @@ export interface SettingsState {
   doubaoConfig: DoubaoASRConfig;
   localQwenConfig: LocalQwenASRConfig;
   mimoConfig: MiMoASRConfig;
+  cloudAsrConfig: CloudASRConfig;
   connectionStatus: ConnectionTestResult | null;
   isTestingConnection: boolean;
 }
@@ -62,6 +65,7 @@ type SettingsAction =
   | { type: 'UPDATE_DOUBAO_CONFIG'; payload: Partial<DoubaoASRConfig> }
   | { type: 'UPDATE_LOCAL_QWEN_CONFIG'; payload: Partial<LocalQwenASRConfig> }
   | { type: 'UPDATE_MIMO_CONFIG'; payload: Partial<MiMoASRConfig> }
+  | { type: 'UPDATE_CLOUD_ASR_CONFIG'; payload: Partial<CloudASRConfig> }
   | { type: 'SET_CONNECTION_STATUS'; payload: ConnectionTestResult | null }
   | { type: 'SET_TESTING'; payload: boolean };
 
@@ -106,7 +110,18 @@ function getInitialState(): SettingsState {
     mimoConfig.apiKey = deobfuscate(mimoConfig.apiKey);
   }
 
-  return { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig, connectionStatus: null, isTestingConnection: false };
+  const cloudAsrConfig: CloudASRConfig = {
+    ...DEFAULT_CLOUD_ASR_CONFIG,
+    ...storageService.get<CloudASRConfig>(STORAGE_KEYS.CLOUD_ASR_CONFIG, DEFAULT_CLOUD_ASR_CONFIG),
+  };
+  ['baiduApiKey', 'baiduSecretKey', 'googleApiKey', 'alibabaToken', 'iflytekApiKey', 'iflytekApiSecret', 'glmApiKey'].forEach((key) => {
+    const value = cloudAsrConfig[key as keyof CloudASRConfig];
+    if (typeof value === 'string' && value) {
+      (cloudAsrConfig as any)[key] = deobfuscate(value);
+    }
+  });
+
+  return { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig, cloudAsrConfig, connectionStatus: null, isTestingConnection: false };
 }
 
 function normalizeAppSettings(settings: AppSettings): AppSettings {
@@ -185,6 +200,8 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
       return { ...state, localQwenConfig: { ...state.localQwenConfig, ...action.payload } };
     case 'UPDATE_MIMO_CONFIG':
       return { ...state, mimoConfig: { ...state.mimoConfig, ...action.payload } };
+    case 'UPDATE_CLOUD_ASR_CONFIG':
+      return { ...state, cloudAsrConfig: { ...state.cloudAsrConfig, ...action.payload } };
     case 'SET_CONNECTION_STATUS':
       return { ...state, connectionStatus: action.payload };
     case 'SET_TESTING':
@@ -208,6 +225,7 @@ export interface SettingsContextValue extends SettingsState {
   updateDoubaoConfig: (p: Partial<DoubaoASRConfig>) => void;
   updateLocalQwenConfig: (p: Partial<LocalQwenASRConfig>) => void;
   updateMiMoConfig: (p: Partial<MiMoASRConfig>) => void;
+  updateCloudASRConfig: (p: Partial<CloudASRConfig>) => void;
   testConnection: () => Promise<ConnectionTestResult>;
 }
 
@@ -235,6 +253,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storageService.set(STORAGE_KEYS.MIMO_ASR_CONFIG, toStore);
   }, [state.mimoConfig]);
   useEffect(() => {
+    const toStore: any = { ...state.cloudAsrConfig };
+    ['baiduApiKey', 'baiduSecretKey', 'googleApiKey', 'alibabaToken', 'iflytekApiKey', 'iflytekApiSecret', 'glmApiKey'].forEach((key) => {
+      toStore[key] = obfuscate(toStore[key]);
+    });
+    storageService.set(STORAGE_KEYS.CLOUD_ASR_CONFIG, toStore);
+  }, [state.cloudAsrConfig]);
+  useEffect(() => {
     const root = document.documentElement;
     state.appSettings.theme === 'dark' ? root.classList.add('dark') : root.classList.remove('dark');
   }, [state.appSettings.theme]);
@@ -252,6 +277,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const updateDoubaoConfig = useCallback((p: Partial<DoubaoASRConfig>) => dispatch({ type: 'UPDATE_DOUBAO_CONFIG', payload: p }), []);
   const updateLocalQwenConfig = useCallback((p: Partial<LocalQwenASRConfig>) => dispatch({ type: 'UPDATE_LOCAL_QWEN_CONFIG', payload: p }), []);
   const updateMiMoConfig = useCallback((p: Partial<MiMoASRConfig>) => dispatch({ type: 'UPDATE_MIMO_CONFIG', payload: p }), []);
+  const updateCloudASRConfig = useCallback((p: Partial<CloudASRConfig>) => dispatch({ type: 'UPDATE_CLOUD_ASR_CONFIG', payload: p }), []);
 
   const testConnection = useCallback(async (): Promise<ConnectionTestResult> => {
     dispatch({ type: 'SET_TESTING', payload: true });
@@ -271,7 +297,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const value: SettingsContextValue = {
     ...state, updateAISettings, setProvider, setTheme, setLanguage,
     acknowledgePrivacy, setASRProvider, setAudioSource, setMyAudioSource,
-    setInterviewerAudioSource, updateAppSettings, updateDoubaoConfig, updateLocalQwenConfig, updateMiMoConfig, testConnection,
+    setInterviewerAudioSource, updateAppSettings, updateDoubaoConfig, updateLocalQwenConfig, updateMiMoConfig, updateCloudASRConfig, testConnection,
   };
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

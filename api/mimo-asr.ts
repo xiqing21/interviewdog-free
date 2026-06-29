@@ -61,7 +61,7 @@ export async function callMiMoAsr(body: MiMoAsrBody): Promise<string> {
     }),
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data: any = await res.json().catch(() => ({}));
   if (!res.ok) {
     const message = data?.error?.message || data?.message || `MiMo API 返回 ${res.status}`;
     throw new Error(message);

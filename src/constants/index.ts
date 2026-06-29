@@ -10,6 +10,7 @@ import type {
   AIProvider,
   DoubaoASRConfig,
   MiMoASRConfig,
+  CloudASRConfig,
 } from '../types';
 
 // ===== localStorage 存储键名 =====
@@ -21,6 +22,7 @@ export const STORAGE_KEYS = {
   DOUBAO_ASR_CONFIG: 'interviewdog_doubao_asr',
   LOCAL_QWEN_ASR_CONFIG: 'interviewdog_local_qwen_asr',
   MIMO_ASR_CONFIG: 'interviewdog_mimo_asr',
+  CLOUD_ASR_CONFIG: 'interviewdog_cloud_asr',
   SESSIONS: 'interviewdog_sessions',
   ACTIVE_SESSION_ID: 'interviewdog_active_session',
   RESUME_JD: 'interviewdog_resume_jd',
@@ -157,6 +159,24 @@ export const DEFAULT_MIMO_ASR_CONFIG: MiMoASRConfig = {
   model: 'mimo-v2.5-asr',
   language: 'auto',
   chunkMs: 2500,
+};
+
+export const DEFAULT_CLOUD_ASR_CONFIG: CloudASRConfig = {
+  chunkMs: 2500,
+  language: 'zh-CN',
+  hotwords: '',
+  baiduApiKey: '',
+  baiduSecretKey: '',
+  googleApiKey: '',
+  alibabaAppKey: '',
+  alibabaToken: '',
+  alibabaEndpoint: 'https://nls-gateway-cn-shanghai.aliyuncs.com/stream/v1/asr',
+  iflytekAppId: '',
+  iflytekApiKey: '',
+  iflytekApiSecret: '',
+  glmApiKey: '',
+  glmBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  glmModel: 'glm-asr-2512',
 };
 
 // 豆包 ASR WebSocket 地址

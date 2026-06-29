@@ -13,6 +13,7 @@ import { AudioSourceSettings } from './AudioSourceSettings';
 import { DoubaoConfig } from './DoubaoConfig';
 import { LocalQwenConfig } from './LocalQwenConfig';
 import { MiMoConfig } from './MiMoConfig';
+import { CloudASRConfig } from './CloudASRConfig';
 import { ResumeJDSettings } from './ResumeJDSettings';
 
 export function SettingsPage() {
@@ -35,6 +36,7 @@ export function SettingsPage() {
       <DoubaoConfig />
       <LocalQwenConfig />
       <MiMoConfig />
+      <CloudASRConfig />
 
       <Divider />
 

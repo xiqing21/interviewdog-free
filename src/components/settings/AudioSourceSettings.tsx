@@ -69,6 +69,11 @@ export function AudioSourceSettings() {
           <MenuItem value="doubao">豆包 ASR（火山引擎 - 更准确）</MenuItem>
           <MenuItem value="local-qwen">本地 Qwen3-ASR（MLX）</MenuItem>
           <MenuItem value="mimo">MiMo-V2.5-ASR（小米，分片）</MenuItem>
+          <MenuItem value="baidu">百度语音识别（分片）</MenuItem>
+          <MenuItem value="google">Google Speech（分片）</MenuItem>
+          <MenuItem value="alibaba">阿里云语音识别（分片）</MenuItem>
+          <MenuItem value="iflytek">讯飞听写/听见（分片）</MenuItem>
+          <MenuItem value="glm">GLM ASR（分片）</MenuItem>
           <MenuItem value="openai">OpenAI Whisper（系统音频备用）</MenuItem>
         </Select>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -111,6 +116,9 @@ function providerDescription(provider: ASRProvider): string {
   }
   if (provider === 'mimo') {
     return '使用小米 MiMo-V2.5-ASR 音频接口，按 WAV 分片识别，可用于和豆包延迟/准确率对比。';
+  }
+  if (['baidu', 'google', 'alibaba', 'iflytek', 'glm'].includes(provider)) {
+    return '使用对应云厂商的语音识别接口，按本地 PCM/WAV 分片提交，适合横向测速。';
   }
   return '使用浏览器内置 Web Speech API，免费但只能稳定识别麦克风。';
 }

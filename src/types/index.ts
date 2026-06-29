@@ -14,7 +14,8 @@ export type AIProvider =
   | 'custom';
 
 // ===== 语音识别服务商 =====
-export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen' | 'mimo';
+export type CloudASRProvider = 'baidu' | 'google' | 'alibaba' | 'iflytek' | 'glm';
+export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen' | 'mimo' | CloudASRProvider;
 
 // ===== 音频源类型 =====
 export type AudioSource = 'both' | 'system' | 'microphone';
@@ -64,6 +65,24 @@ export interface MiMoASRConfig {
   model: string;
   language: 'auto' | 'zh' | 'en';
   chunkMs: number;
+}
+
+export interface CloudASRConfig {
+  chunkMs: number;
+  language: string;
+  hotwords: string;
+  baiduApiKey: string;
+  baiduSecretKey: string;
+  googleApiKey: string;
+  alibabaAppKey: string;
+  alibabaToken: string;
+  alibabaEndpoint: string;
+  iflytekAppId: string;
+  iflytekApiKey: string;
+  iflytekApiSecret: string;
+  glmApiKey: string;
+  glmBaseUrl: string;
+  glmModel: string;
 }
 
 // ===== 应用设置接口（v2 扩展） =====

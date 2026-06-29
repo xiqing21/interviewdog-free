@@ -26,6 +26,25 @@ export default defineConfig({
             res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'MiMo ASR failed' }));
           }
         });
+        server.middlewares.use('/api/cloud-asr', async (req, res) => {
+          if (req.method !== 'POST') {
+            res.statusCode = 405;
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+          }
+
+          try {
+            const body = await readJsonBody(req);
+            const { transcribeCloudAsr } = await import('./api/cloud-asr');
+            const result = await transcribeCloudAsr(body);
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ text: result }));
+          } catch (error) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Cloud ASR failed' }));
+          }
+        });
       },
     },
   ],

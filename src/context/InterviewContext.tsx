@@ -13,7 +13,7 @@ import {
   useEffect,
   type ReactNode,
 } from 'react';
-import type { QAItem, ChatMessage, TranscriptLine, InterviewReview, SpeakerAudioSource } from '../types';
+import type { QAItem, ChatMessage, TranscriptLine, InterviewReview, SpeakerAudioSource, CloudASRProvider, ASRProvider } from '../types';
 import {
   STORAGE_KEYS,
   MERGE_TIMEOUT_DEFAULT,
@@ -27,6 +27,7 @@ import * as doubaoAsrService from '../services/doubaoAsrService';
 import * as openaiChunkAsrService from '../services/openaiChunkAsrService';
 import * as localQwenAsrService from '../services/localQwenAsrService';
 import * as mimoAsrService from '../services/mimoAsrService';
+import * as cloudAsrService from '../services/cloudAsrService';
 import type { LocalQwenSession } from '../services/localQwenAsrService';
 import { chat } from '../services/aiService';
 import { webSearch } from '../services/webSearchService';
@@ -115,7 +116,7 @@ export const InterviewContext = createContext<InterviewContextValue | null>(null
 
 // ===== Provider =====
 export function InterviewProvider({ children }: { children: ReactNode }) {
-  const { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig } = useSettings();
+  const { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig, cloudAsrConfig } = useSettings();
   const { profile: knowledgeProfile } = useKnowledge();
   const {
     activeSession,
@@ -134,6 +135,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const doubaoRef = useRef(doubaoConfig); doubaoRef.current = doubaoConfig;
   const localQwenRef = useRef(localQwenConfig); localQwenRef.current = localQwenConfig;
   const mimoRef = useRef(mimoConfig); mimoRef.current = mimoConfig;
+  const cloudAsrRef = useRef(cloudAsrConfig); cloudAsrRef.current = cloudAsrConfig;
   const sessionRef = useRef(activeSession); sessionRef.current = activeSession;
   const resumeRef = useRef(resume); resumeRef.current = resume;
   const jdRef = useRef(jd); jdRef.current = jd;
@@ -164,6 +166,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     openaiChunkAsrService.stop();
     localQwenAsrService.stop();
     mimoAsrService.stop();
+    cloudAsrService.stop();
+    cloudAsrService.stop();
     qwenMicrophoneSession.current = null;
     qwenSystemAudioSession.current = null;
     if (mergeTimer.current) {
@@ -721,7 +725,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         doubaoAsrService.isActive() ||
         openaiChunkAsrService.isActive() ||
         localQwenAsrService.isActive() ||
-        mimoAsrService.isActive(),
+        mimoAsrService.isActive() ||
+        cloudAsrService.isActive(),
     });
     dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: systemAudioService.isActive() });
   }
@@ -751,6 +756,16 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   async function startMiMoMicrophoneRecognition(speaker: 'interviewer' | 'me'): Promise<boolean> {
     const ok = await mimoAsrService.startMicrophone(mimoRef.current, {
+      onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
+      onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+      onEnd: () => setListeningFromActiveSources(),
+    });
+    setListeningFromActiveSources();
+    return ok;
+  }
+
+  async function startCloudMicrophoneRecognition(provider: CloudASRProvider, speaker: 'interviewer' | 'me'): Promise<boolean> {
+    const ok = await cloudAsrService.startMicrophone(provider, cloudAsrRef.current, {
       onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
       onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
       onEnd: () => setListeningFromActiveSources(),
@@ -841,6 +856,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         openaiChunkAsrService.stop();
         localQwenAsrService.stop();
         mimoAsrService.stop();
+        cloudAsrService.stop();
         dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
         setListeningFromActiveSources();
       },
@@ -939,6 +955,32 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       return true;
     }
 
+    if (isCloudAsrProvider(appRef.current.asrProvider)) {
+      if (!systemAudioService.isSupported()) {
+        dispatch({ type: 'SET_ERROR', payload: '当前浏览器不支持系统音频捕获。请使用 Chrome，并在弹窗中选择共享音频。' });
+        return false;
+      }
+
+      if (!systemAudioService.isActive()) {
+        const prepared = await prepareSystemAudioShare();
+        if (!prepared) return false;
+      }
+
+      const provider = appRef.current.asrProvider;
+      cloudAsrService.start(provider, cloudAsrRef.current, {
+        onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
+        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+        onEnd: () => setListeningFromActiveSources(),
+      });
+      void systemAudioService.start({
+        onPcmData: (pcm) => cloudAsrService.sendAudio(pcm),
+        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); cloudAsrService.stop(); setListeningFromActiveSources(); },
+        onEnd: () => { cloudAsrService.stop(); setListeningFromActiveSources(); },
+      });
+      setListeningFromActiveSources();
+      return true;
+    }
+
     const config = doubaoRef.current;
     if (!config.appId || !config.accessToken) {
       dispatch({ type: 'SET_ERROR', payload: '系统音频识别需要先在设置中配置豆包 ASR 的 App ID 和 Access Token。' });
@@ -984,7 +1026,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (systemSpeaker && app.asrProvider === 'browser') {
       dispatch({
         type: 'SET_ERROR',
-        payload: '浏览器识别引擎只能识别麦克风，不能识别 Chrome 共享出来的系统音频。要识别微信/腾讯会议等系统音频，请把识别引擎切到豆包 ASR、本地 Qwen3-ASR、MiMo ASR 或 OpenAI 分片识别；或者把面试官声音改成麦克风。',
+        payload: '浏览器识别引擎只能识别麦克风，不能识别 Chrome 共享出来的系统音频。要识别微信/腾讯会议等系统音频，请把识别引擎切到豆包 ASR、本地 Qwen3-ASR、MiMo/云厂商 ASR 或 OpenAI 分片识别；或者把面试官声音改成麦克风。',
       });
       dispatch({ type: 'SET_LISTENING', payload: false });
       return;
@@ -999,6 +1041,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         started = (await startLocalQwenMicrophoneRecognition(microphoneSpeaker)) || started;
       } else if (app.asrProvider === 'mimo') {
         started = (await startMiMoMicrophoneRecognition(microphoneSpeaker)) || started;
+      } else if (isCloudAsrProvider(app.asrProvider)) {
+        started = (await startCloudMicrophoneRecognition(app.asrProvider, microphoneSpeaker)) || started;
       } else if (app.asrProvider === 'openai' && !systemSpeaker) {
         started = (await startOpenAIMicrophoneRecognition(microphoneSpeaker)) || started;
       } else {
@@ -1018,6 +1062,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
     dispatch({ type: 'SET_LISTENING', payload: started });
   }, [sendQuestion]);
+
+  function isCloudAsrProvider(provider: ASRProvider): provider is CloudASRProvider {
+    return provider === 'baidu' || provider === 'google' || provider === 'alibaba' || provider === 'iflytek' || provider === 'glm';
+  }
 
   function resolveMicrophoneSpeaker(
     mySource: SpeakerAudioSource,
@@ -1087,6 +1135,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     openaiChunkAsrService.stop();
     localQwenAsrService.stop();
     mimoAsrService.stop();
+    cloudAsrService.stop();
     dispatch({ type: 'SET_LISTENING', payload: false });
     dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
     commitInterimQuestion();
