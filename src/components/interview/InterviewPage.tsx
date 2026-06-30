@@ -45,7 +45,7 @@ import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
-import type { ASRProvider, InterviewSession, SpeakerAudioSource } from '../../types';
+import type { ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
 
 export function InterviewPage() {
   const {
@@ -766,14 +766,6 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
       .map((item) => `### ${item.name}\n${item.content}`)
       .join('\n\n');
   }, [knowledgeProfile.resumes]);
-  const composeKnowledgeText = useCallback((knowledgeIds: string[]) => {
-    const selected = knowledgeIds
-      .map((id) => knowledgeProfile.expertKnowledgeItems.find((item) => item.id === id))
-      .filter((item): item is NonNullable<typeof item> => Boolean(item));
-    return selected
-      .map((item) => `### ${item.name}\n${item.content}`)
-      .join('\n\n');
-  }, [knowledgeProfile.expertKnowledgeItems]);
   const [projectName, setProjectName] = useState(editing ? activeSession?.name ?? '' : '');
   const [selectedRole, setSelectedRole] = useState(currentRole?.key ?? INTERVIEW_ROLE_PRESETS[0].key);
   const [selectedResumeIds, setSelectedResumeIds] = useState<string[]>(
@@ -782,6 +774,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
       : newestResume ? [newestResume.id] : [],
   );
   const [selectedKnowledgeIds, setSelectedKnowledgeIds] = useState<string[]>(defaultKnowledgeIds);
+  const [previewKnowledge, setPreviewKnowledge] = useState<KnowledgeLibraryItem | null>(null);
   const [resumeText, setResumeText] = useState(
     editing
       ? activeSession?.resume ?? resume
@@ -795,9 +788,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
       : currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd,
   );
   const [expertKnowledgeText, setExpertKnowledgeText] = useState(
-    editing
-      ? activeSession?.expertKnowledge ?? composeKnowledgeText(defaultKnowledgeIds)
-      : composeKnowledgeText(defaultKnowledgeIds),
+    editing ? activeSession?.expertKnowledge ?? '' : '',
   );
   const [focusAreas, setFocusAreas] = useState<string[]>(
     editing && activeSession?.focusAreas?.length ? activeSession.focusAreas : ['SQL', '项目深挖'],
@@ -822,13 +813,6 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     const resumeIds = typeof value === 'string' ? value.split(',') : value;
     setSelectedResumeIds(resumeIds);
     setResumeText(resumeIds.length ? composeResumeText(resumeIds) : '');
-  };
-
-  const handleKnowledgeLibraryChange = (event: SelectChangeEvent<string[]>) => {
-    const value = event.target.value;
-    const knowledgeIds = typeof value === 'string' ? value.split(',') : value;
-    setSelectedKnowledgeIds(knowledgeIds);
-    setExpertKnowledgeText(knowledgeIds.length ? composeKnowledgeText(knowledgeIds) : '');
   };
 
   const handleResumeUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -965,31 +949,62 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
 
       {knowledgeProfile.expertKnowledgeItems.length > 0 && (
         <Box sx={{ mt: 2 }}>
-          <FormControl size="small" fullWidth>
-            <InputLabel>引用专家库（可多选）</InputLabel>
-            <Select
-              multiple
-              label="引用专家库（可多选）"
-              value={selectedKnowledgeIds}
-              onChange={handleKnowledgeLibraryChange}
-              renderValue={(selected) => {
-                const names = selected
-                  .map((id) => knowledgeProfile.expertKnowledgeItems.find((item) => item.id === id)?.name)
-                  .filter(Boolean);
-                return names.length ? names.join('、') : '不挂载专家库';
-              }}
-            >
-              {knowledgeProfile.expertKnowledgeItems.map((item) => (
-                <MenuItem key={item.id} value={item.id}>
-                  <Checkbox checked={selectedKnowledgeIds.includes(item.id)} />
-                  <ListItemText
-                    primary={item.name}
-                    secondary={`${item.content.length.toLocaleString('zh-CN')} 字`}
-                  />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, alignItems: 'center', mb: 1 }}>
+            <Typography variant="subtitle2" fontWeight={800}>
+              引用专家库（卡片可多选）
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              已选择 {selectedKnowledgeIds.length} / {knowledgeProfile.expertKnowledgeItems.length}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.25 }}>
+            {knowledgeProfile.expertKnowledgeItems.map((item) => {
+              const checked = selectedKnowledgeIds.includes(item.id);
+              return (
+                <Paper
+                  key={item.id}
+                  variant="outlined"
+                  onClick={() => {
+                    setSelectedKnowledgeIds((current) =>
+                      current.includes(item.id)
+                        ? current.filter((id) => id !== item.id)
+                        : [...current, item.id],
+                    );
+                  }}
+                  sx={{
+                    p: 1.5,
+                    cursor: 'pointer',
+                    borderColor: checked ? 'primary.main' : 'divider',
+                    bgcolor: checked ? 'action.selected' : 'background.paper',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                    <Checkbox checked={checked} sx={{ p: 0.25 }} />
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                      <Typography fontWeight={800} noWrap>{item.name}</Typography>
+                      <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', my: 0.75 }}>
+                        <Chip size="small" label={knowledgeTypeLabel(item)} />
+                        <Chip size="small" label={`${item.content.length.toLocaleString('zh-CN')} 字`} />
+                        {item.qaPairs?.length ? <Chip size="small" color="primary" label={`${item.qaPairs.length} QA`} /> : null}
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {item.content.slice(0, 90)}{item.content.length > 90 ? '...' : ''}
+                      </Typography>
+                    </Box>
+                    <Button
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPreviewKnowledge(item);
+                      }}
+                    >
+                      预览
+                    </Button>
+                  </Box>
+                </Paper>
+              );
+            })}
+          </Box>
         </Box>
       )}
 
@@ -1015,11 +1030,8 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         maxRows={10}
         label="本项目挂载的专家知识库"
         value={expertKnowledgeText}
-        onChange={(event) => {
-          setSelectedKnowledgeIds([]);
-          setExpertKnowledgeText(event.target.value);
-        }}
-        placeholder="可从专家库多选带入，也可以在本项目里临时补充..."
+        onChange={(event) => setExpertKnowledgeText(event.target.value)}
+        placeholder="这里只写本项目临时补充内容；上面的卡片选择不会再被揉进这个文本框。"
         sx={{ mt: 2 }}
       />
 
@@ -1044,6 +1056,39 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
           {editing ? '保存并返回工作台' : '第二步：进入面试工作台'}
         </Button>
       </Box>
+
+      <Dialog open={Boolean(previewKnowledge)} onClose={() => setPreviewKnowledge(null)} maxWidth="md" fullWidth>
+        <DialogTitle>{previewKnowledge?.name}</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            <Chip size="small" label={previewKnowledge ? knowledgeTypeLabel(previewKnowledge) : ''} />
+            <Chip size="small" label={`${previewKnowledge?.content.length ?? 0} 字`} />
+            {previewKnowledge?.sourceUrl && <Chip size="small" label={previewKnowledge.sourceUrl} />}
+          </Box>
+          {previewKnowledge?.qaPairs?.length ? (
+            <Box sx={{ display: 'grid', gap: 1.5 }}>
+              {previewKnowledge.qaPairs.map((pair) => (
+                <Paper key={pair.id} variant="outlined" sx={{ p: 1.5 }}>
+                  <Typography fontWeight={800}>Q: {pair.question}</Typography>
+                  <Typography sx={{ mt: 0.75, whiteSpace: 'pre-wrap' }}>A: {pair.answer}</Typography>
+                </Paper>
+              ))}
+            </Box>
+          ) : (
+            <Typography sx={{ whiteSpace: 'pre-wrap' }}>{previewKnowledge?.content}</Typography>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPreviewKnowledge(null)}>关闭</Button>
+        </DialogActions>
+      </Dialog>
     </Paper>
   );
+}
+
+function knowledgeTypeLabel(item: KnowledgeLibraryItem): string {
+  if (item.type === 'qa') return 'QA 模式';
+  if (item.type === 'webpage') return '网页读取';
+  if (item.type === 'text') return '文本粘贴';
+  return '文档模式';
 }

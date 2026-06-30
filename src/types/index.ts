@@ -120,9 +120,20 @@ export interface KnowledgeLibraryItem {
   id: string;
   name: string;
   content: string;
+  type?: KnowledgeSourceType;
+  sourceUrl?: string;
+  qaPairs?: KnowledgeQAPair[];
   tags?: string[];
   createdAt: number;
   updatedAt: number;
+}
+
+export type KnowledgeSourceType = 'qa' | 'document' | 'text' | 'webpage';
+
+export interface KnowledgeQAPair {
+  id: string;
+  question: string;
+  answer: string;
 }
 
 export interface KnowledgeProfile {

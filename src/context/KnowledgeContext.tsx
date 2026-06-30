@@ -6,7 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
-import type { KnowledgeLibraryItem, KnowledgeProfile, ResumeLibraryItem } from '../types';
+import type { KnowledgeLibraryItem, KnowledgeProfile, KnowledgeQAPair, KnowledgeSourceType, ResumeLibraryItem } from '../types';
 import { DEFAULT_KNOWLEDGE_PROFILE, STORAGE_KEYS } from '../constants';
 import * as storageService from '../services/storageService';
 import * as profileSyncService from '../services/profileSyncService';
@@ -21,10 +21,17 @@ export interface KnowledgeContextValue extends KnowledgeState {
   addResume: (name: string, content: string, tags?: string[]) => void;
   updateResume: (id: string, patch: Partial<Pick<ResumeLibraryItem, 'name' | 'content' | 'tags'>>) => void;
   deleteResume: (id: string) => void;
-  addKnowledgeItem: (name: string, content: string, tags?: string[]) => void;
-  updateKnowledgeItem: (id: string, patch: Partial<Pick<KnowledgeLibraryItem, 'name' | 'content' | 'tags'>>) => void;
+  addKnowledgeItem: (name: string, content: string, options?: AddKnowledgeOptions) => void;
+  updateKnowledgeItem: (id: string, patch: Partial<Pick<KnowledgeLibraryItem, 'name' | 'content' | 'tags' | 'type' | 'sourceUrl' | 'qaPairs'>>) => void;
   deleteKnowledgeItem: (id: string) => void;
   setExpertKnowledge: (text: string) => void;
+}
+
+export interface AddKnowledgeOptions {
+  type?: KnowledgeSourceType;
+  sourceUrl?: string;
+  qaPairs?: KnowledgeQAPair[];
+  tags?: string[];
 }
 
 export const KnowledgeContext = createContext<KnowledgeContextValue | null>(null);
@@ -146,7 +153,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     });
   }, [updateProfile]);
 
-  const addKnowledgeItem = useCallback((name: string, content: string, tags: string[] = []) => {
+  const addKnowledgeItem = useCallback((name: string, content: string, options: AddKnowledgeOptions = {}) => {
     const trimmed = content.trim();
     if (!trimmed) return;
     const now = Date.now();
@@ -154,7 +161,10 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       id: generateId(),
       name: name.trim() || `专家知识库 ${new Date(now).toLocaleDateString('zh-CN')}`,
       content: trimmed,
-      tags,
+      type: options.type ?? 'text',
+      sourceUrl: options.sourceUrl,
+      qaPairs: options.qaPairs,
+      tags: options.tags ?? [],
       createdAt: now,
       updatedAt: now,
     };
@@ -163,7 +173,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
 
   const updateKnowledgeItem = useCallback((
     id: string,
-    patch: Partial<Pick<KnowledgeLibraryItem, 'name' | 'content' | 'tags'>>,
+    patch: Partial<Pick<KnowledgeLibraryItem, 'name' | 'content' | 'tags' | 'type' | 'sourceUrl' | 'qaPairs'>>,
   ) => {
     updateProfile({
       expertKnowledgeItems: stateRef.current.profile.expertKnowledgeItems.map((item) =>
@@ -215,7 +225,7 @@ function normalizeProfile(profile: KnowledgeProfile): KnowledgeProfile {
       ...DEFAULT_KNOWLEDGE_PROFILE,
       ...profile,
       resumes: profile.resumes ?? [],
-      expertKnowledgeItems,
+      expertKnowledgeItems: expertKnowledgeItems.map(normalizeKnowledgeItem),
       expertKnowledge: profile.expertKnowledge ?? '',
     };
   }
@@ -225,13 +235,21 @@ function normalizeProfile(profile: KnowledgeProfile): KnowledgeProfile {
     ...DEFAULT_KNOWLEDGE_PROFILE,
     ...profile,
     resumes: profile.resumes ?? [],
-    expertKnowledgeItems: [{
+    expertKnowledgeItems: [normalizeKnowledgeItem({
       id: 'legacy-expert-knowledge',
       name: '默认专家知识库',
       content: legacyText,
       createdAt: now,
       updatedAt: now,
-    }],
+    })],
     expertKnowledge: profile.expertKnowledge ?? '',
+  };
+}
+
+function normalizeKnowledgeItem(item: KnowledgeLibraryItem): KnowledgeLibraryItem {
+  return {
+    ...item,
+    type: item.type ?? (item.qaPairs?.length ? 'qa' : 'document'),
+    qaPairs: item.qaPairs ?? [],
   };
 }

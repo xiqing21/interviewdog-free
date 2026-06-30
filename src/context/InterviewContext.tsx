@@ -23,6 +23,8 @@ import type {
   CloudASRProvider,
   ASRGatewayProvider,
   ASRProvider,
+  KnowledgeLibraryItem,
+  KnowledgeQAPair,
   WebSearchResult,
 } from '../types';
 import {
@@ -252,19 +254,82 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       prompt += '\n\n' + rj;
     }
 
-    const knowledge = knowledgeRef.current;
-    const sessionKnowledge = session?.expertKnowledge?.trim();
-    const legacyKnowledge = knowledge.expertKnowledge?.trim();
-    const fallbackKnowledge = !sessionKnowledge && !session?.expertKnowledgeIds?.length
-      ? legacyKnowledge
-      : '';
-    const expertKnowledge = sessionKnowledge || fallbackKnowledge;
-    if (expertKnowledge) {
-      prompt += `\n\n## 当前项目挂载的专家知识库\n${expertKnowledge.slice(0, 12000)}`;
-      prompt += '\n\n回答时请优先结合这些材料，提炼成自然口述，不要机械照抄。';
+    const generalKnowledge = buildGeneralKnowledgeContext();
+    if (generalKnowledge) {
+      prompt += `\n\n## 当前项目挂载的专家知识库摘要\n${generalKnowledge}`;
+      prompt += '\n\n回答时请优先结合相关材料，提炼成自然口述，不要机械照抄；QA 命中内容优先级最高。';
     }
 
     return prompt;
+  }
+
+  function selectedKnowledgeItems(): KnowledgeLibraryItem[] {
+    const session = sessionRef.current;
+    const knowledge = knowledgeRef.current;
+    const ids = session?.expertKnowledgeIds ?? [];
+    if (ids.length > 0) {
+      return ids
+        .map((id) => knowledge.expertKnowledgeItems.find((item) => item.id === id))
+        .filter((item): item is KnowledgeLibraryItem => Boolean(item));
+    }
+    return [];
+  }
+
+  function buildGeneralKnowledgeContext(): string {
+    const session = sessionRef.current;
+    const parts: string[] = [];
+    const manual = session?.expertKnowledge?.trim();
+    if (manual) {
+      parts.push(`### 本项目临时补充\n${manual.slice(0, 2500)}`);
+    }
+
+    const items = selectedKnowledgeItems();
+    if (items.length === 0 && !manual) {
+      const legacy = knowledgeRef.current.expertKnowledge?.trim();
+      if (legacy) return legacy.slice(0, 3000);
+    }
+
+    let budget = 6500;
+    for (const item of items) {
+      if (budget <= 0) break;
+      const type = knowledgeTypeLabel(item);
+      const content = item.type === 'qa' && item.qaPairs?.length
+        ? item.qaPairs.slice(0, 8).map((pair) => `Q: ${pair.question}\nA: ${pair.answer}`).join('\n\n')
+        : item.content;
+      const chunk = `### ${item.name}（${type}）\n${content.slice(0, Math.min(1600, budget))}`;
+      parts.push(chunk);
+      budget -= chunk.length;
+    }
+    return parts.join('\n\n').slice(0, 8000);
+  }
+
+  function buildMatchedQAContext(question: string): string {
+    const pairs = selectedKnowledgeItems()
+      .filter((item) => item.type === 'qa' && item.qaPairs?.length)
+      .flatMap((item) => (item.qaPairs ?? []).map((pair) => ({ item, pair, score: qaMatchScore(question, pair) })))
+      .filter((entry) => entry.score >= 0.16)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+    if (pairs.length === 0) return '';
+    return pairs
+      .map((entry, index) => `${index + 1}. 来源：${entry.item.name}\nQ: ${entry.pair.question}\nA: ${entry.pair.answer}`)
+      .join('\n\n')
+      .slice(0, 4500);
+  }
+
+  function qaMatchScore(question: string, pair: KnowledgeQAPair): number {
+    const q = normalizeTranscriptText(question);
+    const target = normalizeTranscriptText(`${pair.question}${pair.answer}`);
+    if (!q || !target) return 0;
+    if (target.includes(q) || q.includes(normalizeTranscriptText(pair.question))) return 1;
+    return textSimilarity(q, target);
+  }
+
+  function knowledgeTypeLabel(item: KnowledgeLibraryItem): string {
+    if (item.type === 'qa') return 'QA';
+    if (item.type === 'webpage') return '网页';
+    if (item.type === 'text') return '文本';
+    return '文档';
   }
 
   function formatSearchResults(results: Awaited<ReturnType<typeof webSearch>>): string {
@@ -545,16 +610,23 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const searchContext = searchResults.length
       ? `\n\n联网搜索结果：\n${formatSearchResults(searchResults)}\n\n请把搜索结果作为补充资料使用；如与简历/专家库冲突，以候选人真实经历优先。`
       : '';
+    const matchedQA = buildMatchedQAContext(question);
+    const qaKnowledgeContext = matchedQA
+      ? `\n\n命中的专家库 QA（优先参考）：\n${matchedQA}`
+      : '';
     const hotwords = parseHotwords(appRef.current.asrHotwords);
     const hotwordContext = hotwords.length ? `\n\n语音识别热词/专业词：${hotwords.join('、')}` : '';
     messages.push({
       role: 'user',
       content: transcriptContext
-        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题生成答案。\n\n${transcriptContext}${searchContext}${hotwordContext}\n\n请回答面试官问题：${question}`
-        : `面试官问题：${question}${searchContext}${hotwordContext}`,
+        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题生成答案。\n\n${transcriptContext}${qaKnowledgeContext}${searchContext}${hotwordContext}\n\n请回答面试官问题：${question}`
+        : `面试官问题：${question}${qaKnowledgeContext}${searchContext}${hotwordContext}`,
     });
 
     let accumulated = '';
+    const generationTimeout = window.setTimeout(() => {
+      controller.abort();
+    }, 75_000);
     try {
       await chat(messages, settings, (chunk: string) => {
         if (runId !== generationRunId.current) return;
@@ -567,7 +639,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       if (isAbortError(error)) {
         if (runId === generationRunId.current) {
-          updateQA(id, { isStreaming: false, error: '已打断，正在切换到新的生成方式。' });
+          updateQA(id, { isStreaming: false, error: accumulated ? undefined : '生成超时或已被打断，请点“重新生成/简洁/详细”再试。' });
         }
         return;
       }
@@ -575,6 +647,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       updateQA(id, { error: errMsg, isStreaming: false });
       dispatch({ type: 'SET_ERROR', payload: errMsg });
     } finally {
+      window.clearTimeout(generationTimeout);
       if (runId === generationRunId.current) {
         generationAbortController.current = null;
         dispatch({ type: 'SET_PROCESSING', payload: false });
