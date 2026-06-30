@@ -7,12 +7,15 @@ import { useMemo } from 'react';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SettingsProvider } from './context/SettingsContext';
+import { AuthProvider } from './context/AuthContext';
 import { SessionProvider } from './context/SessionContext';
+import { KnowledgeProvider } from './context/KnowledgeContext';
 import { InterviewProvider } from './context/InterviewContext';
 import { ExamProvider } from './context/ExamContext';
 import { AppLayout } from './components/layout/AppLayout';
 import { InterviewPage } from './components/interview/InterviewPage';
 import { ExamPage } from './components/exam/ExamPage';
+import { KnowledgePage } from './components/knowledge/KnowledgePage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { useSettings } from './hooks/useSettings';
 import { createAppTheme } from './styles/theme';
@@ -29,6 +32,7 @@ function AppContent(): JSX.Element {
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/interview" replace />} />
             <Route path="interview" element={<InterviewPage />} />
+            <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="exam" element={<ExamPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/interview" replace />} />
@@ -42,13 +46,17 @@ function AppContent(): JSX.Element {
 export default function App(): JSX.Element {
   return (
     <SettingsProvider>
-      <SessionProvider>
-        <InterviewProvider>
-          <ExamProvider>
-            <AppContent />
-          </ExamProvider>
-        </InterviewProvider>
-      </SessionProvider>
+      <AuthProvider>
+        <SessionProvider>
+          <KnowledgeProvider>
+            <InterviewProvider>
+              <ExamProvider>
+                <AppContent />
+              </ExamProvider>
+            </InterviewProvider>
+          </KnowledgeProvider>
+        </SessionProvider>
+      </AuthProvider>
     </SettingsProvider>
   );
 }

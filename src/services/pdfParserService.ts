@@ -6,10 +6,10 @@
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-// 设置 pdf.js worker 路径（使用 CDN）
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.worker.min.mjs';
+// Use the worker shipped with the installed pdfjs-dist package so API and worker versions stay in sync.
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 /**
  * 从 File 对象解析 PDF 文本。

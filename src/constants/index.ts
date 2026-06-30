@@ -9,6 +9,9 @@ import type {
   ProviderDefault,
   AIProvider,
   DoubaoASRConfig,
+  MiMoASRConfig,
+  CloudASRConfig,
+  ThemeMode,
 } from '../types';
 
 // ===== localStorage 存储键名 =====
@@ -18,20 +21,25 @@ export const STORAGE_KEYS = {
   QA_LIST: 'interviewdog_qa_list',
   EXAM_RECORDS: 'interviewdog_exam_records',
   DOUBAO_ASR_CONFIG: 'interviewdog_doubao_asr',
+  LOCAL_QWEN_ASR_CONFIG: 'interviewdog_local_qwen_asr',
+  MIMO_ASR_CONFIG: 'interviewdog_mimo_asr',
+  CLOUD_ASR_CONFIG: 'interviewdog_cloud_asr',
   SESSIONS: 'interviewdog_sessions',
   ACTIVE_SESSION_ID: 'interviewdog_active_session',
   RESUME_JD: 'interviewdog_resume_jd',
+  KNOWLEDGE_PROFILE: 'interviewdog_knowledge_profile',
+  LAST_AUTH_EMAIL: 'interviewdog_last_auth_email',
 } as const;
 
 // ===== 系统提示词 =====
 
 /** 面试辅助默认提示词 — 简洁模式 */
 export const DEFAULT_INTERVIEW_PROMPT_CONCISE =
-  '你是一位资深面试助手。请用1-2句话简洁有力地回答面试官的问题，直击要点。';
+  '你是一位资深面试助手。请用面试口吻回答，默认控制在 4-6 个要点或 60-90 秒表达内。不要只给一句话；即使是简洁模式，也要完整覆盖开场结论、关键依据、项目例子、量化结果和一个贴合简历/岗位的亮点。';
 
 /** 面试辅助默认提示词 — 详细模式 */
 export const DEFAULT_INTERVIEW_PROMPT_DETAILED =
-  '你是一位资深技术面试助手。请详细、准确、条理清晰地回答面试官的问题，适当给出代码示例或实践案例。';
+  '你是一位资深技术面试助手。请给出可直接口述的完整回答，通常按「开场结论 → 背景/项目经历 → 技术细节 → 量化结果 → 面试官可能追问」组织。遇到自我介绍、项目介绍、职业规划等开放题时，输出 1.5-3 分钟版本，必须结合简历、岗位方向和考察方向，不要过短。遇到技术题时给出原理、步骤、例子、复杂度/权衡和可追问点。';
 
 /** 笔试辅助默认提示词 */
 export const DEFAULT_EXAM_PROMPT =
@@ -81,25 +89,99 @@ export const PROVIDER_ORDER: AIProvider[] = [
 
 // ===== 回答模式配置 =====
 export const ANSWER_MODES = [
-  { key: 'concise' as const, label: '简洁模式', desc: '1-2句话，直击要点', prompt: DEFAULT_INTERVIEW_PROMPT_CONCISE },
-  { key: 'detailed' as const, label: '详细模式', desc: '完整分析 + 代码示例', prompt: DEFAULT_INTERVIEW_PROMPT_DETAILED },
+  { key: 'concise' as const, label: '简洁模式', desc: '4-6个口述要点', prompt: DEFAULT_INTERVIEW_PROMPT_CONCISE },
+  { key: 'detailed' as const, label: '详细模式', desc: '展开项目、细节和追问', prompt: DEFAULT_INTERVIEW_PROMPT_DETAILED },
 ];
+
+// ===== 面试准备预设 =====
+export const INTERVIEW_ROLE_PRESETS = [
+  {
+    key: 'bigdata',
+    label: '大数据开发',
+    jd: '岗位方向：大数据开发。重点关注 SQL、Hive、Spark、Flink、数据仓库、离线/实时数仓、数据治理、任务调度、性能优化和业务指标理解。',
+  },
+  {
+    key: 'web3',
+    label: 'Web3 开发',
+    jd: '岗位方向：Web3 开发。重点关注 Solidity、智能合约安全、EVM、钱包连接、链上数据、DeFi、合约事件、RPC、viem/ethers、前后端与链上交互。',
+  },
+  {
+    key: 'backend',
+    label: '后端开发',
+    jd: '岗位方向：后端开发。重点关注系统设计、数据库、缓存、消息队列、并发、可观测性、稳定性、接口设计和工程实践。',
+  },
+  {
+    key: 'frontend',
+    label: '前端开发',
+    jd: '岗位方向：前端开发。重点关注 React、TypeScript、性能优化、工程化、状态管理、浏览器原理、组件设计和前端系统设计。',
+  },
+] as const;
+
+export const INTERVIEW_FOCUS_OPTIONS = [
+  'SQL',
+  '算法',
+  '系统设计',
+  '项目深挖',
+  '八股基础',
+  '业务场景',
+  'Web3',
+  '大数据',
+] as const;
 
 // ===== 音频源配置 =====
 export const AUDIO_SOURCES = [
-  { key: 'system' as const, label: '系统音频', desc: '捕获会议软件中面试官的声音（需 Chrome 分享标签页音频）' },
-  { key: 'microphone' as const, label: '麦克风', desc: '捕获麦克风输入的语音' },
+  { key: 'both' as const, label: '双路识别（我 + 面试官）', desc: '同时识别你的麦克风声音和腾讯会议等应用里的系统音频；系统音频会调用 Chrome 的屏幕/窗口/标签页共享音频能力' },
+  { key: 'system' as const, label: '系统音频（面试官）', desc: '捕获腾讯会议等会议软件里的面试官声音（需 Chrome 分享标签页/屏幕音频）' },
+  { key: 'microphone' as const, label: '麦克风（我的声音）', desc: '捕获你自己的麦克风输入，适合练习或手动口述问题' },
 ];
+
+export const SPEAKER_AUDIO_SOURCES = [
+  { key: 'microphone' as const, label: '麦克风', desc: '使用浏览器麦克风权限，适合识别你自己的声音' },
+  { key: 'system' as const, label: '系统音频', desc: '调用 Chrome 屏幕/窗口共享音频，适合识别腾讯会议等软件里的声音' },
+  { key: 'muted' as const, label: '静音', desc: '不识别这一侧声音' },
+] as const;
 
 // ===== 豆包 ASR 默认配置 =====
 export const DEFAULT_DOUBAO_ASR_CONFIG: DoubaoASRConfig = {
   appId: '',
   accessToken: '',
-  cluster: 'volcengine_input_common',
+  resourceId: 'volc.bigasr.sauc.duration',
+};
+
+export const DEFAULT_LOCAL_QWEN_ASR_CONFIG = {
+  endpoint: 'ws://127.0.0.1:8766/ws',
+  model: '.models/Qwen3-ASR-1.7B-8bit',
+  hotwords: '',
+};
+
+export const DEFAULT_MIMO_ASR_CONFIG: MiMoASRConfig = {
+  apiKey: '',
+  baseUrl: 'https://api.xiaomimimo.com/v1',
+  model: 'mimo-v2.5-asr',
+  language: 'auto',
+  chunkMs: 2500,
+};
+
+export const DEFAULT_CLOUD_ASR_CONFIG: CloudASRConfig = {
+  chunkMs: 2500,
+  language: 'zh-CN',
+  hotwords: '',
+  baiduApiKey: '',
+  baiduSecretKey: '',
+  googleApiKey: '',
+  alibabaAppKey: '',
+  alibabaToken: '',
+  alibabaEndpoint: 'https://nls-gateway-cn-shanghai.aliyuncs.com/stream/v1/asr',
+  iflytekAppId: '',
+  iflytekApiKey: '',
+  iflytekApiSecret: '',
+  glmApiKey: '',
+  glmBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  glmModel: 'glm-asr-2512',
 };
 
 // 豆包 ASR WebSocket 地址
-export const DOUBAO_ASR_WS_URL = 'wss://openspeech.bytedance.com/api/v2/asr';
+export const DOUBAO_ASR_WS_PATH = '/api/doubao-asr';
 
 // ===== 默认 AI 配置 =====
 export const DEFAULT_AI_SETTINGS: AISettings = {
@@ -109,7 +191,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   textModel: 'gpt-4o',
   visionModel: 'gpt-4o',
   streaming: true,
-  interviewSystemPrompt: DEFAULT_INTERVIEW_PROMPT_CONCISE,
+  interviewSystemPrompt: DEFAULT_INTERVIEW_PROMPT_DETAILED,
   examSystemPrompt: DEFAULT_EXAM_PROMPT,
   contextWindowSize: 5,
 };
@@ -120,24 +202,39 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   language: 'zh',
   privacyAcknowledged: false,
   asrProvider: 'browser',
-  audioSource: 'system',
-  defaultAnswerMode: 'concise',
-  mergeTimeoutMs: 1500,
+  audioSource: 'both',
+  myAudioSource: 'microphone',
+  interviewerAudioSource: 'system',
+  defaultAnswerMode: 'detailed',
+  mergeTimeoutMs: 2500,
+  webSearchEnabled: false,
+  asrHotwords: 'Fluss、Flink、StarRocks',
 };
 
 // ===== 默认简历JD数据 =====
 export const DEFAULT_RESUME_JD = { resume: '', jd: '' };
+export const DEFAULT_KNOWLEDGE_PROFILE = { resumes: [], expertKnowledgeItems: [], expertKnowledge: '' };
+
+export const THEME_OPTIONS: Array<{ key: ThemeMode; label: string; desc: string }> = [
+  { key: 'dark', label: '深色工作台', desc: '默认深色，高对比，适合长时间面试。' },
+  { key: 'light', label: '清爽浅色', desc: '浅色背景，白天使用更轻。' },
+  { key: 'clay', label: '粘土拟态', desc: '柔和立体控件，视觉更轻松。' },
+  { key: 'midnight', label: '午夜蓝', desc: '更沉稳的蓝黑界面，突出转写和答案。' },
+  { key: 'forest', label: '森林绿', desc: '低饱和绿色，适合复盘和阅读。' },
+  { key: 'mono', label: '黑白极简', desc: '减少色彩干扰，偏工具感。' },
+];
 
 // ===== 业务常量 =====
 export const MAX_EXAM_RECORDS = 50;
 export const STREAM_TIMEOUT_MS = 120_000;
 export const API_TIMEOUT_MS = 30_000;
 export const MAX_SESSIONS = 20;
-export const MERGE_TIMEOUT_DEFAULT = 1500;
+export const MERGE_TIMEOUT_DEFAULT = 2500;
 
 // ===== 左侧导航菜单项 =====
 export const NAV_ITEMS = [
   { path: '/interview', label: '面试辅助', icon: 'RecordVoiceOver' },
+  { path: '/knowledge', label: '简历与知识库', icon: 'LibraryBooks' },
   { path: '/exam', label: '笔试辅助', icon: 'EditNote' },
   { path: '/settings', label: '设置', icon: 'Settings' },
 ] as const;

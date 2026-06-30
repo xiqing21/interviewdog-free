@@ -5,7 +5,7 @@
 
 import { useState, useCallback } from 'react';
 import {
-  Paper, Typography, TextField, IconButton, Button,
+  Typography, TextField, IconButton, Button,
   Menu, MenuItem, ListItemIcon, ListItemText, Box,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
@@ -36,7 +36,18 @@ export function SessionManager() {
   }, [switchSession]);
 
   return (
-    <Paper sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+    <Box
+      sx={{
+        p: 1.5,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 1,
+        flexWrap: 'wrap',
+        border: '1px solid',
+        borderColor: 'divider',
+        borderRadius: 1,
+      }}
+    >
       <FolderOpenIcon color="primary" fontSize="small" />
       {editingId ? (
         <TextField
@@ -131,6 +142,6 @@ export function SessionManager() {
           ))
         )}
       </Menu>
-    </Paper>
+    </Box>
   );
 }

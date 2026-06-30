@@ -12,9 +12,16 @@ import {
   Typography,
   TextField,
   Button,
+  Chip,
+  Link as MuiLink,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import StopCircleIcon from '@mui/icons-material/StopCircle';
+import ShortTextIcon from '@mui/icons-material/ShortText';
+import SubjectIcon from '@mui/icons-material/Subject';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import type { QAItem } from '../../types';
 import { useInterview } from '../../hooks/useInterview';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
@@ -25,7 +32,7 @@ interface QACardProps {
 }
 
 export function QACard({ qa }: QACardProps) {
-  const { regenerateAnswer, editQuestion, isProcessing } = useInterview();
+  const { regenerateAnswer, editQuestion, deleteQuestion, stopGeneration } = useInterview();
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(qa.question);
 
@@ -93,6 +100,35 @@ export function QACard({ qa }: QACardProps) {
             A:
           </Typography>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+            {qa.searchResults && qa.searchResults.length > 0 && (
+              <Box
+                sx={{
+                  mb: 1.5,
+                  p: 1.25,
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 1,
+                  bgcolor: 'action.hover',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                  <Chip size="small" color="info" label="联网搜索参考" />
+                  <Typography variant="caption" color="text.secondary">
+                    已和原答案一起综合生成
+                  </Typography>
+                </Box>
+                {qa.searchResults.slice(0, 4).map((item) => (
+                  <Box key={item.url} sx={{ mb: 0.75 }}>
+                    <MuiLink href={item.url} target="_blank" rel="noreferrer" underline="hover" fontSize={13}>
+                      {item.title}
+                    </MuiLink>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      {item.snippet}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
             {qa.answer ? (
               <>
                 <MarkdownRenderer content={qa.answer} />
@@ -121,20 +157,65 @@ export function QACard({ qa }: QACardProps) {
           size="small"
           startIcon={<RefreshIcon />}
           onClick={() => regenerateAnswer(qa.id)}
-          disabled={isProcessing}
         >
           重新生成
         </Button>
+        <Button
+          size="small"
+          startIcon={<ShortTextIcon />}
+          onClick={() => regenerateAnswer(qa.id, { mode: 'concise' })}
+        >
+          简洁
+        </Button>
+        <Button
+          size="small"
+          startIcon={<SubjectIcon />}
+          onClick={() => regenerateAnswer(qa.id, { mode: 'detailed' })}
+        >
+          详细
+        </Button>
+        <Button
+          size="small"
+          startIcon={<AccountTreeIcon />}
+          onClick={() => regenerateAnswer(qa.id, { mode: 'star' })}
+        >
+          STAR
+        </Button>
+        <Button
+          size="small"
+          startIcon={<AccountTreeIcon />}
+          onClick={() => regenerateAnswer(qa.id, { mode: 'star-no-context' })}
+        >
+          清上下文STAR
+        </Button>
+        {qa.isStreaming && (
+          <Button
+            size="small"
+            color="warning"
+            startIcon={<StopCircleIcon />}
+            onClick={stopGeneration}
+          >
+            停止
+          </Button>
+        )}
         {!editing && (
           <Button
             size="small"
             startIcon={<EditIcon />}
             onClick={handleStartEdit}
-            disabled={isProcessing}
           >
             编辑问题
           </Button>
         )}
+        <Button
+          size="small"
+          color="error"
+          startIcon={<DeleteOutlineIcon />}
+          onClick={() => deleteQuestion(qa.id)}
+          sx={{ ml: 'auto' }}
+        >
+          删除
+        </Button>
       </CardActions>
     </Card>
   );

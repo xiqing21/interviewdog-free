@@ -105,6 +105,7 @@ export async function chat(
   messages: ChatMessage[],
   settings: AISettings,
   onChunk?: (text: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
   const apiKey = getApiKey(settings);
   if (!apiKey) {
@@ -129,7 +130,7 @@ export async function chat(
       method: 'POST',
       headers,
       body: JSON.stringify(requestBody),
-      signal: AbortSignal.timeout(
+      signal: signal ?? AbortSignal.timeout(
         useStreaming ? STREAM_TIMEOUT_MS : API_TIMEOUT_MS,
       ),
     });

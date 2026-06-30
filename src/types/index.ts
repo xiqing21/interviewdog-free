@@ -14,10 +14,13 @@ export type AIProvider =
   | 'custom';
 
 // ===== 语音识别服务商 =====
-export type ASRProvider = 'browser' | 'doubao';
+export type CloudASRProvider = 'baidu' | 'google' | 'alibaba' | 'iflytek' | 'glm';
+export type ASRGatewayProvider = 'gateway-doubao' | 'gateway-iflytek' | 'gateway-alibaba';
+export type ASRProvider = 'browser' | 'doubao' | 'openai' | 'local-qwen' | 'mimo' | CloudASRProvider | ASRGatewayProvider;
 
 // ===== 音频源类型 =====
-export type AudioSource = 'system' | 'microphone';
+export type AudioSource = 'both' | 'system' | 'microphone';
+export type SpeakerAudioSource = 'microphone' | 'system' | 'muted';
 
 // ===== 面试回答模式 =====
 export type AnswerMode = 'concise' | 'detailed';
@@ -26,7 +29,7 @@ export type AnswerMode = 'concise' | 'detailed';
 export type ExamType = 'coding' | 'choice' | 'chart' | 'logic' | 'english';
 
 // ===== 主题模式类型 =====
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'dark' | 'light' | 'clay' | 'midnight' | 'forest' | 'mono';
 
 // ===== 语言类型 =====
 export type Language = 'zh' | 'en';
@@ -48,7 +51,39 @@ export interface AISettings {
 export interface DoubaoASRConfig {
   appId: string;
   accessToken: string;
-  cluster: string;
+  resourceId: string;
+}
+
+export interface LocalQwenASRConfig {
+  endpoint: string;
+  model: string;
+  hotwords: string;
+}
+
+export interface MiMoASRConfig {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  language: 'auto' | 'zh' | 'en';
+  chunkMs: number;
+}
+
+export interface CloudASRConfig {
+  chunkMs: number;
+  language: string;
+  hotwords: string;
+  baiduApiKey: string;
+  baiduSecretKey: string;
+  googleApiKey: string;
+  alibabaAppKey: string;
+  alibabaToken: string;
+  alibabaEndpoint: string;
+  iflytekAppId: string;
+  iflytekApiKey: string;
+  iflytekApiSecret: string;
+  glmApiKey: string;
+  glmBaseUrl: string;
+  glmModel: string;
 }
 
 // ===== 应用设置接口（v2 扩展） =====
@@ -58,14 +93,44 @@ export interface AppSettings {
   privacyAcknowledged: boolean;
   asrProvider: ASRProvider;
   audioSource: AudioSource;
+  myAudioSource: SpeakerAudioSource;
+  interviewerAudioSource: SpeakerAudioSource;
   defaultAnswerMode: AnswerMode;
   mergeTimeoutMs: number;
+  webSearchEnabled: boolean;
+  asrHotwords: string;
 }
 
 // ===== 简历与JD数据 =====
 export interface ResumeJDData {
   resume: string;
   jd: string;
+}
+
+export interface ResumeLibraryItem {
+  id: string;
+  name: string;
+  content: string;
+  tags?: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface KnowledgeLibraryItem {
+  id: string;
+  name: string;
+  content: string;
+  tags?: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface KnowledgeProfile {
+  resumes: ResumeLibraryItem[];
+  expertKnowledgeItems: KnowledgeLibraryItem[];
+  /** @deprecated Legacy single text knowledge field kept for migration compatibility. */
+  expertKnowledge: string;
+  updatedAt?: number;
 }
 
 // ===== 模型信息（来自 /v1/models API） =====
@@ -81,10 +146,19 @@ export interface InterviewSession {
   id: string;
   name: string;
   createdAt: number;
+  updatedAt?: number;
+  archivedAt?: number;
   qaList: QAItem[];
+  transcriptLines?: TranscriptLine[];
+  review?: InterviewReview;
   answerMode: AnswerMode;
   resume?: string;
+  resumeIds?: string[];
   jd?: string;
+  targetRole?: string;
+  focusAreas?: string[];
+  expertKnowledge?: string;
+  expertKnowledgeIds?: string[];
 }
 
 // ===== 面试项目摘要（列表用） =====
@@ -103,6 +177,31 @@ export interface QAItem {
   timestamp: number;
   isStreaming: boolean;
   error?: string;
+  searchResults?: WebSearchResult[];
+  generationMode?: AnswerGenerationMode;
+}
+
+export type AnswerGenerationMode = 'normal' | 'concise' | 'detailed' | 'star' | 'star-no-context';
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface TranscriptLine {
+  id: string;
+  speaker: 'interviewer' | 'me';
+  text: string;
+  timestamp: number;
+}
+
+export interface InterviewReview {
+  summary: string;
+  strengths: string[];
+  risks: string[];
+  followUps: string[];
+  generatedAt: number;
 }
 
 // ===== 笔试记录条目 =====

@@ -8,9 +8,16 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.venv-asr
+.models/
 dist
 dist-ssr
+*.tsbuildinfo
+vite.config.d.ts
+api/*.d.ts
 *.local
+__pycache__/
+*.pyc
 
 # Editor directories and files
 .vscode/*
@@ -33,3 +40,4 @@ dist-ssr
 
 # pnpm
 .pnpm-store/
+.vercel

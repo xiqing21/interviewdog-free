@@ -11,12 +11,17 @@ import { PromptConfig } from './PromptConfig';
 import { ConnectionTest } from './ConnectionTest';
 import { AudioSourceSettings } from './AudioSourceSettings';
 import { DoubaoConfig } from './DoubaoConfig';
+import { LocalQwenConfig } from './LocalQwenConfig';
+import { MiMoConfig } from './MiMoConfig';
+import { CloudASRConfig } from './CloudASRConfig';
 import { ResumeJDSettings } from './ResumeJDSettings';
+import { ThemeSettings } from './ThemeSettings';
 
 export function SettingsPage() {
   return (
     <Box sx={{ maxWidth: 700, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
       <Typography variant="h5" fontWeight={700}>设置</Typography>
+      <ThemeSettings />
 
       {/* AI 服务商 */}
       <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>🤖 AI 模型</Typography>
@@ -31,6 +36,9 @@ export function SettingsPage() {
       <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>🎤 语音识别</Typography>
       <AudioSourceSettings />
       <DoubaoConfig />
+      <LocalQwenConfig />
+      <MiMoConfig />
+      <CloudASRConfig />
 
       <Divider />
 

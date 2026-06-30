@@ -28,6 +28,9 @@ export function AnswerModeToggle() {
         <ToggleButton value="concise" sx={{ px: 2 }}>简洁</ToggleButton>
         <ToggleButton value="detailed" sx={{ px: 2 }}>详细</ToggleButton>
       </ToggleButtonGroup>
+      <Typography variant="caption" color="text.secondary">
+        影响后续生成/重新生成
+      </Typography>
     </Box>
   );
 }

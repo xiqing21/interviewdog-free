@@ -18,14 +18,22 @@ import type {
   AIProvider,
   ASRProvider,
   AudioSource,
+  SpeakerAudioSource,
   DoubaoASRConfig,
+  LocalQwenASRConfig,
+  MiMoASRConfig,
+  CloudASRConfig,
 } from '../types';
 import {
   DEFAULT_AI_SETTINGS,
   DEFAULT_APP_SETTINGS,
   DEFAULT_DOUBAO_ASR_CONFIG,
+  DEFAULT_LOCAL_QWEN_ASR_CONFIG,
+  DEFAULT_MIMO_ASR_CONFIG,
+  DEFAULT_CLOUD_ASR_CONFIG,
   STORAGE_KEYS,
   PROVIDER_DEFAULTS,
+  THEME_OPTIONS,
 } from '../constants';
 import * as storageService from '../services/storageService';
 import { obfuscate, deobfuscate } from '../services/cryptoService';
@@ -36,6 +44,9 @@ export interface SettingsState {
   aiSettings: AISettings;
   appSettings: AppSettings;
   doubaoConfig: DoubaoASRConfig;
+  localQwenConfig: LocalQwenASRConfig;
+  mimoConfig: MiMoASRConfig;
+  cloudAsrConfig: CloudASRConfig;
   connectionStatus: ConnectionTestResult | null;
   isTestingConnection: boolean;
 }
@@ -50,7 +61,12 @@ type SettingsAction =
   | { type: 'ACKNOWLEDGE_PRIVACY' }
   | { type: 'SET_ASR_PROVIDER'; payload: ASRProvider }
   | { type: 'SET_AUDIO_SOURCE'; payload: AudioSource }
+  | { type: 'SET_MY_AUDIO_SOURCE'; payload: SpeakerAudioSource }
+  | { type: 'SET_INTERVIEWER_AUDIO_SOURCE'; payload: SpeakerAudioSource }
   | { type: 'UPDATE_DOUBAO_CONFIG'; payload: Partial<DoubaoASRConfig> }
+  | { type: 'UPDATE_LOCAL_QWEN_CONFIG'; payload: Partial<LocalQwenASRConfig> }
+  | { type: 'UPDATE_MIMO_CONFIG'; payload: Partial<MiMoASRConfig> }
+  | { type: 'UPDATE_CLOUD_ASR_CONFIG'; payload: Partial<CloudASRConfig> }
   | { type: 'SET_CONNECTION_STATUS'; payload: ConnectionTestResult | null }
   | { type: 'SET_TESTING'; payload: boolean };
 
@@ -63,16 +79,61 @@ function getInitialState(): SettingsState {
     ...DEFAULT_APP_SETTINGS,
     ...storageService.get<AppSettings>(STORAGE_KEYS.APP_SETTINGS, DEFAULT_APP_SETTINGS),
   };
+  if (!appSettings.mergeTimeoutMs || appSettings.mergeTimeoutMs < 2200) {
+    appSettings.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
+  }
+  Object.assign(appSettings, normalizeAppSettings(appSettings));
 
   const doubaoConfig: DoubaoASRConfig = {
     ...DEFAULT_DOUBAO_ASR_CONFIG,
     ...storageService.get<DoubaoASRConfig>(STORAGE_KEYS.DOUBAO_ASR_CONFIG, DEFAULT_DOUBAO_ASR_CONFIG),
   };
+  if (doubaoConfig.resourceId === 'volc.seedasr.sauc.duration') {
+    doubaoConfig.resourceId = DEFAULT_DOUBAO_ASR_CONFIG.resourceId;
+  }
   if (doubaoConfig.accessToken) {
     doubaoConfig.accessToken = deobfuscate(doubaoConfig.accessToken);
   }
 
-  return { aiSettings, appSettings, doubaoConfig, connectionStatus: null, isTestingConnection: false };
+  const localQwenConfig: LocalQwenASRConfig = {
+    ...DEFAULT_LOCAL_QWEN_ASR_CONFIG,
+    ...storageService.get<LocalQwenASRConfig>(STORAGE_KEYS.LOCAL_QWEN_ASR_CONFIG, DEFAULT_LOCAL_QWEN_ASR_CONFIG),
+  };
+  if (localQwenConfig.hotwords === '大数据开发、StarRocks、Flink、Fluss、MLX、量化、湖仓一体') {
+    localQwenConfig.hotwords = '';
+  }
+
+  const mimoConfig: MiMoASRConfig = {
+    ...DEFAULT_MIMO_ASR_CONFIG,
+    ...storageService.get<MiMoASRConfig>(STORAGE_KEYS.MIMO_ASR_CONFIG, DEFAULT_MIMO_ASR_CONFIG),
+  };
+  if (mimoConfig.apiKey) {
+    mimoConfig.apiKey = deobfuscate(mimoConfig.apiKey);
+  }
+
+  const cloudAsrConfig: CloudASRConfig = {
+    ...DEFAULT_CLOUD_ASR_CONFIG,
+    ...storageService.get<CloudASRConfig>(STORAGE_KEYS.CLOUD_ASR_CONFIG, DEFAULT_CLOUD_ASR_CONFIG),
+  };
+  ['baiduApiKey', 'baiduSecretKey', 'googleApiKey', 'alibabaToken', 'iflytekApiKey', 'iflytekApiSecret', 'glmApiKey'].forEach((key) => {
+    const value = cloudAsrConfig[key as keyof CloudASRConfig];
+    if (typeof value === 'string' && value) {
+      (cloudAsrConfig as any)[key] = deobfuscate(value);
+    }
+  });
+
+  return { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig, cloudAsrConfig, connectionStatus: null, isTestingConnection: false };
+}
+
+function normalizeAppSettings(settings: AppSettings): AppSettings {
+  const normalized = { ...settings };
+  if (!THEME_OPTIONS.some((option) => option.key === normalized.theme)) {
+    normalized.theme = DEFAULT_APP_SETTINGS.theme;
+  }
+  if (!normalized.mergeTimeoutMs || normalized.mergeTimeoutMs < 1000) {
+    normalized.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
+  }
+  return normalized;
 }
 
 function settingsReducer(state: SettingsState, action: SettingsAction): SettingsState {
@@ -86,7 +147,7 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
       return { ...state, aiSettings: { ...state.aiSettings, provider: action.payload, baseUrl: d.baseUrl || state.aiSettings.baseUrl, textModel: d.textModel || state.aiSettings.textModel, visionModel: d.visionModel || state.aiSettings.visionModel } };
     }
     case 'SET_APP_SETTINGS':
-      return { ...state, appSettings: { ...state.appSettings, ...action.payload } };
+      return { ...state, appSettings: normalizeAppSettings({ ...state.appSettings, ...action.payload }) };
     case 'SET_THEME':
       return { ...state, appSettings: { ...state.appSettings, theme: action.payload } };
     case 'SET_LANGUAGE':
@@ -94,11 +155,57 @@ function settingsReducer(state: SettingsState, action: SettingsAction): Settings
     case 'ACKNOWLEDGE_PRIVACY':
       return { ...state, appSettings: { ...state.appSettings, privacyAcknowledged: true } };
     case 'SET_ASR_PROVIDER':
-      return { ...state, appSettings: { ...state.appSettings, asrProvider: action.payload } };
+      return {
+        ...state,
+        appSettings: normalizeAppSettings({
+          ...state.appSettings,
+          asrProvider: action.payload,
+        }),
+      };
     case 'SET_AUDIO_SOURCE':
-      return { ...state, appSettings: { ...state.appSettings, audioSource: action.payload } };
+      if (action.payload === 'both') {
+        return {
+          ...state,
+          appSettings: {
+            ...state.appSettings,
+            audioSource: action.payload,
+            myAudioSource: 'microphone',
+            interviewerAudioSource: 'system',
+          },
+        };
+      }
+      if (action.payload === 'system') {
+        return {
+          ...state,
+          appSettings: {
+            ...state.appSettings,
+            audioSource: action.payload,
+            myAudioSource: 'muted',
+            interviewerAudioSource: 'system',
+          },
+        };
+      }
+      return {
+        ...state,
+        appSettings: {
+          ...state.appSettings,
+          audioSource: action.payload,
+          myAudioSource: 'microphone',
+          interviewerAudioSource: 'muted',
+        },
+      };
+    case 'SET_MY_AUDIO_SOURCE':
+      return { ...state, appSettings: { ...state.appSettings, myAudioSource: action.payload } };
+    case 'SET_INTERVIEWER_AUDIO_SOURCE':
+      return { ...state, appSettings: { ...state.appSettings, interviewerAudioSource: action.payload } };
     case 'UPDATE_DOUBAO_CONFIG':
       return { ...state, doubaoConfig: { ...state.doubaoConfig, ...action.payload } };
+    case 'UPDATE_LOCAL_QWEN_CONFIG':
+      return { ...state, localQwenConfig: { ...state.localQwenConfig, ...action.payload } };
+    case 'UPDATE_MIMO_CONFIG':
+      return { ...state, mimoConfig: { ...state.mimoConfig, ...action.payload } };
+    case 'UPDATE_CLOUD_ASR_CONFIG':
+      return { ...state, cloudAsrConfig: { ...state.cloudAsrConfig, ...action.payload } };
     case 'SET_CONNECTION_STATUS':
       return { ...state, connectionStatus: action.payload };
     case 'SET_TESTING':
@@ -116,8 +223,13 @@ export interface SettingsContextValue extends SettingsState {
   acknowledgePrivacy: () => void;
   setASRProvider: (p: ASRProvider) => void;
   setAudioSource: (s: AudioSource) => void;
+  setMyAudioSource: (s: SpeakerAudioSource) => void;
+  setInterviewerAudioSource: (s: SpeakerAudioSource) => void;
   updateAppSettings: (p: Partial<AppSettings>) => void;
   updateDoubaoConfig: (p: Partial<DoubaoASRConfig>) => void;
+  updateLocalQwenConfig: (p: Partial<LocalQwenASRConfig>) => void;
+  updateMiMoConfig: (p: Partial<MiMoASRConfig>) => void;
+  updateCloudASRConfig: (p: Partial<CloudASRConfig>) => void;
   testConnection: () => Promise<ConnectionTestResult>;
 }
 
@@ -138,8 +250,23 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     storageService.set(STORAGE_KEYS.DOUBAO_ASR_CONFIG, toStore);
   }, [state.doubaoConfig]);
   useEffect(() => {
+    storageService.set(STORAGE_KEYS.LOCAL_QWEN_ASR_CONFIG, state.localQwenConfig);
+  }, [state.localQwenConfig]);
+  useEffect(() => {
+    const toStore = { ...state.mimoConfig, apiKey: obfuscate(state.mimoConfig.apiKey) };
+    storageService.set(STORAGE_KEYS.MIMO_ASR_CONFIG, toStore);
+  }, [state.mimoConfig]);
+  useEffect(() => {
+    const toStore: any = { ...state.cloudAsrConfig };
+    ['baiduApiKey', 'baiduSecretKey', 'googleApiKey', 'alibabaToken', 'iflytekApiKey', 'iflytekApiSecret', 'glmApiKey'].forEach((key) => {
+      toStore[key] = obfuscate(toStore[key]);
+    });
+    storageService.set(STORAGE_KEYS.CLOUD_ASR_CONFIG, toStore);
+  }, [state.cloudAsrConfig]);
+  useEffect(() => {
     const root = document.documentElement;
-    state.appSettings.theme === 'dark' ? root.classList.add('dark') : root.classList.remove('dark');
+    const darkThemes: ThemeMode[] = ['dark', 'midnight', 'forest', 'mono'];
+    darkThemes.includes(state.appSettings.theme) ? root.classList.add('dark') : root.classList.remove('dark');
   }, [state.appSettings.theme]);
 
   const updateAISettings = useCallback((p: Partial<AISettings>) => dispatch({ type: 'UPDATE_AI_SETTINGS', payload: p }), []);
@@ -149,8 +276,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const acknowledgePrivacy = useCallback(() => dispatch({ type: 'ACKNOWLEDGE_PRIVACY' }), []);
   const setASRProvider = useCallback((p: ASRProvider) => dispatch({ type: 'SET_ASR_PROVIDER', payload: p }), []);
   const setAudioSource = useCallback((s: AudioSource) => dispatch({ type: 'SET_AUDIO_SOURCE', payload: s }), []);
+  const setMyAudioSource = useCallback((s: SpeakerAudioSource) => dispatch({ type: 'SET_MY_AUDIO_SOURCE', payload: s }), []);
+  const setInterviewerAudioSource = useCallback((s: SpeakerAudioSource) => dispatch({ type: 'SET_INTERVIEWER_AUDIO_SOURCE', payload: s }), []);
   const updateAppSettings = useCallback((p: Partial<AppSettings>) => dispatch({ type: 'SET_APP_SETTINGS', payload: p }), []);
   const updateDoubaoConfig = useCallback((p: Partial<DoubaoASRConfig>) => dispatch({ type: 'UPDATE_DOUBAO_CONFIG', payload: p }), []);
+  const updateLocalQwenConfig = useCallback((p: Partial<LocalQwenASRConfig>) => dispatch({ type: 'UPDATE_LOCAL_QWEN_CONFIG', payload: p }), []);
+  const updateMiMoConfig = useCallback((p: Partial<MiMoASRConfig>) => dispatch({ type: 'UPDATE_MIMO_CONFIG', payload: p }), []);
+  const updateCloudASRConfig = useCallback((p: Partial<CloudASRConfig>) => dispatch({ type: 'UPDATE_CLOUD_ASR_CONFIG', payload: p }), []);
 
   const testConnection = useCallback(async (): Promise<ConnectionTestResult> => {
     dispatch({ type: 'SET_TESTING', payload: true });
@@ -169,7 +301,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const value: SettingsContextValue = {
     ...state, updateAISettings, setProvider, setTheme, setLanguage,
-    acknowledgePrivacy, setASRProvider, setAudioSource, updateAppSettings, updateDoubaoConfig, testConnection,
+    acknowledgePrivacy, setASRProvider, setAudioSource, setMyAudioSource,
+    setInterviewerAudioSource, updateAppSettings, updateDoubaoConfig, updateLocalQwenConfig, updateMiMoConfig, updateCloudASRConfig, testConnection,
   };
 
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

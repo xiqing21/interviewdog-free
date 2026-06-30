@@ -1,0 +1,4 @@
+mlx-qwen3-asr==0.3.5
+websockets>=13.0
+numpy>=2.0
+soundfile>=0.12

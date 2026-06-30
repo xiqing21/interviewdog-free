@@ -5,6 +5,7 @@
 
 import { useCallback } from 'react';
 import type { ThemeMode } from '../types';
+import { THEME_OPTIONS } from '../constants';
 import { useSettings } from './useSettings';
 
 export interface UseThemeReturn {
@@ -18,7 +19,9 @@ export function useTheme(): UseThemeReturn {
   const mode = appSettings.theme;
 
   const toggleTheme = useCallback(() => {
-    setTheme(mode === 'dark' ? 'light' : 'dark');
+    const index = THEME_OPTIONS.findIndex((item) => item.key === mode);
+    const next = THEME_OPTIONS[(index + 1) % THEME_OPTIONS.length]?.key ?? 'dark';
+    setTheme(next);
   }, [mode, setTheme]);
 
   return { mode, toggleTheme, setTheme };

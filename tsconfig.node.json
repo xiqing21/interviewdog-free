@@ -9,7 +9,9 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "composite": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
     "strict": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "api/**/*.ts"]
 }

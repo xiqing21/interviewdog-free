@@ -15,6 +15,7 @@ import { NAV_ITEMS } from '../../constants';
 import { useSettings } from '../../hooks/useSettings';
 import { useTheme } from '../../hooks/useTheme';
 import { StatusIndicator } from '../common/StatusIndicator';
+import { AuthPanel } from '../auth/AuthPanel';
 
 export function TopBar() {
   const { connectionStatus } = useSettings();
@@ -38,6 +39,7 @@ export function TopBar() {
           {title}
         </Typography>
         <StatusIndicator status={connectionStatus} />
+        <AuthPanel />
         <IconButton onClick={toggleTheme} size="small" sx={{ ml: 1 }}>
           {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
         </IconButton>

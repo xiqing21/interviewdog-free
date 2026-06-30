@@ -1,14 +1,39 @@
 /**
- * DoubaoAsrService — 豆包（火山引擎）实时语音识别服务
+ * DoubaoAsrService — 豆包（火山引擎）大模型流式语音识别服务。
  *
- * 通过 WebSocket 连接火山引擎 ASR v2 接口，发送实时音频流并接收识别结果。
- * 支持全量/增量结果回调，断线自动重连。
+ * 前端通过本地 Vite WebSocket 代理连接官方 v3 接口；代理负责在握手时
+ * 注入浏览器无法设置的 X-Api-* 鉴权 Header。
  */
 
 import type { DoubaoASRConfig } from '../types';
-import { DOUBAO_ASR_WS_URL } from '../constants';
+import { DOUBAO_ASR_WS_PATH } from '../constants';
+import { gzip } from 'pako';
 
 const SAMPLE_RATE = 16000;
+const PCM_CHUNK_SAMPLES = 320; // 20ms at 16kHz, recommended by the streaming ASR docs.
+
+const MESSAGE_TYPE = {
+  FULL_CLIENT_REQUEST: 0x01,
+  AUDIO_ONLY_REQUEST: 0x02,
+  FULL_SERVER_RESPONSE: 0x09,
+  ERROR_RESPONSE: 0x0f,
+} as const;
+
+const MESSAGE_FLAGS = {
+  NONE: 0x00,
+  HAS_SEQUENCE: 0x01,
+  LAST_PACKET: 0x02,
+} as const;
+
+const SERIALIZATION = {
+  NONE: 0x00,
+  JSON: 0x01,
+} as const;
+
+const COMPRESSION = {
+  NONE: 0x00,
+  GZIP: 0x01,
+} as const;
 
 export interface DoubaoAsrCallbacks {
   onResult: (text: string, isFinal: boolean) => void;
@@ -17,22 +42,20 @@ export interface DoubaoAsrCallbacks {
   onReady?: () => void;
 }
 
+export interface DoubaoAsrTestResult {
+  success: boolean;
+  message: string;
+}
+
 let ws: WebSocket | null = null;
 let isConnected = false;
+let canSendAudio = false;
+let audioQueue: Int16Array[] = [];
 
-/**
- * 检测 WebSocket 是否可用。
- */
 export function isSupported(): boolean {
   return typeof WebSocket !== 'undefined';
 }
 
-/**
- * 连接豆包 ASR 并开始识别。
- *
- * @param config - 豆包 ASR 配置（appId、accessToken）
- * @param callbacks - 识别结果回调
- */
 export function start(
   config: DoubaoASRConfig,
   callbacks: DoubaoAsrCallbacks,
@@ -40,192 +63,345 @@ export function start(
   if (ws) {
     stop();
   }
+  canSendAudio = false;
+  audioQueue = [];
 
-  // 构建 WebSocket URL（携带鉴权参数）
-  const url = buildUrl(config);
-  ws = new WebSocket(url);
+  ws = new WebSocket(buildProxyUrl(config));
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {
     isConnected = true;
-    // 发送 StartConnection 消息（二进制协议帧）
-    const header = buildHeader(config);
-    ws!.send(header);
-    callbacks.onReady?.();
+    ws?.send(buildFullClientRequest());
   };
 
   ws.onmessage = (event) => {
-    if (typeof event.data === 'string') {
-      // 文本消息 — 包含识别结果 JSON
-      try {
-        const msg = JSON.parse(event.data);
-        handleMessage(msg, callbacks);
-      } catch {
-        // 非 JSON 消息，忽略
-      }
+    if (!(event.data instanceof ArrayBuffer)) return;
+    if (!canSendAudio) {
+      canSendAudio = true;
+      flushAudioQueue();
+      callbacks.onReady?.();
     }
+    parseServerFrame(event.data)
+      .then((frame) => {
+        if (frame.type === 'error') {
+          callbacks.onError(`豆包语音识别错误 ${frame.code}：${frame.message}`);
+          return;
+        }
+        handleResultPayload(frame.payload, callbacks, frame.isLast);
+      })
+      .catch((error) => {
+        callbacks.onError(error instanceof Error ? error.message : '豆包语音识别返回解析失败。');
+      });
   };
 
   ws.onerror = () => {
-    callbacks.onError('豆包语音识别连接失败，请检查 App ID 和 Access Token 配置。');
+    callbacks.onError('豆包语音识别连接失败，请检查 App ID、Access Token、Resource ID 和服务是否已开通。');
   };
 
   ws.onclose = (event) => {
     isConnected = false;
+    canSendAudio = false;
+    audioQueue = [];
     ws = null;
     if (event.code !== 1000) {
+      if (event.reason) {
+        callbacks.onError(`豆包语音识别连接关闭 ${event.code}：${event.reason}`);
+      }
       callbacks.onEnd();
     }
   };
 }
 
-/**
- * 发送 PCM 音频数据。
- * @param pcm - 16kHz, 16-bit, mono PCM 数据
- */
 export function sendAudio(pcm: Int16Array): void {
   if (!ws || !isConnected) return;
+  if (!canSendAudio) {
+    audioQueue.push(pcm.slice());
+    audioQueue = audioQueue.slice(-40);
+    return;
+  }
 
-  // 发送 AudioOnly 帧（二进制协议）
-  const frame = buildAudioFrame(pcm);
-  try {
-    ws.send(frame);
-  } catch {
-    // 连接已断开
+  for (let offset = 0; offset < pcm.length; offset += PCM_CHUNK_SAMPLES) {
+    const chunk = pcm.subarray(offset, offset + PCM_CHUNK_SAMPLES);
+    ws.send(buildAudioFrame(chunk, false));
   }
 }
 
-/**
- * 停止识别并断开连接。
- * 发送 StopConnection 帧后关闭 WebSocket。
- */
+function flushAudioQueue(): void {
+  const pending = audioQueue;
+  audioQueue = [];
+  for (const pcm of pending) {
+    sendAudio(pcm);
+  }
+}
+
 export function stop(): void {
   if (ws) {
-    // 发送停止帧
     try {
-      const stopFrame = buildStopFrame();
-      ws.send(stopFrame);
+      ws.send(buildAudioFrame(new Int16Array(), true));
     } catch {}
     ws.close(1000, 'user stop');
     ws = null;
   }
   isConnected = false;
+  canSendAudio = false;
+  audioQueue = [];
 }
 
 export function isActive(): boolean {
   return ws !== null && isConnected;
 }
 
-// ===== 协议帧构建 =====
+export function testConnection(config: DoubaoASRConfig): Promise<DoubaoAsrTestResult> {
+  return new Promise((resolve) => {
+    if (!config.appId || !config.accessToken) {
+      resolve({ success: false, message: '请先填写 App ID 和 Access Token。' });
+      return;
+    }
 
-function buildUrl(config: DoubaoASRConfig): string {
-  const params = new URLSearchParams();
-  params.set('appid', config.appId);
-  params.set('token', config.accessToken);
-  params.set('cluster', config.cluster || 'volcengine_input_common');
-  params.set('format', 'pcm');
-  params.set('rate', String(SAMPLE_RATE));
-  params.set('bits', '16');
-  params.set('channel', '1');
-  params.set('language', 'zh-CN');
-  params.set('show_utterances', 'true');
-  return `${DOUBAO_ASR_WS_URL}?${params.toString()}`;
-}
+    const testWs = new WebSocket(buildProxyUrl(config));
+    testWs.binaryType = 'arraybuffer';
+    let responseCount = 0;
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      finish(false, '豆包 ASR 测试超时：已连接但未收到完整响应。');
+    }, 8000);
 
-function buildHeader(config: DoubaoASRConfig): ArrayBuffer {
-  // 火山引擎 ASR 二进制协议：Header(4B) + Payload
-  // Header: version(1B) + header_size(1B,=4) + message_type(1B,=1) + flags(1B,=0) + serial_method(1B,=0) 注意 header_size 是 4 字节
-  // 实际协议:
-  // [0] version = 0x01
-  // [1] header_size = 0x10 (16 bytes, the full header including reserved)
-  // [2] message_type = 0x01 (full client request)
-  // [3] message_type_specific_flags = 0x00
-  // [4] serialization_method = 0x00 (raw)
-  // [5-7] reserved
-  // [8-11] sequence = 0
-  // [12-15] payload_size
-  const payload = JSON.stringify({
-    app: { appid: config.appId, token: config.accessToken, cluster: config.cluster },
-    user: { uid: 'interviewdog-free' },
-    audio: { format: 'pcm', rate: SAMPLE_RATE, bits: 16, channel: 1, language: 'zh-CN' },
-    request: { model_name: 'bigmodel', enable_punctuation: true, enable_itn: true, show_utterances: true },
+    const finish = (success: boolean, message: string) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      try {
+        testWs.close(1000, 'test done');
+      } catch {}
+      resolve({ success, message });
+    };
+
+    testWs.onopen = () => {
+      testWs.send(buildFullClientRequest());
+    };
+
+    testWs.onmessage = (event) => {
+      if (!(event.data instanceof ArrayBuffer)) return;
+      parseServerFrame(event.data)
+        .then((frame) => {
+          if (frame.type === 'error') {
+            finish(false, `豆包返回错误 ${frame.code}：${frame.message}`);
+            return;
+          }
+          responseCount += 1;
+          if (responseCount === 1) {
+            testWs.send(buildAudioFrame(new Int16Array(3200), false));
+            window.setTimeout(() => {
+              if (!settled && testWs.readyState === WebSocket.OPEN) {
+                testWs.send(buildAudioFrame(new Int16Array(), true));
+              }
+            }, 250);
+            return;
+          }
+          finish(true, '豆包 ASR 协议测试通过：握手、初始化 request、音频包均正常。');
+        })
+        .catch((error) => {
+          finish(false, error instanceof Error ? error.message : '豆包测试响应解析失败。');
+        });
+    };
+
+    testWs.onerror = () => {
+      finish(false, '豆包 ASR WebSocket 连接失败，请检查凭证、Resource ID 和服务开通状态。');
+    };
+
+    testWs.onclose = (event) => {
+      if (!settled && event.code !== 1000) {
+        finish(false, event.reason ? `连接关闭 ${event.code}：${event.reason}` : `连接异常关闭：${event.code}`);
+      }
+    };
   });
-  const payloadBytes = new TextEncoder().encode(payload);
-  const headerSize = 16;
-  const totalSize = headerSize + payloadBytes.length;
-
-  const buf = new ArrayBuffer(totalSize);
-  const view = new DataView(buf);
-
-  // 4-byte header prefix (火山引擎新版协议)
-  view.setUint8(0, 0x01);  // protocol version
-  view.setUint8(1, 4);      // header size = 4 bytes for this part
-  view.setUint8(2, 0x01);   // message type: full client request
-  view.setUint8(3, 0x10);   // message type specific flags: json format
-
-  // Copy payload
-  const payloadArr = new Uint8Array(buf, 4);
-  payloadArr.set(payloadBytes);
-
-  return buf;
 }
 
-function buildAudioFrame(pcm: Int16Array): ArrayBuffer {
-  // Audio frame: 4-byte header + PCM data
+function buildProxyUrl(config: DoubaoASRConfig): string {
+  const params = new URLSearchParams({
+    appId: config.appId.trim(),
+    accessToken: config.accessToken.trim(),
+    resourceId: (config.resourceId || 'volc.bigasr.sauc.duration').trim(),
+    connectId: crypto.randomUUID(),
+  });
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${DOUBAO_ASR_WS_PATH}?${params.toString()}`;
+}
+
+function buildFullClientRequest(): ArrayBuffer {
+  const payload = gzip(new TextEncoder().encode(JSON.stringify({
+    user: { uid: 'interviewdog-free' },
+    audio: {
+      format: 'pcm',
+      rate: SAMPLE_RATE,
+      bits: 16,
+      channel: 1,
+      language: 'zh-CN',
+    },
+    request: {
+      model_name: 'bigmodel',
+      enable_itn: true,
+      enable_ddc: false,
+      enable_punc: true,
+      show_utterances: true,
+      result_type: 'full',
+    },
+  })));
+
+  return buildFrame(
+    MESSAGE_TYPE.FULL_CLIENT_REQUEST,
+    MESSAGE_FLAGS.NONE,
+    SERIALIZATION.JSON,
+    COMPRESSION.GZIP,
+    payload,
+  );
+}
+
+function buildAudioFrame(pcm: Int16Array, isLast: boolean): ArrayBuffer {
+  const payload = gzip(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
+  return buildFrame(
+    MESSAGE_TYPE.AUDIO_ONLY_REQUEST,
+    isLast ? MESSAGE_FLAGS.LAST_PACKET : MESSAGE_FLAGS.NONE,
+    SERIALIZATION.NONE,
+    COMPRESSION.GZIP,
+    payload,
+  );
+}
+
+function buildFrame(
+  messageType: number,
+  flags: number,
+  serialization: number,
+  compression: number,
+  payload: Uint8Array,
+): ArrayBuffer {
   const headerSize = 4;
-  const totalSize = headerSize + pcm.byteLength;
+  const frame = new ArrayBuffer(headerSize + 4 + payload.byteLength);
+  const view = new DataView(frame);
+  const bytes = new Uint8Array(frame);
 
-  const buf = new ArrayBuffer(totalSize);
-  const view = new DataView(buf);
-  view.setUint8(0, 0x01);  // protocol version
-  view.setUint8(1, 4);     // header size
-  view.setUint8(2, 0x02);  // message type: audio only
-  view.setUint8(3, 0x10);  // flags: json serialization (for audio frames this can be 0x10 as well or 0x00)
+  view.setUint8(0, 0x11); // protocol v1, 4-byte base header.
+  view.setUint8(1, (messageType << 4) | flags);
+  view.setUint8(2, (serialization << 4) | compression);
+  view.setUint8(3, 0x00);
+  view.setUint32(4, payload.byteLength, false);
+  bytes.set(payload, 8);
 
-  const audioArr = new Uint8Array(buf, headerSize);
-  audioArr.set(new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
-
-  return buf;
+  return frame;
 }
 
-function buildStopFrame(): ArrayBuffer {
-  const payload = JSON.stringify({ type: 'speech_end' });
-  const payloadBytes = new TextEncoder().encode(payload);
+type ServerFrame =
+  | { type: 'result'; payload: unknown; isLast: boolean }
+  | { type: 'error'; code: number; message: string };
 
-  const headerSize = 4;
-  const buf = new ArrayBuffer(headerSize + payloadBytes.length);
-  const view = new DataView(buf);
-  view.setUint8(0, 0x01);
-  view.setUint8(1, 4);
-  view.setUint8(2, 0x03); // message type: last client request
-  view.setUint8(3, 0x10);
+async function parseServerFrame(buffer: ArrayBuffer): Promise<ServerFrame> {
+  if (buffer.byteLength < 8) {
+    throw new Error('豆包语音识别返回帧过短。');
+  }
 
-  const payloadArr = new Uint8Array(buf, headerSize);
-  payloadArr.set(payloadBytes);
-  return buf;
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  const version = view.getUint8(0) >> 4;
+  const headerSize = (view.getUint8(0) & 0x0f) * 4;
+  const messageType = view.getUint8(1) >> 4;
+  const flags = view.getUint8(1) & 0x0f;
+  const serialization = view.getUint8(2) >> 4;
+  const compression = view.getUint8(2) & 0x0f;
+
+  if (version !== 1) {
+    throw new Error(`不支持的豆包语音识别协议版本：${version}`);
+  }
+
+  let offset = headerSize;
+  if ((flags & MESSAGE_FLAGS.HAS_SEQUENCE) === MESSAGE_FLAGS.HAS_SEQUENCE) {
+    offset += 4;
+  }
+
+  if (messageType === MESSAGE_TYPE.ERROR_RESPONSE) {
+    const code = view.getUint32(offset, false);
+    offset += 4;
+    const messageSize = view.getUint32(offset, false);
+    offset += 4;
+    const message = new TextDecoder().decode(bytes.slice(offset, offset + messageSize));
+    return { type: 'error', code, message };
+  }
+
+  if (messageType !== MESSAGE_TYPE.FULL_SERVER_RESPONSE) {
+    throw new Error(`未知的豆包语音识别返回类型：${messageType}`);
+  }
+
+  const payloadSize = view.getUint32(offset, false);
+  offset += 4;
+  let payloadBytes = copyBytes(bytes.slice(offset, offset + payloadSize));
+
+  if (compression === COMPRESSION.GZIP) {
+    payloadBytes = await gunzip(payloadBytes);
+  }
+
+  let payload: unknown = {};
+  if (payloadBytes.byteLength > 0 && serialization === SERIALIZATION.JSON) {
+    payload = JSON.parse(new TextDecoder().decode(payloadBytes));
+  }
+
+  return {
+    type: 'result',
+    payload,
+    isLast: (flags & MESSAGE_FLAGS.LAST_PACKET) === MESSAGE_FLAGS.LAST_PACKET,
+  };
 }
 
-// ===== 消息解析 =====
+async function gunzip(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array<ArrayBuffer>> {
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('当前浏览器不支持解压豆包 ASR 响应，请使用最新版 Chrome。');
+  }
+  const stream = new Blob([bytes.buffer]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return copyBytes(new Uint8Array(await new Response(stream).arrayBuffer()));
+}
 
-function handleMessage(
-  msg: Record<string, unknown>,
+function copyBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy;
+}
+
+function handleResultPayload(
+  payload: unknown,
   callbacks: DoubaoAsrCallbacks,
+  isLastFrame: boolean,
 ): void {
-  // 火山引擎 ASR 返回格式: { payload_msg: { result: [{ text, is_final, ... }] } }
-  const payload = (msg.payload_msg || msg) as Record<string, unknown>;
-  const results = payload.result as Array<Record<string, unknown>> | undefined;
-
-  if (!results || results.length === 0) return;
-
-  let text = '';
-  let isFinal = false;
-
-  for (const r of results) {
-    if (r.text) text += r.text as string;
-    if (r.is_final) isFinal = true;
-  }
-
+  const text = collectText(payload);
   if (text) {
-    callbacks.onResult(text.trim(), isFinal);
+    callbacks.onResult(text.trim(), isFinalPayload(payload) || isLastFrame);
   }
+}
+
+function collectText(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.text === 'string') return record.text;
+
+  const result = record.result;
+  if (Array.isArray(result)) {
+    return result.map(collectText).join('');
+  }
+  if (result && typeof result === 'object') {
+    return collectText(result);
+  }
+
+  const utterances = record.utterances;
+  if (Array.isArray(utterances)) {
+    return utterances.map(collectText).join('');
+  }
+
+  return '';
+}
+
+function isFinalPayload(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  if (record.is_final === true || record.definite === true) return true;
+  if (Array.isArray(record.result)) return record.result.some(isFinalPayload);
+  if (Array.isArray(record.utterances)) return record.utterances.some(isFinalPayload);
+  return false;
 }
