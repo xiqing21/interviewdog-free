@@ -135,6 +135,9 @@ export async function chat(
       ),
     });
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error;
+    }
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       throw new Error('请求超时，请检查网络连接或稍后重试。');
     }

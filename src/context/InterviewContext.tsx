@@ -390,6 +390,14 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     generationRunId.current += 1;
   }
 
+  function interruptStreamingAnswers(message = '已被新的问题打断。'): void {
+    const sess = sessionRef.current;
+    if (!sess) return;
+    updateSessionQAList(sess.qaList.map((qa) => (
+      qa.isStreaming ? { ...qa, isStreaming: false, error: qa.answer ? undefined : message } : qa
+    )));
+  }
+
   function updateQA(id: string, patch: Partial<QAItem>): void {
     const sess = sessionRef.current;
     if (!sess) return;
@@ -526,13 +534,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const trimmed = question.trim();
     if (!trimmed) return;
     if (isProcessingRef.current) {
-      const normalized = normalizeTranscriptText(trimmed);
-      const alreadyQueued = queuedQuestions.current.some((item) => normalizeTranscriptText(item) === normalized);
-      const alreadyAnswered = sessionRef.current?.qaList.some((qa) => normalizeTranscriptText(qa.question) === normalized);
-      if (!alreadyQueued && !alreadyAnswered) {
-        queuedQuestions.current.push(trimmed);
-      }
-      return;
+      stopActiveGeneration();
+      interruptStreamingAnswers();
+      dispatch({ type: 'SET_PROCESSING', payload: false });
     }
 
     const id = generateId();

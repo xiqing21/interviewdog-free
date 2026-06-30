@@ -266,6 +266,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const root = document.documentElement;
     const darkThemes: ThemeMode[] = ['dark', 'midnight', 'forest', 'mono'];
+    root.dataset.theme = state.appSettings.theme;
     darkThemes.includes(state.appSettings.theme) ? root.classList.add('dark') : root.classList.remove('dark');
   }, [state.appSettings.theme]);
 

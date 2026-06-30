@@ -9,6 +9,7 @@
 
 // XOR key — a fixed string used to scramble the key
 const XOR_KEY = 'InterviewDog2026_Free_Edition_SecretKey';
+const OBFUSCATED_PREFIX = 'obf:';
 
 /**
  * Converts a string to a UTF-8 byte array.
@@ -69,9 +70,10 @@ export function obfuscate(plain: string): string {
     return '';
   }
   try {
+    if (plain.startsWith(OBFUSCATED_PREFIX)) return plain;
     const plainBytes = stringToBytes(plain);
     const xored = xorBytes(plainBytes);
-    return bytesToBase64(xored);
+    return `${OBFUSCATED_PREFIX}${bytesToBase64(xored)}`;
   } catch (error) {
     console.error('[CryptoService] Obfuscation failed:', error);
     return plain;
@@ -87,13 +89,30 @@ export function deobfuscate(obfuscated: string): string {
   if (!obfuscated) {
     return '';
   }
+  if (!obfuscated.startsWith(OBFUSCATED_PREFIX) && !looksLikeLegacyObfuscated(obfuscated)) {
+    return obfuscated;
+  }
   try {
-    const xored = base64ToBytes(obfuscated);
+    const payload = obfuscated.startsWith(OBFUSCATED_PREFIX)
+      ? obfuscated.slice(OBFUSCATED_PREFIX.length)
+      : obfuscated;
+    const xored = base64ToBytes(payload);
     const plainBytes = xorBytes(xored);
-    return bytesToString(plainBytes);
+    const plain = bytesToString(plainBytes);
+    return isReadableSecret(plain) ? plain : obfuscated;
   } catch (error) {
-    console.error('[CryptoService] Deobfuscation failed:', error);
     // If deobfuscation fails, the stored value might be plain text (legacy)
     return obfuscated;
   }
+}
+
+function looksLikeLegacyObfuscated(value: string): boolean {
+  if (!/^[A-Za-z0-9+/=]+$/.test(value)) return false;
+  if (value.length % 4 !== 0) return false;
+  return value.length >= 12;
+}
+
+function isReadableSecret(value: string): boolean {
+  if (!value) return false;
+  return /^[\x20-\x7E]+$/.test(value);
 }

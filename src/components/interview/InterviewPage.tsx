@@ -100,15 +100,15 @@ export function InterviewPage() {
 
   const handleManualSend = useCallback(() => {
     const q = manualInput.trim();
-    if (!q || isProcessing || !activeSession) return;
+    if (!q || !activeSession) return;
     addManualQuestion(q);
     setManualInput('');
-  }, [manualInput, isProcessing, activeSession, addManualQuestion]);
+  }, [manualInput, activeSession, addManualQuestion]);
 
   const handleTranscriptQuestion = useCallback((question: string) => {
-    if (!question.trim() || isProcessing || !aiSettings.apiKey) return;
+    if (!question.trim() || !aiSettings.apiKey) return;
     void addManualQuestion(question.trim());
-  }, [addManualQuestion, aiSettings.apiKey, isProcessing]);
+  }, [addManualQuestion, aiSettings.apiKey]);
 
   const handleInterviewerAudioSourceChange = useCallback((source: SpeakerAudioSource) => {
     setInterviewerAudioSource(source);
@@ -339,7 +339,7 @@ export function InterviewPage() {
                   size="small"
                   variant="text"
                   onClick={() => { void triggerLatestTranscriptQuestion(); }}
-                  disabled={isProcessing || !aiSettings.apiKey || !/^面试官[：:]/.test(interimText.trim())}
+                  disabled={!aiSettings.apiKey || !/^面试官[：:]/.test(interimText.trim())}
                   sx={{ minWidth: 0, px: 0.75 }}
                 >
                   触发
@@ -381,7 +381,7 @@ export function InterviewPage() {
                       size="small"
                       variant="text"
                       onClick={() => handleTranscriptQuestion(line.text)}
-                      disabled={isProcessing || !aiSettings.apiKey}
+                      disabled={!aiSettings.apiKey}
                       sx={{ minWidth: 0, px: 0.75 }}
                     >
                       触发
@@ -401,7 +401,7 @@ export function InterviewPage() {
           variant="outlined"
           sx={{ mb: 1.5 }}
           onClick={() => { void triggerLatestTranscriptQuestion(); }}
-          disabled={isProcessing || !aiSettings.apiKey || !hasTriggerableInterviewerText}
+          disabled={!aiSettings.apiKey || !hasTriggerableInterviewerText}
         >
           用当前/最近面试官问题触发
         </Button>
@@ -420,7 +420,7 @@ export function InterviewPage() {
           <IconButton
             color="primary"
             onClick={handleManualSend}
-            disabled={!manualInput.trim() || isProcessing || !aiSettings.apiKey}
+            disabled={!manualInput.trim() || !aiSettings.apiKey}
             sx={{ alignSelf: 'flex-end' }}
           >
             <SendIcon />
