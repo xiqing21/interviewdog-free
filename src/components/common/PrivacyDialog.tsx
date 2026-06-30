@@ -30,12 +30,11 @@ export function PrivacyDialog({ open, onConfirm }: PrivacyDialogProps) {
       <DialogContent>
         <DialogContentText component="div" sx={{ '& p': { mb: 1.5 } }}>
           <p>
-            感谢使用<strong>面试狗免费版</strong>。在开始使用前，请仔细阅读以下隐私说明：
+            感谢使用<strong>面试猪</strong>。在开始使用前，请仔细阅读以下隐私说明：
           </p>
           <p>
             <strong>1. 数据存储：</strong>
-            所有设置和对话记录均保存在您浏览器的 localStorage
-            中，不会上传至任何服务器。
+            未登录时，设置和对话记录主要保存在您浏览器的 localStorage 中；登录后，简历库、知识库、面试项目和复盘会同步到 Supabase，用于跨设备继续使用。
           </p>
           <p>
             <strong>2. API 密钥：</strong>

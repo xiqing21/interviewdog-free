@@ -223,13 +223,13 @@ function providerDescription(provider: ASRProvider): string {
     return '使用豆包实时语音识别，准确率更高，需配置下方豆包 ASR 凭证。';
   }
   if (provider === 'gateway-doubao') {
-    return '按面试狗架构：浏览器只采集 PCM，服务端 Gateway 长连接豆包流式 ASR，并按停顿窗口回传问题。';
+    return '按面试猪架构：浏览器只采集 PCM，服务端 Gateway 长连接豆包流式 ASR，并按停顿窗口回传问题。';
   }
   if (provider === 'gateway-iflytek') {
-    return '按面试狗架构：浏览器只采集 PCM，服务端 Gateway 长连接讯飞 WebIAT，适合和豆包做实时延迟对比。';
+    return '按面试猪架构：浏览器只采集 PCM，服务端 Gateway 长连接讯飞 WebIAT，适合和豆包做实时延迟对比。';
   }
   if (provider === 'gateway-alibaba') {
-    return '按面试狗架构：浏览器只采集 PCM，服务端 Gateway 长连接阿里云 NLS 实时语音识别。';
+    return '按面试猪架构：浏览器只采集 PCM，服务端 Gateway 长连接阿里云 NLS 实时语音识别。';
   }
   if (provider === 'openai') {
     return '使用 OpenAI-compatible 音频转写接口，能识别 Chrome 共享的系统音频，但会有约 4-6 秒延迟。';

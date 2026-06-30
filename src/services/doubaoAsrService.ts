@@ -230,7 +230,7 @@ function buildProxyUrl(config: DoubaoASRConfig): string {
 
 function buildFullClientRequest(): ArrayBuffer {
   const payload = gzip(new TextEncoder().encode(JSON.stringify({
-    user: { uid: 'interviewdog-free' },
+    user: { uid: 'mianshizhu' },
     audio: {
       format: 'pcm',
       rate: SAMPLE_RATE,

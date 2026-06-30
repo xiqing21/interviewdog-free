@@ -25,7 +25,7 @@ export function TopBar() {
   const navItem = NAV_ITEMS.find((n) =>
     location.pathname.startsWith(n.path),
   );
-  const title = navItem?.label ?? '面试狗';
+  const title = navItem?.label ?? '面试猪';
 
   return (
     <AppBar

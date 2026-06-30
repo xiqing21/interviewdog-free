@@ -1,0 +1,23 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">面试猪 Logo</title>
+  <desc id="desc">A friendly pig mascot with headset and speech bubble for an AI interview assistant.</desc>
+  <rect width="512" height="512" rx="112" fill="#EAF6FF"/>
+  <rect x="54" y="64" width="404" height="384" rx="96" fill="#FFFFFF"/>
+  <path d="M129 238C129 164.546 185.412 112 256 112C326.588 112 383 164.546 383 238C383 313.111 328.213 362 256 362C183.787 362 129 313.111 129 238Z" fill="#FFB9B9"/>
+  <path d="M169 153C149 112 161 84 193 101C224 118 226 154 213 173L169 153Z" fill="#FF989F"/>
+  <path d="M343 153C363 112 351 84 319 101C288 118 286 154 299 173L343 153Z" fill="#FF989F"/>
+  <path d="M199 246C199 227.778 216.013 213 237 213H275C295.987 213 313 227.778 313 246C313 264.222 295.987 279 275 279H237C216.013 279 199 264.222 199 246Z" fill="#FFE4E2"/>
+  <circle cx="232" cy="246" r="9" fill="#F37C8B"/>
+  <circle cx="280" cy="246" r="9" fill="#F37C8B"/>
+  <circle cx="212" cy="207" r="14" fill="#293342"/>
+  <circle cx="300" cy="207" r="14" fill="#293342"/>
+  <path d="M225 307C244.436 319.121 267.564 319.121 287 307" stroke="#293342" stroke-width="14" stroke-linecap="round"/>
+  <path d="M119 229C92 231 74 250 74 278C74 306 93 326 122 326" stroke="#54B8F5" stroke-width="22" stroke-linecap="round"/>
+  <path d="M393 229C420 231 438 250 438 278C438 306 419 326 390 326" stroke="#54B8F5" stroke-width="22" stroke-linecap="round"/>
+  <path d="M389 325C389 353 372 373 342 381" stroke="#54B8F5" stroke-width="18" stroke-linecap="round"/>
+  <rect x="301" y="365" width="57" height="27" rx="13.5" fill="#293342"/>
+  <path d="M150 386C175 416 213 432 256 432C299 432 337 416 362 386" stroke="#FF8A77" stroke-width="20" stroke-linecap="round"/>
+  <path d="M360 129H417C440.196 129 459 147.804 459 171V198C459 221.196 440.196 240 417 240H391L360 269V240H349C325.804 240 307 221.196 307 198V171C307 147.804 325.804 129 349 129H360Z" fill="#7DD3FC"/>
+  <path d="M345 183H421" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+  <path d="M345 210H393" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"/>
+</svg>

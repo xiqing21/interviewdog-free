@@ -21,7 +21,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const url = `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const upstream = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 InterviewDog Search Bot',
+        'User-Agent': 'Mozilla/5.0 MianshiZhu Search Bot',
         Accept: 'text/html',
       },
       signal: AbortSignal.timeout(10000),

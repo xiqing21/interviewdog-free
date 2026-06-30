@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://interviewdog-free.vercel.app/sitemap.xml

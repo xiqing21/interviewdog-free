@@ -1,0 +1,18 @@
+{
+  "name": "面试猪",
+  "short_name": "面试猪",
+  "description": "AI 面试实时辅助工具，支持系统音频识别、简历与知识库上下文、实时答案生成和面试复盘。",
+  "start_url": "/interview",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#202938",
+  "theme_color": "#7dd3fc",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

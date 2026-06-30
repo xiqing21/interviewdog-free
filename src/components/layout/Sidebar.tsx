@@ -21,7 +21,6 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
-import PetsIcon from '@mui/icons-material/Pets';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { NAV_ITEMS } from '../../constants';
@@ -55,11 +54,11 @@ export function Sidebar() {
     >
       {/* Logo / Title */}
       <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <PetsIcon color="primary" />
+        <Box component="img" src="/logo.svg" alt="面试猪" sx={{ width: 30, height: 30, flexShrink: 0 }} />
         {!collapsed && (
           <>
             <Typography variant="h6" fontWeight={700}>
-              面试狗
+              面试猪
             </Typography>
             <Typography
               variant="caption"
