@@ -29,7 +29,6 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
-import HearingIcon from '@mui/icons-material/Hearing';
 import TuneIcon from '@mui/icons-material/Tune';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
@@ -291,7 +290,12 @@ export function InterviewPage() {
 
         {!selectedQa ? (
           <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
-            <HearingIcon sx={{ fontSize: 48, mb: 1, opacity: 0.6 }} />
+            <Box
+              component="img"
+              src="/logo.svg"
+              alt="面试猪"
+              sx={{ width: 72, height: 72, mb: 1, opacity: 0.72 }}
+            />
             <Typography variant="subtitle1">等待第一道面试问题</Typography>
             <Typography variant="body2" sx={{ mt: 0.5 }}>
               开始语音识别，或在右侧手动输入问题。

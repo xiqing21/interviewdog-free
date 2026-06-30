@@ -401,8 +401,21 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   function updateQA(id: string, patch: Partial<QAItem>): void {
     const sess = sessionRef.current;
     if (!sess) return;
+    const exists = sess.qaList.some((qa) => qa.id === id);
+    const fallback: QAItem = {
+      id,
+      question: patch.question ?? '',
+      answer: patch.answer ?? '',
+      timestamp: patch.timestamp ?? Date.now(),
+      isStreaming: patch.isStreaming ?? false,
+      error: patch.error,
+      searchResults: patch.searchResults,
+      generationMode: patch.generationMode,
+    };
     updateSessionQAList(
-      sess.qaList.map((qa) => qa.id === id ? { ...qa, ...patch } : qa),
+      exists
+        ? sess.qaList.map((qa) => qa.id === id ? { ...qa, ...patch } : qa)
+        : [...sess.qaList, fallback],
     );
   }
 

@@ -54,9 +54,29 @@ export function AppLayout() {
             flexGrow: 1,
             overflow: 'auto',
             p: 3,
+            position: 'relative',
+            isolation: 'isolate',
+            '&::before': {
+              content: '""',
+              position: 'fixed',
+              right: { xs: -120, md: 24 },
+              bottom: { xs: 12, md: 18 },
+              width: { xs: 420, md: 760 },
+              aspectRatio: '1731 / 909',
+              backgroundImage: 'url(/og-image.png)',
+              backgroundSize: 'contain',
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'center',
+              opacity: { xs: 0.035, md: 0.055 },
+              pointerEvents: 'none',
+              zIndex: 0,
+              filter: 'saturate(0.9)',
+            },
           }}
         >
-          <Outlet />
+          <Box sx={{ position: 'relative', zIndex: 1 }}>
+            <Outlet />
+          </Box>
         </Box>
         <BottomBar />
       </Box>
