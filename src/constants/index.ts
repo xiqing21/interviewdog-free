@@ -201,7 +201,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   theme: 'dark',
   language: 'zh',
   privacyAcknowledged: false,
-  asrProvider: 'browser',
+  asrProvider: 'gateway-doubao',
   audioSource: 'both',
   myAudioSource: 'microphone',
   interviewerAudioSource: 'system',
@@ -236,5 +236,6 @@ export const NAV_ITEMS = [
   { path: '/interview', label: '面试辅助', icon: 'RecordVoiceOver' },
   { path: '/knowledge', label: '简历与知识库', icon: 'LibraryBooks' },
   { path: '/exam', label: '笔试辅助', icon: 'EditNote' },
+  { path: '/billing', label: '套餐与时长', icon: 'WorkspacePremium' },
   { path: '/settings', label: '设置', icon: 'Settings' },
 ] as const;

@@ -21,6 +21,7 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import type { ASRProvider, SpeakerAudioSource } from '../../types';
 import { SPEAKER_AUDIO_SOURCES } from '../../constants';
 import { useSettings } from '../../hooks/useSettings';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 
 export function AudioSourceSettings() {
   const {
@@ -54,6 +55,92 @@ export function AudioSourceSettings() {
   const handleDeleteHotword = (index: number): void => {
     updateHotwords(hotwords.filter((_, itemIndex) => itemIndex !== index));
   };
+
+  if (COMMERCIAL_MODE) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>实时听音与专业热词</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          开始面试后，请按浏览器提示选择正在面试的窗口或标签页，并勾选共享音频。面试猪会自动区分对话角色，只针对面试官问题生成回答。
+        </Typography>
+
+        <Box sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+            <Box>
+              <Typography variant="subtitle2" fontWeight={800}>专业热词</Typography>
+              <Typography variant="caption" color="text.secondary">
+                添加岗位相关术语、人名、项目名，能提升转写和回答贴合度。
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1.25 }}>
+            <TextField
+              fullWidth
+              label="新增热词"
+              value={newHotword}
+              onChange={(event) => setNewHotword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleAddHotword();
+                }
+              }}
+              placeholder="Fluss / StarRocks / 实时数仓"
+            />
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddHotword} sx={{ flexShrink: 0 }}>
+              添加
+            </Button>
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+            {hotwords.map((word, index) => (
+              <Box key={index} sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+                <TextField
+                  fullWidth
+                  label={`热词 ${index + 1}`}
+                  value={word}
+                  onChange={(event) => handleHotwordChange(index, event.target.value)}
+                  onBlur={() => updateHotwords(hotwords)}
+                  placeholder="Fluss"
+                />
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label={`删除热词 ${word || index + 1}`}
+                  onClick={() => handleDeleteHotword(index)}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ))}
+            {hotwords.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                建议先添加岗位核心词，例如 Fluss、Flink、StarRocks、Paimon、湖仓一体。
+              </Typography>
+            )}
+          </Box>
+        </Box>
+
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>问题结束判定</InputLabel>
+          <Select
+            label="问题结束判定"
+            value={String(appSettings.mergeTimeoutMs)}
+            onChange={(e: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(e.target.value) })}
+          >
+            <MenuItem value="1000">很快 - 适合短问短答</MenuItem>
+            <MenuItem value="1500">较快 - 允许轻微停顿</MenuItem>
+            <MenuItem value="2000">自然 - 推荐</MenuItem>
+            <MenuItem value="2500">稳一点 - 默认</MenuItem>
+            <MenuItem value="5000">长句 - 适合开放题</MenuItem>
+            <MenuItem value="8000">很稳 - 等完整长问题</MenuItem>
+          </Select>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            面试官中途停顿时不会立刻打断，超过这个时间才会自动生成答案。
+          </Typography>
+        </FormControl>
+      </Paper>
+    );
+  }
 
   return (
     <Paper sx={{ p: 3 }}>

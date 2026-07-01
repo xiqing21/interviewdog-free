@@ -48,6 +48,8 @@ import { webSearch } from '../services/webSearchService';
 import { useSettings } from '../hooks/useSettings';
 import { useSession } from '../hooks/useSession';
 import { useKnowledge } from '../hooks/useKnowledge';
+import { useBilling } from '../hooks/useBilling';
+import { COMMERCIAL_MODE } from '../config/commercial';
 
 // ===== State =====
 export interface InterviewState {
@@ -138,6 +140,7 @@ export const InterviewContext = createContext<InterviewContextValue | null>(null
 export function InterviewProvider({ children }: { children: ReactNode }) {
   const { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig, cloudAsrConfig } = useSettings();
   const { profile: knowledgeProfile } = useKnowledge();
+  const { remainingSeconds, hasAccess, consumeSeconds } = useBilling();
   const {
     activeSession,
     updateSessionQAList,
@@ -175,6 +178,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const queuedQuestions = useRef<string[]>([]);
   const qwenMicrophoneSession = useRef<LocalQwenSession | null>(null);
   const qwenSystemAudioSession = useRef<LocalQwenSession | null>(null);
+  const billingTickStartedAt = useRef<number | null>(null);
   const generationAbortController = useRef<AbortController | null>(null);
   const generationRunId = useRef(0);
 
@@ -222,6 +226,35 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     storageService.set(STORAGE_KEYS.QA_LIST, qaList);
   }, [qaList]);
+
+  useEffect(() => {
+    if (!COMMERCIAL_MODE || !state.isListening) {
+      billingTickStartedAt.current = null;
+      return undefined;
+    }
+    billingTickStartedAt.current = Date.now();
+    const timer = window.setInterval(() => {
+      if (!billingTickStartedAt.current) return;
+      const elapsed = Math.max(1, Math.floor((Date.now() - billingTickStartedAt.current) / 1000));
+      billingTickStartedAt.current = Date.now();
+      void consumeSeconds(elapsed);
+    }, 15_000);
+    return () => {
+      window.clearInterval(timer);
+      if (billingTickStartedAt.current) {
+        const elapsed = Math.max(1, Math.floor((Date.now() - billingTickStartedAt.current) / 1000));
+        billingTickStartedAt.current = null;
+        void consumeSeconds(elapsed);
+      }
+    };
+  }, [consumeSeconds, state.isListening]);
+
+  useEffect(() => {
+    if (COMMERCIAL_MODE && state.isListening && remainingSeconds <= 0) {
+      stopListening();
+      dispatch({ type: 'SET_ERROR', payload: '免费试用或购买时长已用完，请购买后继续使用。' });
+    }
+  }, [remainingSeconds, state.isListening]);
 
   // ===== 构建系统提示词 =====
   function buildSystemPrompt(modeOverride?: 'concise' | 'detailed', options: { includeProfileContext?: boolean } = {}): string {
@@ -1179,6 +1212,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   // ===== 语音监听：支持麦克风、系统音频、双路同时识别 =====
   const startListening = useCallback(async () => {
+    if (COMMERCIAL_MODE && !hasAccess) {
+      dispatch({ type: 'SET_ERROR', payload: '免费试用或购买时长已用完，请购买后继续使用。' });
+      return;
+    }
     const app = appRef.current;
     dispatch({ type: 'SET_ERROR', payload: null });
 

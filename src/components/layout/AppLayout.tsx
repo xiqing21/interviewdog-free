@@ -10,6 +10,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { BottomBar } from './BottomBar';
 import { PrivacyDialog } from '../common/PrivacyDialog';
+import { OnboardingGuide } from '../common/OnboardingGuide';
 import { useSettings } from '../../hooks/useSettings';
 import { useExam } from '../../hooks/useExam';
 import { useTheme } from '../../hooks/useTheme';
@@ -84,6 +85,7 @@ export function AppLayout() {
         open={!appSettings.privacyAcknowledged}
         onConfirm={acknowledgePrivacy}
       />
+      <OnboardingGuide />
     </Box>
   );
 }

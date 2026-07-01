@@ -10,6 +10,7 @@ import ComputerIcon from '@mui/icons-material/Computer';
 import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import { useInterview } from '../../hooks/useInterview';
 import { useSettings } from '../../hooks/useSettings';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 
 export function VoiceControl() {
   const { isListening, isMerging, error, startListening, stopListening } = useInterview();
@@ -22,7 +23,9 @@ export function VoiceControl() {
       {/* 音频源指示 */}
       <Chip
         icon={bothMuted ? <VolumeOffIcon /> : hasSystemAudio ? <ComputerIcon /> : <MicIcon />}
-        label={`我：${sourceLabel(appSettings.myAudioSource)} / 面试官：${sourceLabel(appSettings.interviewerAudioSource)}`}
+        label={COMMERCIAL_MODE
+          ? (isListening ? '实时听音已开启' : '准备实时听音')
+          : `我：${sourceLabel(appSettings.myAudioSource)} / 面试官：${sourceLabel(appSettings.interviewerAudioSource)}`}
         size="small"
         variant="outlined"
         sx={{ mb: 1.5, opacity: 0.7 }}
@@ -50,7 +53,7 @@ export function VoiceControl() {
           ? isMerging
             ? '正在整理问题...'
             : '正在聆听...'
-          : bothMuted ? '两路都已静音' : '点击开始语音输入'}
+          : bothMuted ? '听音已关闭' : COMMERCIAL_MODE ? '点击开始实时听音' : '点击开始语音输入'}
       </Typography>
 
       {/* 错误提示 */}

@@ -19,11 +19,13 @@ import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
+import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { NAV_ITEMS } from '../../constants';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 import { useTheme } from '../../hooks/useTheme';
 
 /** Maps icon name strings from NAV_ITEMS to actual icon components. */
@@ -31,6 +33,7 @@ const ICON_MAP: Record<string, ElementType> = {
   RecordVoiceOver: RecordVoiceOverIcon,
   EditNote: EditNoteIcon,
   LibraryBooks: LibraryBooksIcon,
+  WorkspacePremium: WorkspacePremiumIcon,
   Settings: SettingsIcon,
 };
 
@@ -65,7 +68,7 @@ export function Sidebar() {
               color="text.secondary"
               sx={{ ml: 'auto' }}
             >
-              免费版
+              {COMMERCIAL_MODE ? 'Pro' : '免费版'}
             </Typography>
           </>
         )}

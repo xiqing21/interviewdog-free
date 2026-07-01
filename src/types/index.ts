@@ -101,6 +101,32 @@ export interface AppSettings {
   asrHotwords: string;
 }
 
+export type CommercialPlanId = 'trial' | 'starter' | 'pro' | 'monthly';
+
+export interface BillingEntitlement {
+  userId: string;
+  freeTrialMinutes: number;
+  purchasedMinutes: number;
+  usedSeconds: number;
+  plan: CommercialPlanId | 'none';
+  stripeCustomerId?: string;
+  subscriptionStatus?: 'active' | 'trialing' | 'past_due' | 'canceled' | 'none';
+  updatedAt?: number;
+}
+
+export interface CommercialPlan {
+  id: CommercialPlanId;
+  name: string;
+  badge?: string;
+  priceLabel: string;
+  originalPriceLabel?: string;
+  minutesLabel: string;
+  description: string;
+  highlights: string[];
+  checkoutMode: 'payment' | 'subscription';
+  popular?: boolean;
+}
+
 // ===== 简历与JD数据 =====
 export interface ResumeJDData {
   resume: string;

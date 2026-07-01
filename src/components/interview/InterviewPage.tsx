@@ -43,8 +43,10 @@ import { useSettings } from '../../hooks/useSettings';
 import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
+import { useBilling } from '../../hooks/useBilling';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
 import type { ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 
 export function InterviewPage() {
   const {
@@ -56,6 +58,7 @@ export function InterviewPage() {
     updateAppSettings,
   } = useSettings();
   const { activeSession, sessions, sessionSummaries, switchSession } = useSession();
+  const { remainingSeconds } = useBilling();
   const {
     isProcessing,
     isListening,
@@ -148,7 +151,7 @@ export function InterviewPage() {
   if (showSetup || !activeSession) {
     return (
       <Box sx={{ maxWidth: 980, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {!aiSettings.apiKey && (
+        {!COMMERCIAL_MODE && !aiSettings.apiKey && (
           <Alert severity="warning" action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
             可以先准备项目和简历；正式生成答案前仍需配置 API Key。
           </Alert>
@@ -259,7 +262,7 @@ export function InterviewPage() {
       </Paper>
 
       <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
-        {!aiSettings.apiKey && (
+        {!COMMERCIAL_MODE && !aiSettings.apiKey && (
           <Alert severity="warning" sx={{ mb: 2 }} action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
             需要配置 API Key 后才能生成答案。
           </Alert>
@@ -424,61 +427,83 @@ export function InterviewPage() {
           <IconButton
             color="primary"
             onClick={handleManualSend}
-            disabled={!manualInput.trim() || !aiSettings.apiKey}
+            disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
             sx={{ alignSelf: 'flex-end' }}
           >
             <SendIcon />
           </IconButton>
         </Box>
 
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-          <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
-          <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
-          <Chip size="small" label={`面试官：${sourceLabel(appSettings.interviewerAudioSource)}`} />
-          {appSettings.interviewerAudioSource === 'system' && (
+        {COMMERCIAL_MODE ? (
+          <>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+              <Chip size="small" color="primary" label="智能听音" />
+              <Chip size="small" label={`剩余 ${Math.floor(remainingSeconds / 60)} 分钟`} />
+              {systemAudioReady && <Chip size="small" color="success" label="已选择面试窗口" />}
+            </Box>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              开始前请选择正在面试的窗口或标签页，并勾选共享音频。面试猪会自动整理面试官问题，你也可以随时手动触发。
+            </Alert>
+            <Button
+              fullWidth
+              variant={systemAudioReady ? 'outlined' : 'contained'}
+              sx={{ mb: 2 }}
+              onClick={() => { void prepareSystemAudioShare(); }}
+              disabled={isListening}
+            >
+              {systemAudioReady ? '重新选择面试窗口' : '先选择面试窗口'}
+            </Button>
+          </>
+        ) : (
+          <>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
+            <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
+            <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
+            <Chip size="small" label={`面试官：${sourceLabel(appSettings.interviewerAudioSource)}`} />
+            {appSettings.interviewerAudioSource === 'system' && (
             <Chip
               size="small"
               color={systemAudioReady ? 'success' : 'warning'}
               label={systemAudioReady ? '系统音频已共享' : '系统音频未共享'}
             />
+            )}
+          </Box>
+
+          <Alert severity="info" sx={{ mb: 2 }}>
+            面试官选择“系统音频”时，点击开始会弹出 Chrome 的共享窗口/屏幕/标签页选择器；请选择腾讯会议或整个屏幕，并勾选共享音频。
+          </Alert>
+
+          {appSettings.interviewerAudioSource === 'system' && (
+            <Button
+              fullWidth
+              variant={systemAudioReady ? 'outlined' : 'contained'}
+              sx={{ mb: 2 }}
+              onClick={() => { void prepareSystemAudioShare(); }}
+              disabled={isListening}
+            >
+              {systemAudioReady ? '重新共享系统音频' : '先共享系统音频'}
+            </Button>
           )}
-        </Box>
 
-        <Alert severity="info" sx={{ mb: 2 }}>
-          面试官选择“系统音频”时，点击开始会弹出 Chrome 的共享窗口/屏幕/标签页选择器；请选择腾讯会议或整个屏幕，并勾选共享音频。
-        </Alert>
+          {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'browser' && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              浏览器 ASR 只能识别麦克风，不能识别共享出来的系统音频。要识别微信/腾讯会议播放的面试官声音，请优先切到 Gateway 豆包/讯飞，或使用豆包 ASR、OpenAI 分片识别。
+            </Alert>
+          )}
 
-        {appSettings.interviewerAudioSource === 'system' && (
-          <Button
-            fullWidth
-            variant={systemAudioReady ? 'outlined' : 'contained'}
-            sx={{ mb: 2 }}
-            onClick={() => { void prepareSystemAudioShare(); }}
-            disabled={isListening}
-          >
-            {systemAudioReady ? '重新共享系统音频' : '先共享系统音频'}
-          </Button>
-        )}
+          {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'openai' && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              OpenAI 分片识别会使用已共享的系统音频，识别结果固定按“面试官”记录并自动触发答案，延迟约 4-6 秒。
+            </Alert>
+          )}
 
-        {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'browser' && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            浏览器 ASR 只能识别麦克风，不能识别共享出来的系统音频。要识别微信/腾讯会议播放的面试官声音，请优先切到 Gateway 豆包/讯飞，或使用豆包 ASR、OpenAI 分片识别。
-          </Alert>
-        )}
+          {appSettings.asrProvider === 'local-qwen' && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              本地 Qwen3-ASR 会连接你电脑上的 MLX 服务；先在设置里测试连通，再开始面试。
+            </Alert>
+          )}
 
-        {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'openai' && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            OpenAI 分片识别会使用已共享的系统音频，识别结果固定按“面试官”记录并自动触发答案，延迟约 4-6 秒。
-          </Alert>
-        )}
-
-        {appSettings.asrProvider === 'local-qwen' && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            本地 Qwen3-ASR 会连接你电脑上的 MLX 服务；先在设置里测试连通，再开始面试。
-          </Alert>
-        )}
-
-        <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+          <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
           <InputLabel>我的声音</InputLabel>
           <Select
             label="我的声音"
@@ -493,9 +518,9 @@ export function InterviewPage() {
           <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
             {SPEAKER_AUDIO_SOURCES.find((source) => source.key === appSettings.myAudioSource)?.desc}
           </Typography>
-        </FormControl>
+          </FormControl>
 
-        <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+          <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
           <InputLabel>面试官声音</InputLabel>
           <Select
             label="面试官声音"
@@ -510,9 +535,9 @@ export function InterviewPage() {
           <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
             {SPEAKER_AUDIO_SOURCES.find((source) => source.key === appSettings.interviewerAudioSource)?.desc}
           </Typography>
-        </FormControl>
+          </FormControl>
 
-        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+          <FormControl fullWidth size="small" sx={{ mb: 2 }}>
           <InputLabel>识别引擎</InputLabel>
           <Select
             label="识别引擎"
@@ -534,7 +559,9 @@ export function InterviewPage() {
             <MenuItem value="openai">OpenAI Whisper（系统音频备用）</MenuItem>
             <MenuItem value="browser">浏览器 ASR（适合麦克风）</MenuItem>
           </Select>
-        </FormControl>
+          </FormControl>
+          </>
+        )}
 
         <FormControl fullWidth size="small" sx={{ mb: 2 }}>
           <InputLabel>句内停顿容忍</InputLabel>
@@ -599,7 +626,7 @@ export function InterviewPage() {
       <DialogActions>
         <Button
           onClick={() => { void generateReview(); }}
-          disabled={isProcessing || !aiSettings.apiKey}
+          disabled={isProcessing || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
         >
           重新生成
         </Button>

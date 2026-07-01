@@ -10,6 +10,7 @@ import { SettingsProvider } from './context/SettingsContext';
 import { AuthProvider } from './context/AuthContext';
 import { SessionProvider } from './context/SessionContext';
 import { KnowledgeProvider } from './context/KnowledgeContext';
+import { BillingProvider } from './context/BillingContext';
 import { InterviewProvider } from './context/InterviewContext';
 import { ExamProvider } from './context/ExamContext';
 import { AppLayout } from './components/layout/AppLayout';
@@ -17,6 +18,7 @@ import { InterviewPage } from './components/interview/InterviewPage';
 import { ExamPage } from './components/exam/ExamPage';
 import { KnowledgePage } from './components/knowledge/KnowledgePage';
 import { SettingsPage } from './components/settings/SettingsPage';
+import { BillingPage } from './components/billing/BillingPage';
 import { useSettings } from './hooks/useSettings';
 import { createAppTheme } from './styles/theme';
 
@@ -34,6 +36,7 @@ function AppContent(): JSX.Element {
             <Route path="interview" element={<InterviewPage />} />
             <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="exam" element={<ExamPage />} />
+            <Route path="billing" element={<BillingPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/interview" replace />} />
           </Route>
@@ -49,11 +52,13 @@ export default function App(): JSX.Element {
       <AuthProvider>
         <SessionProvider>
           <KnowledgeProvider>
-            <InterviewProvider>
-              <ExamProvider>
-                <AppContent />
-              </ExamProvider>
-            </InterviewProvider>
+            <BillingProvider>
+              <InterviewProvider>
+                <ExamProvider>
+                  <AppContent />
+                </ExamProvider>
+              </InterviewProvider>
+            </BillingProvider>
           </KnowledgeProvider>
         </SessionProvider>
       </AuthProvider>
