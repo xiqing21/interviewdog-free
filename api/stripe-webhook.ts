@@ -66,6 +66,16 @@ export default async function handler(request: ApiRequest, response: ApiResponse
         subscription_status: session.mode === 'subscription' ? 'active' : data?.subscription_status ?? 'none',
         updated_at: new Date().toISOString(),
       });
+      await supabase.from('billing_transactions').insert({
+        user_id: userId,
+        actor_user_id: null,
+        type: session.mode === 'subscription' ? 'subscription_grant' : 'stripe_purchase',
+        minutes,
+        amount_cents: session.amount_total ?? null,
+        currency: session.currency ?? 'cny',
+        stripe_session_id: session.id ?? null,
+        note: `Stripe ${session.metadata?.plan_id ?? 'purchase'}`,
+      });
     }
   }
 

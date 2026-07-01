@@ -238,4 +238,5 @@ export const NAV_ITEMS = [
   { path: '/exam', label: '笔试辅助', icon: 'EditNote' },
   { path: '/billing', label: '套餐与时长', icon: 'WorkspacePremium' },
   { path: '/settings', label: '设置', icon: 'Settings' },
+  { path: '/admin', label: '运营后台', icon: 'AdminPanelSettings', adminOnly: true },
 ] as const;

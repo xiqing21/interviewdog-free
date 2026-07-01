@@ -1,3 +1,5 @@
+import { firstNonEmpty, loadAdminConfig } from './_admin-config';
+
 type ChatMessage = {
   role: 'system' | 'user' | 'assistant';
   content: unknown;
@@ -22,10 +24,11 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const apiKey = process.env.AI_API_KEY;
-  const baseUrl = (process.env.AI_BASE_URL ?? 'https://api.deepseek.com/v1').replace(/\/+$/, '');
-  const textModel = process.env.AI_TEXT_MODEL ?? 'deepseek-chat';
-  const visionModel = process.env.AI_VISION_MODEL ?? textModel;
+  const config = await loadAdminConfig<{ apiKey: string; baseUrl: string; textModel: string; visionModel: string }>('ai');
+  const apiKey = firstNonEmpty(config.apiKey, process.env.AI_API_KEY);
+  const baseUrl = firstNonEmpty(config.baseUrl, process.env.AI_BASE_URL, 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+  const textModel = firstNonEmpty(config.textModel, process.env.AI_TEXT_MODEL, 'deepseek-chat');
+  const visionModel = firstNonEmpty(config.visionModel, process.env.AI_VISION_MODEL, textModel);
   if (!apiKey) {
     response.status(500).json({ error: 'Server AI API key is not configured.' });
     return;

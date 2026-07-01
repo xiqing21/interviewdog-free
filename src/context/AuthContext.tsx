@@ -61,6 +61,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!supabase || !user) return;
+    let mounted = true;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('user_roles')
+          .select('banned_at,ban_reason')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (!mounted || !data?.banned_at) return;
+        setError(data.ban_reason ? `账号已被封禁：${data.ban_reason}` : '账号已被封禁。');
+        void supabase?.auth.signOut();
+        setUser(null);
+      } catch {
+        // Ignore role lookup failures; protected APIs still enforce access server-side.
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
   const rememberEmail = useCallback((email: string) => {
     setLastEmail(email);
     storageService.set(STORAGE_KEYS.LAST_AUTH_EMAIL, email);

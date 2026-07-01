@@ -19,6 +19,7 @@ import { ExamPage } from './components/exam/ExamPage';
 import { KnowledgePage } from './components/knowledge/KnowledgePage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { BillingPage } from './components/billing/BillingPage';
+import { AdminPage } from './components/admin/AdminPage';
 import { useSettings } from './hooks/useSettings';
 import { createAppTheme } from './styles/theme';
 
@@ -37,6 +38,7 @@ function AppContent(): JSX.Element {
             <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="exam" element={<ExamPage />} />
             <Route path="billing" element={<BillingPage />} />
+            <Route path="admin" element={<AdminPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/interview" replace />} />
           </Route>

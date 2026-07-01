@@ -2,7 +2,7 @@
  * Sidebar — Left navigation panel with logo, nav links, version, and theme toggle.
  */
 
-import { useState, type ElementType } from 'react';
+import { useEffect, useState, type ElementType } from 'react';
 import {
   Box,
   List,
@@ -20,6 +20,7 @@ import EditNoteIcon from '@mui/icons-material/EditNote';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
@@ -27,6 +28,8 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { NAV_ITEMS } from '../../constants';
 import { COMMERCIAL_MODE } from '../../config/commercial';
 import { useTheme } from '../../hooks/useTheme';
+import { useAuth } from '../../hooks/useAuth';
+import { adminRequest } from '../../services/adminService';
 
 /** Maps icon name strings from NAV_ITEMS to actual icon components. */
 const ICON_MAP: Record<string, ElementType> = {
@@ -34,13 +37,34 @@ const ICON_MAP: Record<string, ElementType> = {
   EditNote: EditNoteIcon,
   LibraryBooks: LibraryBooksIcon,
   WorkspacePremium: WorkspacePremiumIcon,
+  AdminPanelSettings: AdminPanelSettingsIcon,
   Settings: SettingsIcon,
 };
 
 export function Sidebar() {
   const { mode, toggleTheme } = useTheme();
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const width = collapsed ? 72 : 220;
+
+  useEffect(() => {
+    let mounted = true;
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+    adminRequest<{ admin: boolean }>('me')
+      .then((result) => {
+        if (mounted) setIsAdmin(Boolean(result.admin));
+      })
+      .catch(() => {
+        if (mounted) setIsAdmin(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   return (
     <Box
@@ -87,7 +111,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <List sx={{ flexGrow: 1, pt: 0 }}>
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => !('adminOnly' in item) || isAdmin).map((item) => {
           const Icon = ICON_MAP[item.icon];
           return (
             <NavLink
