@@ -1,7 +1,7 @@
 {
   "name": "面试猪",
   "short_name": "面试猪",
-  "description": "AI 面试实时辅助工具，支持系统音频识别、简历与知识库上下文、实时答案生成和面试复盘。",
+  "description": "AI 实时面试辅助工具，支持系统音频识别、简历与知识库上下文、实时面试答案、AI 八股文、STAR 回答和面试复盘。",
   "start_url": "/interview",
   "scope": "/",
   "display": "standalone",

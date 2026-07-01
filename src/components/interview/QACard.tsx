@@ -7,7 +7,6 @@ import { useState } from 'react';
 import {
   Card,
   CardContent,
-  CardActions,
   Box,
   Typography,
   TextField,
@@ -90,6 +89,102 @@ export function QACard({ qa }: QACardProps) {
           )}
         </Box>
 
+        <Box
+          sx={{
+            mb: 1.75,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0.75,
+          }}
+        >
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              variant={qa.generationMode === 'normal' ? 'contained' : 'outlined'}
+              startIcon={<RefreshIcon />}
+              onClick={() => regenerateAnswer(qa.id)}
+            >
+              重新生成
+            </Button>
+            <Button
+              size="small"
+              variant={qa.generationMode === 'concise' ? 'contained' : 'outlined'}
+              startIcon={<ShortTextIcon />}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'concise' })}
+            >
+              简洁
+            </Button>
+            <Button
+              size="small"
+              variant={qa.generationMode === 'detailed' ? 'contained' : 'outlined'}
+              startIcon={<SubjectIcon />}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'detailed' })}
+            >
+              详细
+            </Button>
+            <Button
+              size="small"
+              variant={qa.generationMode === 'star' ? 'contained' : 'outlined'}
+              startIcon={<AccountTreeIcon />}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'star' })}
+            >
+              STAR
+            </Button>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Button
+              size="small"
+              variant={qa.generationMode === 'no-context' ? 'contained' : 'outlined'}
+              color="secondary"
+              startIcon={<RefreshIcon />}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'no-context' })}
+            >
+              清上下文
+            </Button>
+            <Button
+              size="small"
+              variant={qa.generationMode === 'star-no-context' ? 'contained' : 'outlined'}
+              color="secondary"
+              startIcon={<AccountTreeIcon />}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'star-no-context' })}
+            >
+              清上下文 STAR
+            </Button>
+            <CopyButton text={qa.answer} />
+            {qa.isStreaming && (
+              <Button
+                size="small"
+                color="warning"
+                variant="outlined"
+                startIcon={<StopCircleIcon />}
+                onClick={stopGeneration}
+              >
+                停止
+              </Button>
+            )}
+            {!editing && (
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<EditIcon />}
+                onClick={handleStartEdit}
+              >
+                编辑问题
+              </Button>
+            )}
+            <Button
+              size="small"
+              color="error"
+              variant="outlined"
+              startIcon={<DeleteOutlineIcon />}
+              onClick={() => deleteQuestion(qa.id)}
+              sx={{ ml: { sm: 'auto' } }}
+            >
+              删除
+            </Button>
+          </Box>
+        </Box>
+
         {/* Answer */}
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Typography
@@ -149,74 +244,6 @@ export function QACard({ qa }: QACardProps) {
           </Box>
         </Box>
       </CardContent>
-
-      {/* Actions */}
-      <CardActions sx={{ px: 2, pb: 1.5 }}>
-        <CopyButton text={qa.answer} />
-        <Button
-          size="small"
-          startIcon={<RefreshIcon />}
-          onClick={() => regenerateAnswer(qa.id)}
-        >
-          重新生成
-        </Button>
-        <Button
-          size="small"
-          startIcon={<ShortTextIcon />}
-          onClick={() => regenerateAnswer(qa.id, { mode: 'concise' })}
-        >
-          简洁
-        </Button>
-        <Button
-          size="small"
-          startIcon={<SubjectIcon />}
-          onClick={() => regenerateAnswer(qa.id, { mode: 'detailed' })}
-        >
-          详细
-        </Button>
-        <Button
-          size="small"
-          startIcon={<AccountTreeIcon />}
-          onClick={() => regenerateAnswer(qa.id, { mode: 'star' })}
-        >
-          STAR
-        </Button>
-        <Button
-          size="small"
-          startIcon={<AccountTreeIcon />}
-          onClick={() => regenerateAnswer(qa.id, { mode: 'star-no-context' })}
-        >
-          清上下文STAR
-        </Button>
-        {qa.isStreaming && (
-          <Button
-            size="small"
-            color="warning"
-            startIcon={<StopCircleIcon />}
-            onClick={stopGeneration}
-          >
-            停止
-          </Button>
-        )}
-        {!editing && (
-          <Button
-            size="small"
-            startIcon={<EditIcon />}
-            onClick={handleStartEdit}
-          >
-            编辑问题
-          </Button>
-        )}
-        <Button
-          size="small"
-          color="error"
-          startIcon={<DeleteOutlineIcon />}
-          onClick={() => deleteQuestion(qa.id)}
-          sx={{ ml: 'auto' }}
-        >
-          删除
-        </Button>
-      </CardActions>
     </Card>
   );
 }

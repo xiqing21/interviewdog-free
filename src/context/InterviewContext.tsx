@@ -224,8 +224,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   }, [qaList]);
 
   // ===== 构建系统提示词 =====
-  function buildSystemPrompt(): string {
-    const mode = activeSession?.answerMode ?? 'concise';
+  function buildSystemPrompt(modeOverride?: 'concise' | 'detailed', options: { includeProfileContext?: boolean } = {}): string {
+    const includeProfileContext = options.includeProfileContext ?? true;
+    const mode = modeOverride ?? activeSession?.answerMode ?? 'concise';
     const modePrompt = ANSWER_MODES.find((m) => m.key === mode)?.prompt ?? '';
     let prompt = modePrompt;
     prompt += mode === 'detailed'
@@ -244,20 +245,22 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       prompt += '\n回答时请优先贴合以上岗位和考察方向。';
     }
 
-    // 注入简历+JD
-    const currentResume = session?.resume ?? resumeRef.current;
-    const currentJd = session?.jd ?? jdRef.current;
-    if (currentResume || currentJd) {
-      const rj = RESUME_JD_PROMPT_TEMPLATE
-        .replace('{resume}', currentResume || '（未设置）')
-        .replace('{jd}', currentJd || '（未设置）');
-      prompt += '\n\n' + rj;
-    }
+    if (includeProfileContext) {
+      // 注入简历+JD
+      const currentResume = session?.resume ?? resumeRef.current;
+      const currentJd = session?.jd ?? jdRef.current;
+      if (currentResume || currentJd) {
+        const rj = RESUME_JD_PROMPT_TEMPLATE
+          .replace('{resume}', currentResume || '（未设置）')
+          .replace('{jd}', currentJd || '（未设置）');
+        prompt += '\n\n' + rj;
+      }
 
-    const generalKnowledge = buildGeneralKnowledgeContext();
-    if (generalKnowledge) {
-      prompt += `\n\n## 当前项目挂载的专家知识库摘要\n${generalKnowledge}`;
-      prompt += '\n\n回答时请优先结合相关材料，提炼成自然口述，不要机械照抄；QA 命中内容优先级最高。';
+      const generalKnowledge = buildGeneralKnowledgeContext();
+      if (generalKnowledge) {
+        prompt += `\n\n## 当前项目挂载的专家知识库摘要\n${generalKnowledge}`;
+        prompt += '\n\n回答时请优先结合相关材料，提炼成自然口述，不要机械照抄；QA 命中内容优先级最高。';
+      }
     }
 
     return prompt;
@@ -367,17 +370,32 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (mode === 'star') {
       return '请用 STAR 结构生成：Situation 背景、Task 任务、Action 行动、Result 结果。每一段都要自然口语化，突出我做了什么、为什么这么做、结果如何。';
     }
+    if (mode === 'no-context') {
+      return '请清除上下文重新生成：不要引用简历、专家知识库、历史问答、最近转写或联网搜索结果，只基于面试官当前问题回答。回答仍要完整，给出可直接口述的结构化答案。';
+    }
     if (mode === 'star-no-context') {
-      return '请清除简历和专家库上下文，只基于问题本身，用 STAR 结构重新生成一个通用但可信的回答。';
+      return '请清除上下文并用 STAR 结构重新生成：不要引用简历、专家知识库、历史问答、最近转写或联网搜索结果，只基于问题本身，按 Situation、Task、Action、Result 输出通用但可信的回答。';
     }
     return '请生成可直接口述的面试答案。';
   }
 
   function buildPromptForMode(mode: AnswerGenerationMode): string {
-    if (mode === 'star-no-context') {
-      return `${modeInstruction(mode)}\n不要引用简历、专家知识库或历史项目材料；可以使用最近双方对话帮助理解问题。`;
+    if (mode === 'no-context' || mode === 'star-no-context') {
+      return modeInstruction(mode);
     }
-    return `${buildSystemPrompt()}\n\n${modeInstruction(mode)}`;
+    const forcedMode = mode === 'concise' ? 'concise' : mode === 'detailed' ? 'detailed' : undefined;
+    return `${buildSystemPrompt(forcedMode)}\n\n${modeInstruction(mode)}`;
+  }
+
+  function generationPolicy(mode: AnswerGenerationMode) {
+    const clearContext = mode === 'no-context' || mode === 'star-no-context';
+    return {
+      includeHistory: !clearContext,
+      includeTranscript: !clearContext,
+      includeProfileKnowledge: !clearContext,
+      includeSearch: !clearContext && appRef.current.webSearchEnabled,
+      includeHotwords: !clearContext,
+    };
   }
 
   function isAbortError(error: unknown): boolean {
@@ -599,19 +617,22 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     });
 
     const settings = aiRef.current;
+    const policy = generationPolicy(mode);
     const messages: ChatMessage[] = [
       { role: 'system', content: buildPromptForMode(mode) },
     ];
-    const allQA = sessionRef.current?.qaList ?? [];
-    const itemIndex = allQA.findIndex((q) => q.id === id);
-    const recentQA = allQA.slice(Math.max(0, itemIndex - settings.contextWindowSize), itemIndex);
-    for (const qa of recentQA) {
-      messages.push({ role: 'user', content: qa.question });
-      if (qa.answer) messages.push({ role: 'assistant', content: qa.answer });
+    if (policy.includeHistory) {
+      const allQA = sessionRef.current?.qaList ?? [];
+      const itemIndex = allQA.findIndex((q) => q.id === id);
+      const recentQA = allQA.slice(Math.max(0, itemIndex - settings.contextWindowSize), itemIndex);
+      for (const qa of recentQA) {
+        messages.push({ role: 'user', content: qa.question });
+        if (qa.answer) messages.push({ role: 'assistant', content: qa.answer });
+      }
     }
-    const transcriptContext = buildTranscriptContext();
+    const transcriptContext = policy.includeTranscript ? buildTranscriptContext() : '';
     let searchResults: WebSearchResult[] = [];
-    if (appRef.current.webSearchEnabled) {
+    if (policy.includeSearch) {
       try {
         searchResults = await webSearch(question, controller.signal);
         if (runId === generationRunId.current && searchResults.length) {
@@ -627,17 +648,18 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const searchContext = searchResults.length
       ? `\n\n联网搜索结果：\n${formatSearchResults(searchResults)}\n\n请把搜索结果作为补充资料使用；如与简历/专家库冲突，以候选人真实经历优先。`
       : '';
-    const matchedQA = buildMatchedQAContext(question);
+    const matchedQA = policy.includeProfileKnowledge ? buildMatchedQAContext(question) : '';
     const qaKnowledgeContext = matchedQA
       ? `\n\n命中的专家库 QA（优先参考）：\n${matchedQA}`
       : '';
-    const hotwords = parseHotwords(appRef.current.asrHotwords);
+    const hotwords = policy.includeHotwords ? parseHotwords(appRef.current.asrHotwords) : [];
     const hotwordContext = hotwords.length ? `\n\n语音识别热词/专业词：${hotwords.join('、')}` : '';
+    const modeContext = `\n\n本次重新生成要求：${modeInstruction(mode)}`;
     messages.push({
       role: 'user',
       content: transcriptContext
-        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题生成答案。\n\n${transcriptContext}${qaKnowledgeContext}${searchContext}${hotwordContext}\n\n请回答面试官问题：${question}`
-        : `面试官问题：${question}${qaKnowledgeContext}${searchContext}${hotwordContext}`,
+        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题生成答案。\n\n${transcriptContext}${qaKnowledgeContext}${searchContext}${hotwordContext}${modeContext}\n\n请回答面试官问题：${question}`
+        : `面试官问题：${question}${qaKnowledgeContext}${searchContext}${hotwordContext}${modeContext}`,
     });
 
     let accumulated = '';
