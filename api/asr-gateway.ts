@@ -241,7 +241,7 @@ function mergeNonEmpty(
 ): Record<string, string | number | string[]> {
   const next = { ...base };
   for (const [key, value] of Object.entries(override)) {
-    if (typeof value === 'string' && value.trim() === '') continue;
+    if (typeof value === 'string' && (!value.trim() || value.trim() === '********')) continue;
     if (Array.isArray(value) && value.length === 0) continue;
     next[key] = value;
   }
