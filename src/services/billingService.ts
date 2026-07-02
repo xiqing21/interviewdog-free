@@ -19,28 +19,34 @@ export function canSyncBilling(): boolean {
 
 export async function ensureEntitlement(): Promise<BillingEntitlement | null> {
   if (!supabase) return null;
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData.user?.id;
-  if (!userId) return null;
+  const server = await billingRequest('ensure');
+  return server?.entitlement ?? null;
+}
 
-  const loaded = await loadEntitlement();
-  if (loaded) return loaded;
+type BillingServerPayload = {
+  entitlement: BillingEntitlement;
+  remainingSeconds: number;
+  hasAccess: boolean;
+};
 
-  const { data, error } = await supabase
-    .from('user_entitlements')
-    .insert({
-      user_id: userId,
-      free_trial_minutes: FREE_TRIAL_MINUTES,
-      purchased_minutes: 0,
-      used_seconds: 0,
-      plan: 'trial',
-      subscription_status: 'none',
-      updated_at: new Date().toISOString(),
-    })
-    .select('*')
-    .single();
-  if (error) throw error;
-  return rowToEntitlement(data as EntitlementRow);
+async function billingRequest(action: 'ensure' | 'consume', seconds?: number): Promise<BillingServerPayload | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) return null;
+  const response = await fetch('/api/billing', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action, seconds }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error ?? '同步账户额度失败。');
+  }
+  return payload as BillingServerPayload;
 }
 
 export async function loadEntitlement(): Promise<BillingEntitlement | null> {
@@ -55,20 +61,8 @@ export async function loadEntitlement(): Promise<BillingEntitlement | null> {
 
 export async function consumeSeconds(seconds: number): Promise<BillingEntitlement | null> {
   if (!supabase || seconds <= 0) return null;
-  const entitlement = await ensureEntitlement();
-  if (!entitlement) return null;
-  const nextUsedSeconds = entitlement.usedSeconds + seconds;
-  const { data, error } = await supabase
-    .from('user_entitlements')
-    .update({
-      used_seconds: nextUsedSeconds,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('user_id', entitlement.userId)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return rowToEntitlement(data as EntitlementRow);
+  const server = await billingRequest('consume', seconds);
+  return server?.entitlement ?? null;
 }
 
 export async function createCheckoutSession(planId: CommercialPlanId): Promise<string> {

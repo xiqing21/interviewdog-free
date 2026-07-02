@@ -19,6 +19,7 @@ type AdminAction =
   | 'listTransactions'
   | 'getConfig'
   | 'updateConfig'
+  | 'testConfig'
   | 'listAuditLogs';
 
 type AdminUser = {
@@ -28,6 +29,7 @@ type AdminUser = {
 
 type AppConfigKey = 'ai' | 'asr' | 'plans';
 type AdminSupabaseClient = any;
+type ConfigTestResult = { ok: boolean; message: string; latencyMs?: number };
 
 const CONFIG_KEYS = ['ai', 'asr', 'plans'] as const;
 
@@ -101,6 +103,10 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     if (body.action === 'updateConfig') {
       response.status(200).json(await updateConfig(supabase, actor, body.key, body.value ?? {}));
+      return;
+    }
+    if (body.action === 'testConfig') {
+      response.status(200).json(await testConfig(supabase, actor, body.key, body.value ?? {}));
       return;
     }
     if (body.action === 'listAuditLogs') {
@@ -273,6 +279,78 @@ async function updateConfig(
   return { ok: true, value: maskSecrets(key, merged) };
 }
 
+async function testConfig(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  key: AppConfigKey | undefined,
+  value: Record<string, unknown>,
+): Promise<ConfigTestResult> {
+  if (!key || !CONFIG_KEYS.includes(key)) throw new Error('未知配置项。');
+  const { data: current } = await supabase.from('admin_app_config').select('value').eq('key', key).maybeSingle();
+  const merged = mergeConfig(current?.value ?? {}, value);
+  const startedAt = Date.now();
+  const result = key === 'ai' ? await testAiConfig(merged) : await testAsrConfig(merged);
+  await audit(supabase, actor.id, `test_${key}_config`, undefined, {
+    ok: result.ok,
+    latencyMs: result.latencyMs,
+    provider: merged.provider,
+    baseUrl: key === 'ai' ? merged.baseUrl : undefined,
+  });
+  return {
+    ...result,
+    latencyMs: result.latencyMs ?? Date.now() - startedAt,
+  };
+}
+
+async function testAiConfig(config: Record<string, unknown>): Promise<ConfigTestResult> {
+  const apiKey = str(config.apiKey);
+  const baseUrl = (str(config.baseUrl) || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+  const model = str(config.textModel) || 'deepseek-chat';
+  if (!apiKey) return { ok: false, message: '未配置 AI API Key。' };
+  const startedAt = Date.now();
+  const upstream = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: 'Hi' }],
+      max_tokens: 5,
+      stream: false,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const latencyMs = Date.now() - startedAt;
+  if (upstream.ok) return { ok: true, message: `AI 连接成功，延迟 ${latencyMs}ms。`, latencyMs };
+  const text = await upstream.text().catch(() => '');
+  return { ok: false, message: text || `AI 测试失败：HTTP ${upstream.status}`, latencyMs };
+}
+
+async function testAsrConfig(config: Record<string, unknown>): Promise<ConfigTestResult> {
+  const provider = str(config.provider) || 'gateway-doubao';
+  if (provider === 'gateway-doubao') {
+    const missing = requiredMissing(config, ['doubaoAppId', 'doubaoAccessToken', 'doubaoResourceId']);
+    return missing.length
+      ? { ok: false, message: `豆包 Gateway 缺少：${missing.join('、')}` }
+      : { ok: true, message: '豆包 Gateway 配置完整。保存后可在面试页进行实时流式测试。' };
+  }
+  if (provider === 'gateway-iflytek') {
+    const missing = requiredMissing(config, ['iflytekAppId', 'iflytekApiKey', 'iflytekApiSecret']);
+    return missing.length
+      ? { ok: false, message: `讯飞 Gateway 缺少：${missing.join('、')}` }
+      : { ok: true, message: '讯飞 Gateway 配置完整。' };
+  }
+  if (provider === 'gateway-alibaba') {
+    const missing = requiredMissing(config, ['alibabaAppKey', 'alibabaToken']);
+    return missing.length
+      ? { ok: false, message: `阿里 Gateway 缺少：${missing.join('、')}` }
+      : { ok: true, message: '阿里 Gateway 配置完整。' };
+  }
+  return { ok: true, message: `已保存 ${provider} 配置。商业版建议优先使用 gateway-doubao / gateway-iflytek / gateway-alibaba。` };
+}
+
 async function listAuditLogs(supabase: AdminSupabaseClient) {
   const { data, error } = await supabase
     .from('admin_audit_logs')
@@ -316,6 +394,14 @@ function maskSecrets(key: string, value: Record<string, unknown>) {
     if (masked[secretKey]) masked[secretKey] = '********';
   }
   return masked;
+}
+
+function requiredMissing(config: Record<string, unknown>, keys: string[]): string[] {
+  return keys.filter((key) => !str(config[key]));
+}
+
+function str(value: unknown): string {
+  return typeof value === 'string' && value !== '********' ? value.trim() : '';
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {

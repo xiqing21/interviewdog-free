@@ -17,6 +17,7 @@ import BlockIcon from '@mui/icons-material/Block';
 import AddCardIcon from '@mui/icons-material/AddCard';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ScienceIcon from '@mui/icons-material/Science';
 import {
   adminRequest,
   type AdminAuditLogRow,
@@ -41,6 +42,7 @@ export function AdminPage() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [adjustMinutes, setAdjustMinutes] = useState('60');
   const [adjustNote, setAdjustNote] = useState('后台手动赠送');
+  const [configTestResult, setConfigTestResult] = useState<Record<string, { ok: boolean; message: string }>>({});
 
   const aiConfig = useMemo(() => configs.find((item) => item.key === 'ai')?.value ?? {}, [configs]);
   const asrConfig = useMemo(() => configs.find((item) => item.key === 'asr')?.value ?? {}, [configs]);
@@ -100,6 +102,13 @@ export function AdminPage() {
     const value = Object.fromEntries([...data.entries()].map(([name, item]) => [name, String(item)]));
     await adminRequest('updateConfig', { key, value });
     await refresh();
+  };
+
+  const testConfig = async (key: 'ai' | 'asr', form: HTMLFormElement) => {
+    const data = new FormData(form);
+    const value = Object.fromEntries([...data.entries()].map(([name, item]) => [name, String(item)]));
+    const result = await adminRequest<{ ok: boolean; message: string }>('testConfig', { key, value });
+    setConfigTestResult((current) => ({ ...current, [key]: result }));
   };
 
   if (loading && !isAdmin) {
@@ -240,6 +249,8 @@ export function AdminPage() {
               ]}
               values={aiConfig}
               onSubmit={(form) => updateConfig('ai', form)}
+              onTest={(form) => testConfig('ai', form)}
+              testResult={configTestResult.ai}
             />
           </Grid>
           <Grid item xs={12} md={6}>
@@ -260,6 +271,8 @@ export function AdminPage() {
               ]}
               values={asrConfig}
               onSubmit={(form) => updateConfig('asr', form)}
+              onTest={(form) => testConfig('asr', form)}
+              testResult={configTestResult.asr}
             />
           </Grid>
         </Grid>
@@ -287,13 +300,19 @@ export function AdminPage() {
               <Typography variant="h6" fontWeight={800} gutterBottom>后续建议预留</Typography>
               <Stack spacing={1.25}>
                 {[
-                  '优惠券和邀请码：支持渠道投放、首单折扣、老带新。',
-                  '套餐 A/B 测试：不同价格、赠送分钟、月卡权益做转化对比。',
-                  '风控：同账号多设备并发限制、异常转写用量预警。',
-                  '客服工单：用户支付失败、额度异常、识别失败可直接追踪。',
-                  '运营数据看板：注册、试用转化、付费率、ARPU、识别成本。',
-                ].map((item) => (
-                  <Alert key={item} severity="info">{item}</Alert>
+                  ['优惠券和邀请码', '渠道投放、首单折扣、老带新邀请返分钟。'],
+                  ['套餐 A/B 测试', '不同价格、赠送分钟、月卡权益做转化对比。'],
+                  ['风控', '同账号多设备并发限制、异常转写用量预警。'],
+                  ['客服工单', '支付失败、额度异常、识别失败可按用户和面试记录追踪。'],
+                  ['运营数据看板', '注册、试用转化、付费率、ARPU、识别成本和毛利。'],
+                ].map(([title, desc]) => (
+                  <Paper key={title} variant="outlined" sx={{ p: 1.25 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Chip size="small" color="primary" label="预留" />
+                      <Typography fontWeight={800}>{title}</Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{desc}</Typography>
+                  </Paper>
                 ))}
               </Stack>
             </Paper>
@@ -310,12 +329,16 @@ function ConfigForm({
   fields,
   values,
   onSubmit,
+  onTest,
+  testResult,
 }: {
   title: string;
   icon: ReactNode;
   fields: Array<[string, string]>;
   values: Record<string, unknown>;
   onSubmit: (form: HTMLFormElement) => Promise<void>;
+  onTest: (form: HTMLFormElement) => Promise<void>;
+  testResult?: { ok: boolean; message: string };
 }) {
   return (
     <Paper
@@ -341,8 +364,23 @@ function ConfigForm({
             placeholder={/key|token|secret/i.test(name) ? '留空不改，填入新值后保存' : undefined}
           />
         ))}
+        {testResult && (
+          <Alert severity={testResult.ok ? 'success' : 'error'}>{testResult.message}</Alert>
+        )}
         <Divider />
-        <Button type="submit" variant="contained">保存配置</Button>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Button
+            variant="outlined"
+            startIcon={<ScienceIcon />}
+            onClick={(event) => {
+              const form = event.currentTarget.closest('form');
+              if (form) void onTest(form);
+            }}
+          >
+            测试配置
+          </Button>
+          <Button type="submit" variant="contained">保存配置</Button>
+        </Stack>
       </Stack>
     </Paper>
   );

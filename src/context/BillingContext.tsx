@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { BillingEntitlement, CommercialPlanId } from '../types';
-import { COMMERCIAL_MODE, FREE_TRIAL_MINUTES } from '../config/commercial';
+import { COMMERCIAL_MODE } from '../config/commercial';
 import * as billingService from '../services/billingService';
 import { useAuth } from '../hooks/useAuth';
 
@@ -74,13 +74,13 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const remainingSeconds = billingService.remainingSeconds(entitlement);
-  const hasAccess = !COMMERCIAL_MODE || remainingSeconds > 0;
+  const hasAccess = !COMMERCIAL_MODE || Boolean(user && remainingSeconds > 0);
 
   const value = useMemo<BillingContextValue>(() => ({
     entitlement,
     loading,
     error,
-    remainingSeconds: user ? remainingSeconds : FREE_TRIAL_MINUTES * 60,
+    remainingSeconds: user ? remainingSeconds : 0,
     hasAccess,
     refreshBilling,
     consumeSeconds,
