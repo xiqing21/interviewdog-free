@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import { firstNonEmpty, loadAdminConfig } from './_admin-config';
+import { createClient } from '@supabase/supabase-js';
 
 type GatewayProvider = 'gateway-doubao' | 'gateway-iflytek' | 'gateway-alibaba';
 
@@ -207,6 +207,32 @@ async function serverProviderConfig(provider: GatewayProvider): Promise<Record<s
     alibabaToken: firstNonEmpty(adminConfig.alibabaToken, process.env.ALIBABA_NLS_TOKEN),
     alibabaEndpoint: firstNonEmpty(adminConfig.alibabaEndpoint, process.env.ALIBABA_NLS_ENDPOINT, 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1'),
   };
+}
+
+async function loadAdminConfig<T extends Record<string, unknown>>(key: string): Promise<Partial<T>> {
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return {};
+  try {
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data } = await supabase
+      .from('admin_app_config')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle();
+    return (data?.value ?? {}) as Partial<T>;
+  } catch {
+    return {};
+  }
+}
+
+function firstNonEmpty(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() && value.trim() !== '********') return value.trim();
+  }
+  return '';
 }
 
 function mergeNonEmpty(
