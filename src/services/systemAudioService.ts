@@ -48,6 +48,7 @@ export async function start(
       throw new Error('系统音频流未准备好，请先共享系统音频。');
     }
     audioContext = new AudioContext({ sampleRate });
+    void audioContext.resume().catch(() => {});
     sourceNode = audioContext.createMediaStreamSource(audioStream);
 
     // 使用 ScriptProcessorNode 获取 PCM 数据
