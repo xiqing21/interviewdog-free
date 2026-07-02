@@ -15,10 +15,23 @@ type GatewayConfig = {
   hotwords?: string;
 };
 
+type GatewaySession = {
+  provider: ASRGatewayProvider;
+  speaker: 'interviewer' | 'me';
+  config: GatewayConfig;
+  callbacks: GatewayCallbacks;
+};
+
+const MAX_RECONNECT_ATTEMPTS = 8;
+
 let ws: WebSocket | null = null;
 let callbacksRef: GatewayCallbacks | null = null;
+let currentSession: GatewaySession | null = null;
 let ready = false;
 let queued: Int16Array[] = [];
+let reconnectTimer: number | null = null;
+let reconnectAttempts = 0;
+let manuallyStopped = false;
 let ownedStream: MediaStream | null = null;
 let context: AudioContext | null = null;
 let source: MediaStreamAudioSourceNode | null = null;
@@ -30,7 +43,8 @@ export function isSupported(): boolean {
 }
 
 export function isActive(): boolean {
-  return ws !== null && ws.readyState === WebSocket.OPEN;
+  return Boolean(currentSession && !manuallyStopped)
+    || (ws !== null && ws.readyState === WebSocket.OPEN);
 }
 
 export function start(
@@ -41,49 +55,70 @@ export function start(
 ): boolean {
   stop();
   callbacksRef = callbacks;
+  currentSession = { provider, speaker, config, callbacks };
+  manuallyStopped = false;
+  reconnectAttempts = 0;
   ready = false;
   queued = [];
+  connectGateway(currentSession);
+  return true;
+}
 
-  ws = new WebSocket(buildGatewayUrl());
-  ws.onopen = () => {
-    ws?.send(JSON.stringify({
+function connectGateway(session: GatewaySession): void {
+  ready = false;
+  const socket = new WebSocket(buildGatewayUrl());
+  ws = socket;
+  socket.onopen = () => {
+    socket.send(JSON.stringify({
       type: 'start',
-      provider,
-      speaker,
-      asrEndWindowSize: config.asrEndWindowSize,
+      provider: session.provider,
+      speaker: session.speaker,
+      asrEndWindowSize: session.config.asrEndWindowSize,
       config: {
-        ...buildProviderConfig(provider, config),
-        hotwords: config.hotwords ?? '',
+        ...buildProviderConfig(session.provider, session.config),
+        hotwords: session.config.hotwords ?? '',
       },
     }));
   };
-  ws.onmessage = (event) => {
+  socket.onmessage = (event) => {
     const data = JSON.parse(String(event.data || '{}'));
     if (data.type === 'ready') {
       ready = true;
-      callbacks.onReady?.();
+      reconnectAttempts = 0;
+      session.callbacks.onReady?.();
       flushQueue();
       return;
     }
     if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
-      callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
+      session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
       return;
     }
     if (data.type === 'error') {
-      callbacks.onError(data.message || 'ASR Gateway 错误');
+      session.callbacks.onError(data.message || 'ASR Gateway 错误');
       return;
     }
     if (data.type === 'end') {
-      callbacks.onEnd();
+      if (manuallyStopped) {
+        session.callbacks.onEnd();
+      } else {
+        scheduleReconnect('gateway end');
+      }
     }
   };
-  ws.onerror = () => callbacks.onError('ASR Gateway 连接失败。');
-  ws.onclose = () => {
-    ready = false;
-    ws = null;
-    callbacksRef?.onEnd();
+  socket.onerror = () => {
+    if (!manuallyStopped) scheduleReconnect('gateway error');
   };
-  return true;
+  socket.onclose = () => {
+    if (ws === socket) {
+      ready = false;
+      ws = null;
+    }
+    if (manuallyStopped || !currentSession) {
+      callbacksRef?.onEnd();
+      return;
+    }
+    scheduleReconnect('gateway close');
+  };
 }
 
 export async function startMicrophone(
@@ -117,19 +152,34 @@ export async function startMicrophone(
 }
 
 export function sendAudio(pcm: Int16Array): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  if (!ready) {
-    queued.push(pcm.slice());
-    queued = queued.slice(-80);
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    if (currentSession && !manuallyStopped) {
+      queueAudio(pcm);
+      scheduleReconnect('audio while closed');
+    }
     return;
   }
-  ws.send(JSON.stringify({
-    type: 'audio',
-    voiceRecBase64: pcmToBase64(pcm),
-  }));
+  if (!ready) {
+    queueAudio(pcm);
+    return;
+  }
+  try {
+    ws.send(JSON.stringify({
+      type: 'audio',
+      voiceRecBase64: pcmToBase64(pcm),
+    }));
+  } catch {
+    queueAudio(pcm);
+    scheduleReconnect('audio send failed');
+  }
 }
 
 export function stop(): void {
+  manuallyStopped = true;
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   cleanupAudioNodes();
   if (ownedStream) {
     ownedStream.getTracks().forEach((track) => track.stop());
@@ -140,9 +190,37 @@ export function stop(): void {
     ws.close(1000, 'user stop');
   }
   ws = null;
+  currentSession = null;
   ready = false;
   queued = [];
+  reconnectAttempts = 0;
   callbacksRef = null;
+}
+
+function queueAudio(pcm: Int16Array): void {
+  queued.push(pcm.slice());
+  queued = queued.slice(-160);
+}
+
+function scheduleReconnect(_reason: string): void {
+  if (!currentSession || manuallyStopped || reconnectTimer !== null) return;
+
+  reconnectAttempts += 1;
+  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+    const callbacks = currentSession.callbacks;
+    currentSession = null;
+    ready = false;
+    callbacks.onError('ASR Gateway 连接已中断，请重新开始录音。');
+    callbacks.onEnd();
+    return;
+  }
+
+  const delay = Math.min(2500, 250 * reconnectAttempts);
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    if (!currentSession || manuallyStopped) return;
+    connectGateway(currentSession);
+  }, delay);
 }
 
 function flushQueue(): void {
