@@ -280,8 +280,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
     if (includeProfileContext) {
       // 注入简历+JD
-      const currentResume = session?.resume ?? resumeRef.current;
-      const currentJd = session?.jd ?? jdRef.current;
+      const currentResume = session ? session.resume ?? '' : resumeRef.current;
+      const currentJd = session ? session.jd ?? '' : jdRef.current;
       if (currentResume || currentJd) {
         const rj = RESUME_JD_PROMPT_TEMPLATE
           .replace('{resume}', currentResume || '（未设置）')
@@ -321,6 +321,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
     const items = selectedKnowledgeItems();
     if (items.length === 0 && !manual) {
+      if (session) return '';
       const legacy = knowledgeRef.current.expertKnowledge?.trim();
       if (legacy) return legacy.slice(0, 3000);
     }
@@ -1169,6 +1170,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
         onEnd: () => setListeningFromActiveSources(),
         onReady: () => {
+          if (systemAudioService.isActive()) return;
           void systemAudioService.start({
             onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
             onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
