@@ -34,7 +34,7 @@ Do not treat these as ordinary `overflow: auto` boxes. Streaming content changes
 
 ## Local Implementation
 
-This project uses `src/hooks/useSmartScroller.ts` instead of `@shadcn/react/message-scroller` for now, because the app is React 18 and MUI-based. The current `@shadcn/react` package targets React 19, so do not force it into the stable production branch until the app intentionally upgrades React.
+This project uses `@shadcn/react/message-scroller` for streaming chat behavior. The app has been upgraded to React 19 so the headless primitive can be used directly.
 
 The repo is now shadcn-ready:
 
@@ -46,37 +46,37 @@ The repo is now shadcn-ready:
 Use it for downward-growing streams:
 
 ```tsx
-const answerScroller = useSmartScroller<HTMLDivElement>({
-  edge: 'end',
-  contentKey: `${message.id}:${message.content.length}`,
-  resetKey: message.id,
-  resetPosition: 'start',
-});
+<MessageScroller.Provider autoScroll defaultScrollPosition="start">
+  <MessageScroller.Root>
+    <MessageScroller.Viewport>
+      <MessageScroller.Content>
+        <MessageScroller.Item messageId={message.id} scrollAnchor>
+          {children}
+        </MessageScroller.Item>
+      </MessageScroller.Content>
+    </MessageScroller.Viewport>
+    <MessageScroller.Button direction="end">最新</MessageScroller.Button>
+  </MessageScroller.Root>
+</MessageScroller.Provider>
 ```
 
 Use it for newest-first feeds:
 
 ```tsx
-const feedScroller = useSmartScroller<HTMLDivElement>({
-  edge: 'start',
-  contentKey: `${items[items.length - 1]?.id ?? 'empty'}:${items.length}`,
-});
-```
-
-Wire the container:
-
-```tsx
-<Box ref={answerScroller.ref} onScroll={answerScroller.handleScroll} sx={{ overflowY: 'auto' }}>
-  <Box data-message-id={`message-${message.id}`}>{children}</Box>
-</Box>
-```
-
-Show a jump button only when `showJumpButton` is true:
-
-```tsx
-{answerScroller.showJumpButton && (
-  <Button onClick={() => answerScroller.jumpToLiveEdge()}>最新</Button>
-)}
+<MessageScroller.Provider autoScroll defaultScrollPosition="start">
+  <MessageScroller.Root>
+    <MessageScroller.Viewport preserveScrollOnPrepend>
+      <MessageScroller.Content>
+        {items.map((item, index) => (
+          <MessageScroller.Item key={item.id} messageId={item.id} scrollAnchor={index === 0}>
+            {item.content}
+          </MessageScroller.Item>
+        ))}
+      </MessageScroller.Content>
+    </MessageScroller.Viewport>
+    <MessageScroller.Button direction="start">最新</MessageScroller.Button>
+  </MessageScroller.Root>
+</MessageScroller.Provider>
 ```
 
 ## Review Checklist
