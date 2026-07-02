@@ -74,7 +74,10 @@ wss.on('connection', (client) => {
     if (message.type === 'start') {
       provider = message.provider;
       speaker = message.speaker ?? 'interviewer';
-      config = { ...(message.config ?? {}), asrEndWindowSize: message.asrEndWindowSize ?? 1500 };
+      config = {
+        ...mergeNonEmpty(serverProviderConfig(message.provider), message.config ?? {}),
+        asrEndWindowSize: message.asrEndWindowSize ?? 1500,
+      };
       started = true;
       if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
       if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
@@ -178,6 +181,48 @@ function startDoubao(
   });
   upstream.on('error', (error) => send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao upstream error' }));
   upstream.on('close', () => send({ type: 'end' }));
+}
+
+function serverProviderConfig(provider: GatewayProvider): Record<string, string | number | string[]> {
+  if (provider === 'gateway-doubao') {
+    return {
+      appId: firstNonEmpty(process.env.DOUBAO_ASR_APP_ID),
+      accessToken: firstNonEmpty(process.env.DOUBAO_ASR_ACCESS_TOKEN),
+      resourceId: firstNonEmpty(process.env.DOUBAO_ASR_RESOURCE_ID, 'volc.bigasr.sauc.duration'),
+    };
+  }
+  if (provider === 'gateway-iflytek') {
+    return {
+      iflytekAppId: firstNonEmpty(process.env.IFLYTEK_APP_ID),
+      iflytekApiKey: firstNonEmpty(process.env.IFLYTEK_API_KEY),
+      iflytekApiSecret: firstNonEmpty(process.env.IFLYTEK_API_SECRET),
+    };
+  }
+  return {
+    alibabaAppKey: firstNonEmpty(process.env.ALIBABA_NLS_APP_KEY),
+    alibabaToken: firstNonEmpty(process.env.ALIBABA_NLS_TOKEN),
+    alibabaEndpoint: firstNonEmpty(process.env.ALIBABA_NLS_ENDPOINT, 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1'),
+  };
+}
+
+function mergeNonEmpty(
+  base: Record<string, string | number | string[]>,
+  override: Record<string, string | number | string[]>,
+): Record<string, string | number | string[]> {
+  const next = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (typeof value === 'string' && (!value.trim() || value.trim() === '********')) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    next[key] = value;
+  }
+  return next;
+}
+
+function firstNonEmpty(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() && value.trim() !== '********') return value.trim();
+  }
+  return '';
 }
 
 function startIflytek(
