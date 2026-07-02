@@ -240,6 +240,7 @@ function buildGatewayUrl(): string {
 function startPcmFromStream(stream: MediaStream): void {
   cleanupAudioNodes();
   context = new AudioContext({ sampleRate: 16000 });
+  void context.resume().catch(() => {});
   source = context.createMediaStreamSource(stream);
   processor = context.createScriptProcessor(1024, 1, 1);
   silentGain = context.createGain();
