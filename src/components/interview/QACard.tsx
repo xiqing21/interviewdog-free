@@ -5,13 +5,9 @@
 
 import { useState } from 'react';
 import {
-  Card,
-  CardContent,
   Box,
   Typography,
   TextField,
-  Button,
-  Chip,
   Link as MuiLink,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -25,6 +21,8 @@ import type { QAItem } from '../../types';
 import { useInterview } from '../../hooks/useInterview';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { CopyButton } from '../common/CopyButton';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 
 interface QACardProps {
   qa: QAItem;
@@ -54,8 +52,7 @@ export function QACard({ qa }: QACardProps) {
   };
 
   return (
-    <Card className="fade-in" sx={{ mb: 2 }}>
-      <CardContent>
+    <div className="fade-in mb-4 rounded-2xl border border-border/80 bg-card/90 p-5 text-card-foreground shadow-[0_20px_60px_rgba(15,23,42,0.10)] backdrop-blur">
         {/* Question */}
         <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
           <Typography color="primary" fontWeight={700} sx={{ flexShrink: 0 }}>
@@ -72,13 +69,13 @@ export function QACard({ qa }: QACardProps) {
                 size="small"
               />
               <Box sx={{ mt: 0.5, display: 'flex', gap: 1 }}>
-                <Button size="small" onClick={handleSaveEdit} color="primary">
+                <Button size="sm" onClick={handleSaveEdit}>
                   保存并重新生成
                 </Button>
                 <Button
-                  size="small"
+                  size="sm"
+                  variant="outline"
                   onClick={handleCancelEdit}
-                  color="inherit"
                 >
                   取消
                 </Button>
@@ -99,87 +96,83 @@ export function QACard({ qa }: QACardProps) {
         >
           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
             <Button
-              size="small"
-              variant={qa.generationMode === 'normal' ? 'contained' : 'outlined'}
-              startIcon={<RefreshIcon />}
+              size="sm"
+              variant={qa.generationMode === 'normal' ? 'default' : 'outline'}
               onClick={() => regenerateAnswer(qa.id)}
             >
+              <RefreshIcon fontSize="inherit" />
               重新生成
             </Button>
             <Button
-              size="small"
-              variant={qa.generationMode === 'concise' ? 'contained' : 'outlined'}
-              startIcon={<ShortTextIcon />}
+              size="sm"
+              variant={qa.generationMode === 'concise' ? 'default' : 'outline'}
               onClick={() => regenerateAnswer(qa.id, { mode: 'concise' })}
             >
+              <ShortTextIcon fontSize="inherit" />
               简洁
             </Button>
             <Button
-              size="small"
-              variant={qa.generationMode === 'detailed' ? 'contained' : 'outlined'}
-              startIcon={<SubjectIcon />}
+              size="sm"
+              variant={qa.generationMode === 'detailed' ? 'default' : 'outline'}
               onClick={() => regenerateAnswer(qa.id, { mode: 'detailed' })}
             >
+              <SubjectIcon fontSize="inherit" />
               详细
             </Button>
             <Button
-              size="small"
-              variant={qa.generationMode === 'star' ? 'contained' : 'outlined'}
-              startIcon={<AccountTreeIcon />}
+              size="sm"
+              variant={qa.generationMode === 'star' ? 'default' : 'outline'}
               onClick={() => regenerateAnswer(qa.id, { mode: 'star' })}
             >
+              <AccountTreeIcon fontSize="inherit" />
               STAR
             </Button>
           </Box>
           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>
             <Button
-              size="small"
-              variant={qa.generationMode === 'no-context' ? 'contained' : 'outlined'}
-              color="secondary"
-              startIcon={<RefreshIcon />}
+              size="sm"
+              variant={qa.generationMode === 'no-context' ? 'secondary' : 'outline'}
               onClick={() => regenerateAnswer(qa.id, { mode: 'no-context' })}
             >
+              <RefreshIcon fontSize="inherit" />
               清上下文
             </Button>
             <Button
-              size="small"
-              variant={qa.generationMode === 'star-no-context' ? 'contained' : 'outlined'}
-              color="secondary"
-              startIcon={<AccountTreeIcon />}
+              size="sm"
+              variant={qa.generationMode === 'star-no-context' ? 'secondary' : 'outline'}
               onClick={() => regenerateAnswer(qa.id, { mode: 'star-no-context' })}
             >
+              <AccountTreeIcon fontSize="inherit" />
               清上下文 STAR
             </Button>
             <CopyButton text={qa.answer} />
             {qa.isStreaming && (
               <Button
-                size="small"
-                color="warning"
-                variant="outlined"
-                startIcon={<StopCircleIcon />}
+                size="sm"
+                variant="outline"
                 onClick={stopGeneration}
               >
+                <StopCircleIcon fontSize="inherit" />
                 停止
               </Button>
             )}
             {!editing && (
               <Button
-                size="small"
-                variant="outlined"
-                startIcon={<EditIcon />}
+                size="sm"
+                variant="outline"
                 onClick={handleStartEdit}
               >
+                <EditIcon fontSize="inherit" />
                 编辑问题
               </Button>
             )}
             <Button
-              size="small"
-              color="error"
-              variant="outlined"
-              startIcon={<DeleteOutlineIcon />}
+              size="sm"
+              variant="destructive"
               onClick={() => deleteQuestion(qa.id)}
-              sx={{ ml: { sm: 'auto' } }}
+              className="sm:ml-auto"
             >
+              <DeleteOutlineIcon fontSize="inherit" />
               删除
             </Button>
           </Box>
@@ -207,7 +200,7 @@ export function QACard({ qa }: QACardProps) {
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
-                  <Chip size="small" color="info" label="联网搜索参考" />
+                  <Badge variant="secondary">联网搜索参考</Badge>
                   <Typography variant="caption" color="text.secondary">
                     已和原答案一起综合生成
                   </Typography>
@@ -237,13 +230,12 @@ export function QACard({ qa }: QACardProps) {
               </Typography>
             ) : null}
             {qa.error && (
-              <Typography color="error" variant="body2" sx={{ mt: 0.5 }}>
+              <Typography color="error" variant="body2" sx={{ mt: 0.75 }}>
                 {qa.error}
               </Typography>
             )}
           </Box>
         </Box>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
