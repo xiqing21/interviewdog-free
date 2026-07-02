@@ -53,9 +53,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const supabase = createClient<any, 'public', any>(supabaseUrl, supabaseServiceRoleKey, {
+  const supabase: any = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-  });
+  }) as any;
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) {
     response.status(401).json({ error: '登录状态无效，请重新登录。' });

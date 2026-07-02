@@ -27,7 +27,7 @@ type AdminUser = {
 };
 
 type AppConfigKey = 'ai' | 'asr' | 'plans';
-type AdminSupabaseClient = ReturnType<typeof createClient<any, 'public', any>>;
+type AdminSupabaseClient = any;
 
 const CONFIG_KEYS = ['ai', 'asr', 'plans'] as const;
 
@@ -44,9 +44,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const supabase = createClient<any, 'public', any>(supabaseUrl, serviceRoleKey, {
+  const supabase: AdminSupabaseClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
-  });
+  }) as AdminSupabaseClient;
   const token = firstHeader(request.headers.authorization)?.replace(/^Bearer\s+/i, '');
   if (!token) {
     response.status(401).json({ error: '请先登录。' });
@@ -136,8 +136,8 @@ async function listUsers(supabase: AdminSupabaseClient) {
     supabase.from('user_entitlements').select('*').in('user_id', userIds),
     supabase.from('user_roles').select('*').in('user_id', userIds),
   ]);
-  const entitlementByUser = new Map((entitlements ?? []).map((item: any) => [item.user_id, item]));
-  const roleByUser = new Map((roles ?? []).map((item: any) => [item.user_id, item]));
+  const entitlementByUser = new Map<string, any>((entitlements ?? []).map((item: any) => [item.user_id, item]));
+  const roleByUser = new Map<string, any>((roles ?? []).map((item: any) => [item.user_id, item]));
   return {
     users: usersData.users.map((user: any) => {
       const entitlement = entitlementByUser.get(user.id);
