@@ -43,6 +43,98 @@
     --input: 216 22% 28%;
     --ring: 199 92% 64%;
   }
+
+  html[data-theme='light'] {
+    --background: 214 35% 97%;
+    --foreground: 215 24% 16%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 24% 16%;
+    --primary: 214 70% 59%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 10 100% 72%;
+    --secondary-foreground: 215 24% 16%;
+    --muted: 210 18% 94%;
+    --muted-foreground: 215 13% 47%;
+    --accent: 199 89% 92%;
+    --accent-foreground: 215 24% 18%;
+    --border: 214 24% 88%;
+    --input: 214 24% 88%;
+    --ring: 214 70% 59%;
+  }
+
+  html[data-theme='clay'] {
+    --background: 170 16% 94%;
+    --foreground: 206 21% 19%;
+    --card: 80 33% 97%;
+    --card-foreground: 206 21% 19%;
+    --primary: 219 83% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 8 70% 62%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 168 18% 91%;
+    --muted-foreground: 206 9% 46%;
+    --accent: 207 48% 91%;
+    --accent-foreground: 206 21% 19%;
+    --border: 207 16% 83%;
+    --input: 168 18% 91%;
+    --ring: 219 83% 65%;
+    --radius: 1rem;
+  }
+
+  html[data-theme='midnight'] {
+    --background: 220 43% 9%;
+    --foreground: 205 100% 95%;
+    --card: 219 41% 14%;
+    --card-foreground: 205 100% 95%;
+    --primary: 199 89% 59%;
+    --primary-foreground: 220 43% 9%;
+    --secondary: 43 96% 56%;
+    --secondary-foreground: 220 43% 9%;
+    --muted: 218 32% 20%;
+    --muted-foreground: 211 31% 71%;
+    --accent: 213 33% 23%;
+    --accent-foreground: 205 100% 95%;
+    --border: 215 24% 26%;
+    --input: 220 36% 16%;
+    --ring: 199 89% 59%;
+  }
+
+  html[data-theme='forest'] {
+    --background: 140 21% 12%;
+    --foreground: 132 45% 95%;
+    --card: 143 21% 17%;
+    --card-foreground: 132 45% 95%;
+    --primary: 138 46% 69%;
+    --primary-foreground: 140 21% 12%;
+    --secondary: 35 85% 72%;
+    --secondary-foreground: 140 21% 12%;
+    --muted: 142 23% 21%;
+    --muted-foreground: 137 16% 73%;
+    --accent: 169 31% 21%;
+    --accent-foreground: 132 45% 95%;
+    --border: 136 15% 27%;
+    --input: 142 23% 21%;
+    --ring: 138 46% 69%;
+  }
+
+  html[data-theme='mono'] {
+    --background: 0 0% 9%;
+    --foreground: 240 5% 96%;
+    --card: 0 0% 14%;
+    --card-foreground: 240 5% 96%;
+    --primary: 220 14% 91%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 154 76% 80%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 240 3% 18%;
+    --muted-foreground: 240 4% 71%;
+    --accent: 220 9% 22%;
+    --accent-foreground: 240 5% 96%;
+    --border: 240 4% 24%;
+    --input: 240 3% 18%;
+    --ring: 220 14% 91%;
+    --radius: 0.25rem;
+  }
 }
 
 /* ===== Global Reset ===== */
