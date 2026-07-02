@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 type ApiRequest = {
   method?: string;
@@ -27,6 +27,7 @@ type AdminUser = {
 };
 
 type AppConfigKey = 'ai' | 'asr' | 'plans';
+type AdminSupabaseClient = ReturnType<typeof createClient<any, 'public', any>>;
 
 const CONFIG_KEYS = ['ai', 'asr', 'plans'] as const;
 
@@ -43,7 +44,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  const supabase = createClient<any, 'public', any>(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const token = firstHeader(request.headers.authorization)?.replace(/^Bearer\s+/i, '');
@@ -112,7 +113,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
   }
 }
 
-async function isAdmin(supabase: SupabaseClient, user: AdminUser): Promise<boolean> {
+async function isAdmin(supabase: AdminSupabaseClient, user: AdminUser): Promise<boolean> {
   const adminEmails = (process.env.ADMIN_EMAILS ?? '')
     .split(',')
     .map((email) => email.trim().toLowerCase())
@@ -127,18 +128,18 @@ async function isAdmin(supabase: SupabaseClient, user: AdminUser): Promise<boole
   return data?.role === 'admin';
 }
 
-async function listUsers(supabase: SupabaseClient) {
+async function listUsers(supabase: AdminSupabaseClient) {
   const { data: usersData, error: usersError } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 });
   if (usersError) throw usersError;
-  const userIds = usersData.users.map((user) => user.id);
+  const userIds = usersData.users.map((user: { id: string }) => user.id);
   const [{ data: entitlements }, { data: roles }] = await Promise.all([
     supabase.from('user_entitlements').select('*').in('user_id', userIds),
     supabase.from('user_roles').select('*').in('user_id', userIds),
   ]);
-  const entitlementByUser = new Map((entitlements ?? []).map((item) => [item.user_id, item]));
-  const roleByUser = new Map((roles ?? []).map((item) => [item.user_id, item]));
+  const entitlementByUser = new Map((entitlements ?? []).map((item: any) => [item.user_id, item]));
+  const roleByUser = new Map((roles ?? []).map((item: any) => [item.user_id, item]));
   return {
-    users: usersData.users.map((user) => {
+    users: usersData.users.map((user: any) => {
       const entitlement = entitlementByUser.get(user.id);
       const role = roleByUser.get(user.id);
       const totalSeconds = ((entitlement?.free_trial_minutes ?? 15) + (entitlement?.purchased_minutes ?? 0)) * 60;
@@ -163,7 +164,7 @@ async function listUsers(supabase: SupabaseClient) {
 }
 
 async function setBan(
-  supabase: SupabaseClient,
+  supabase: AdminSupabaseClient,
   actor: AdminUser,
   userId: string | undefined,
   banned: boolean,
@@ -190,7 +191,7 @@ async function setBan(
 }
 
 async function adjustMinutes(
-  supabase: SupabaseClient,
+  supabase: AdminSupabaseClient,
   actor: AdminUser,
   userId: string | undefined,
   minutes: number,
@@ -227,7 +228,7 @@ async function adjustMinutes(
   return { ok: true, entitlement: payload };
 }
 
-async function listTransactions(supabase: SupabaseClient, userId?: string) {
+async function listTransactions(supabase: AdminSupabaseClient, userId?: string) {
   let query = supabase
     .from('billing_transactions')
     .select('*')
@@ -239,11 +240,11 @@ async function listTransactions(supabase: SupabaseClient, userId?: string) {
   return { transactions: data ?? [] };
 }
 
-async function getConfig(supabase: SupabaseClient) {
+async function getConfig(supabase: AdminSupabaseClient) {
   const { data, error } = await supabase.from('admin_app_config').select('*').in('key', CONFIG_KEYS);
   if (error) throw error;
   return {
-    configs: (data ?? []).map((item) => ({
+    configs: (data ?? []).map((item: any) => ({
       key: item.key,
       value: maskSecrets(item.key, item.value),
       updatedAt: item.updated_at,
@@ -252,7 +253,7 @@ async function getConfig(supabase: SupabaseClient) {
 }
 
 async function updateConfig(
-  supabase: SupabaseClient,
+  supabase: AdminSupabaseClient,
   actor: AdminUser,
   key: AppConfigKey | undefined,
   value: Record<string, unknown>,
@@ -272,7 +273,7 @@ async function updateConfig(
   return { ok: true, value: maskSecrets(key, merged) };
 }
 
-async function listAuditLogs(supabase: SupabaseClient) {
+async function listAuditLogs(supabase: AdminSupabaseClient) {
   const { data, error } = await supabase
     .from('admin_audit_logs')
     .select('*')
@@ -283,7 +284,7 @@ async function listAuditLogs(supabase: SupabaseClient) {
 }
 
 async function audit(
-  supabase: SupabaseClient,
+  supabase: AdminSupabaseClient,
   actorUserId: string,
   action: string,
   targetUserId?: string,

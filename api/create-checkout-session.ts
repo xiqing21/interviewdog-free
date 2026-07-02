@@ -53,7 +53,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  const supabase = createClient<any, 'public', any>(supabaseUrl, supabaseServiceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
   const { data, error } = await supabase.auth.getUser(token);
