@@ -32,6 +32,8 @@ import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
 import TuneIcon from '@mui/icons-material/Tune';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import { Link } from 'react-router-dom';
 import { VoiceControl } from './VoiceControl';
 import { QACard } from './QACard';
@@ -43,6 +45,7 @@ import { useSettings } from '../../hooks/useSettings';
 import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
+import { useSmartScroller } from '../../hooks/useSmartScroller';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
 import type { ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
 
@@ -124,6 +127,16 @@ export function InterviewPage() {
     transcriptLines.some((line) => line.speaker === 'interviewer') ||
     /^面试官[：:]/.test(interimText.trim());
   const visibleTranscriptLines = [...transcriptLines.slice(-30)].reverse();
+  const answerScroller = useSmartScroller<HTMLDivElement>({
+    edge: 'end',
+    contentKey: `${selectedQa?.id ?? 'empty'}:${selectedQa?.answer.length ?? 0}:${selectedQa?.isStreaming ? 'streaming' : 'done'}`,
+    resetKey: selectedQa?.id ?? 'empty',
+    resetPosition: 'start',
+  });
+  const transcriptScroller = useSmartScroller<HTMLDivElement>({
+    edge: 'start',
+    contentKey: `${interimText.length}:${transcriptLines[transcriptLines.length - 1]?.id ?? 'empty'}:${transcriptLines.length}`,
+  });
 
   if (showStartPrompt && activeSession && !showSetup) {
     return (
@@ -288,22 +301,56 @@ export function InterviewPage() {
           )}
         </Box>
 
-        {!selectedQa ? (
-          <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
-            <Box
-              component="img"
-              src="/logo.svg"
-              alt="面试猪"
-              sx={{ width: 72, height: 72, mb: 1, opacity: 0.72 }}
-            />
-            <Typography variant="subtitle1">等待第一道面试问题</Typography>
-            <Typography variant="body2" sx={{ mt: 0.5 }}>
-              开始语音识别，或在右侧手动输入问题。
-            </Typography>
+        <Box sx={{ position: 'relative' }}>
+          <Box
+            ref={answerScroller.ref}
+            onScroll={answerScroller.handleScroll}
+            sx={{
+              maxHeight: { xs: 'none', md: 'calc(100vh - 230px)' },
+              minHeight: { md: 'calc(100vh - 230px)' },
+              overflowY: { xs: 'visible', md: 'auto' },
+              pr: { md: 0.5 },
+              scrollBehavior: 'smooth',
+            }}
+          >
+            {!selectedQa ? (
+              <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
+                <Box
+                  component="img"
+                  src="/logo.svg"
+                  alt="面试猪"
+                  sx={{ width: 72, height: 72, mb: 1, opacity: 0.72 }}
+                />
+                <Typography variant="subtitle1">等待第一道面试问题</Typography>
+                <Typography variant="body2" sx={{ mt: 0.5 }}>
+                  开始语音识别，或在右侧手动输入问题。
+                </Typography>
+              </Box>
+            ) : (
+              <Box data-message-id={`qa-${selectedQa.id}`}>
+                <QACard qa={selectedQa} />
+              </Box>
+            )}
           </Box>
-        ) : (
-          <QACard qa={selectedQa} />
-        )}
+          {answerScroller.showJumpButton && selectedQa && (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<KeyboardArrowDownIcon />}
+              onClick={() => answerScroller.jumpToLiveEdge()}
+              sx={{
+                position: 'absolute',
+                right: 12,
+                bottom: 12,
+                borderRadius: 999,
+                boxShadow: 4,
+                display: { xs: 'none', md: 'inline-flex' },
+              }}
+            >
+              最新回答
+            </Button>
+          )}
+        </Box>
 
       </Paper>
 
@@ -313,21 +360,25 @@ export function InterviewPage() {
           <Typography variant="subtitle1" fontWeight={700}>双方对话记录</Typography>
         </Box>
 
-        <Box
-          sx={{
-            p: 1.5,
-            borderRadius: 1,
-            border: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-            mb: 2,
-            height: { xs: 260, md: '34vh' },
-            minHeight: 240,
-            overflowY: 'auto',
-          }}
-        >
-          {interimText && (
+        <Box sx={{ position: 'relative', mb: 2 }}>
+          <Box
+            ref={transcriptScroller.ref}
+            onScroll={transcriptScroller.handleScroll}
+            sx={{
+              p: 1.5,
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              height: { xs: 260, md: '34vh' },
+              minHeight: 240,
+              overflowY: 'auto',
+              scrollBehavior: 'smooth',
+            }}
+          >
+            {interimText && (
             <Box
+              data-message-id="interim"
               sx={{
                 mb: 1,
                 p: 1,
@@ -353,50 +404,69 @@ export function InterviewPage() {
                 {interimText}
               </Typography>
             </Box>
-          )}
-          {transcriptLines.length === 0 && !interimText ? (
-            <Typography variant="body2" color="text.secondary">
-              双路转写会记录在这里：我说的话只留档，面试官问题会触发 AI。
-            </Typography>
-          ) : (
-            visibleTranscriptLines.map((line) => (
-              <Box
-                key={line.id}
-                sx={{
-                  mb: 1,
-                  p: 1,
-                  borderRadius: 1,
-                  bgcolor: line.speaker === 'interviewer' ? 'rgba(98, 179, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid',
-                  borderColor: line.speaker === 'interviewer' ? 'primary.dark' : 'divider',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.35 }}>
-                  <Chip
-                    size="small"
-                    color={line.speaker === 'interviewer' ? 'primary' : 'default'}
-                    label={line.speaker === 'interviewer' ? '面试官' : '我'}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {formatTime(line.timestamp)}
-                  </Typography>
-                  {line.speaker === 'interviewer' && (
-                    <Button
+            )}
+            {transcriptLines.length === 0 && !interimText ? (
+              <Typography variant="body2" color="text.secondary">
+                双路转写会记录在这里：我说的话只留档，面试官问题会触发 AI。
+              </Typography>
+            ) : (
+              visibleTranscriptLines.map((line) => (
+                <Box
+                  key={line.id}
+                  data-message-id={`transcript-${line.id}`}
+                  sx={{
+                    mb: 1,
+                    p: 1,
+                    borderRadius: 1,
+                    bgcolor: line.speaker === 'interviewer' ? 'rgba(98, 179, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid',
+                    borderColor: line.speaker === 'interviewer' ? 'primary.dark' : 'divider',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.35 }}>
+                    <Chip
                       size="small"
-                      variant="text"
-                      onClick={() => handleTranscriptQuestion(line.text)}
-                      disabled={!aiSettings.apiKey}
-                      sx={{ minWidth: 0, px: 0.75 }}
-                    >
-                      触发
-                    </Button>
-                  )}
+                      color={line.speaker === 'interviewer' ? 'primary' : 'default'}
+                      label={line.speaker === 'interviewer' ? '面试官' : '我'}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {formatTime(line.timestamp)}
+                    </Typography>
+                    {line.speaker === 'interviewer' && (
+                      <Button
+                        size="small"
+                        variant="text"
+                        onClick={() => handleTranscriptQuestion(line.text)}
+                        disabled={!aiSettings.apiKey}
+                        sx={{ minWidth: 0, px: 0.75 }}
+                      >
+                        触发
+                      </Button>
+                    )}
+                  </Box>
+                  <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {line.text}
+                  </Typography>
                 </Box>
-                <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {line.text}
-                </Typography>
-              </Box>
-            ))
+              ))
+            )}
+          </Box>
+          {transcriptScroller.showJumpButton && (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<KeyboardArrowUpIcon />}
+              onClick={() => transcriptScroller.jumpToLiveEdge()}
+              sx={{
+                position: 'absolute',
+                top: 10,
+                right: 10,
+                borderRadius: 999,
+                boxShadow: 4,
+              }}
+            >
+              最新
+            </Button>
           )}
         </Box>
 
