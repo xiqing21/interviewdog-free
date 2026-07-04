@@ -27,7 +27,6 @@ import {
   Typography,
   type SelectChangeEvent,
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
 import TuneIcon from '@mui/icons-material/Tune';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -111,7 +110,7 @@ export function InterviewPage() {
   }, [manualInput, activeSession, addManualQuestion]);
 
   const handleTranscriptQuestion = useCallback((question: string) => {
-    if (!question.trim() || !aiSettings.apiKey) return;
+    if (!question.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)) return;
     void addManualQuestion(question.trim());
   }, [addManualQuestion, aiSettings.apiKey]);
 
@@ -264,14 +263,22 @@ export function InterviewPage() {
         </Box>
       </Paper>
 
-      <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
+      <Paper
+        sx={{
+          p: 2,
+          minHeight: { md: 'calc(100vh - 140px)' },
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1.5,
+        }}
+      >
         {!COMMERCIAL_MODE && !aiSettings.apiKey && (
-          <Alert severity="warning" sx={{ mb: 2 }} action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
+          <Alert severity="warning" action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
             需要配置 API Key 后才能生成答案。
           </Alert>
         )}
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="h6" fontWeight={800}>AI 回答</Typography>
           {isProcessing && <Chip size="small" color="primary" label="生成中" />}
           {isListening && <Chip size="small" color="success" label="识别中" />}
@@ -294,6 +301,128 @@ export function InterviewPage() {
           )}
         </Box>
 
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 1.25,
+            display: 'flex',
+            gap: 1,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            bgcolor: 'background.default',
+          }}
+        >
+          <AnswerModeToggle />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={appSettings.webSearchEnabled}
+                onChange={(event) => updateAppSettings({ webSearchEnabled: event.target.checked })}
+              />
+            }
+            label="联网搜索补充"
+            sx={{ m: 0 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <InputLabel>停顿容忍</InputLabel>
+            <Select
+              label="停顿容忍"
+              value={String(appSettings.mergeTimeoutMs)}
+              onChange={(event: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(event.target.value) })}
+            >
+              <MenuItem value="1000">1.0 秒</MenuItem>
+              <MenuItem value="1500">1.5 秒</MenuItem>
+              <MenuItem value="2000">2.0 秒</MenuItem>
+              <MenuItem value="2500">2.5 秒</MenuItem>
+              <MenuItem value="5000">5.0 秒</MenuItem>
+              <MenuItem value="8000">8.0 秒</MenuItem>
+              <MenuItem value="12000">12.0 秒</MenuItem>
+            </Select>
+          </FormControl>
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', ml: { md: 'auto' } }}>
+            {COMMERCIAL_MODE ? (
+              <>
+                <Chip size="small" color="primary" label="智能听音" />
+                <Chip size="small" label={`剩余 ${Math.floor(remainingSeconds / 60)} 分钟`} />
+              </>
+            ) : (
+              <>
+                <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
+                <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
+                <Chip size="small" label={`面试官：${sourceLabel(appSettings.interviewerAudioSource)}`} />
+              </>
+            )}
+            {appSettings.interviewerAudioSource === 'system' && (
+              <Chip
+                size="small"
+                color={systemAudioReady ? 'success' : 'warning'}
+                label={COMMERCIAL_MODE
+                  ? systemAudioReady ? '已选择面试窗口' : '未选择面试窗口'
+                  : systemAudioReady ? '系统音频已共享' : '系统音频未共享'}
+              />
+            )}
+          </Box>
+          {!COMMERCIAL_MODE && (
+            <Box component="details" sx={{ width: '100%' }}>
+              <Box component="summary" sx={{ cursor: 'pointer', color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>
+                音频与识别设置
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 1, mt: 1.25 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>我的声音</InputLabel>
+                  <Select
+                    label="我的声音"
+                    value={appSettings.myAudioSource}
+                    onChange={(event: SelectChangeEvent) => setMyAudioSource(event.target.value as SpeakerAudioSource)}
+                    disabled={isListening}
+                  >
+                    {SPEAKER_AUDIO_SOURCES.map((source) => (
+                      <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth size="small">
+                  <InputLabel>面试官声音</InputLabel>
+                  <Select
+                    label="面试官声音"
+                    value={appSettings.interviewerAudioSource}
+                    onChange={(event: SelectChangeEvent) => handleInterviewerAudioSourceChange(event.target.value as SpeakerAudioSource)}
+                    disabled={isListening}
+                  >
+                    {SPEAKER_AUDIO_SOURCES.map((source) => (
+                      <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth size="small">
+                  <InputLabel>识别引擎</InputLabel>
+                  <Select
+                    label="识别引擎"
+                    value={appSettings.asrProvider}
+                    onChange={(event: SelectChangeEvent) => setASRProvider(event.target.value as ASRProvider)}
+                    disabled={isListening}
+                  >
+                    <MenuItem value="gateway-doubao">Gateway 豆包实时</MenuItem>
+                    <MenuItem value="gateway-iflytek">Gateway 讯飞实时</MenuItem>
+                    <MenuItem value="gateway-alibaba">Gateway 阿里云</MenuItem>
+                    <MenuItem value="doubao">豆包 ASR</MenuItem>
+                    <MenuItem value="local-qwen">本地 Qwen3-ASR</MenuItem>
+                    <MenuItem value="mimo">MiMo-V2.5-ASR</MenuItem>
+                    <MenuItem value="baidu">百度 ASR</MenuItem>
+                    <MenuItem value="google">Google ASR</MenuItem>
+                    <MenuItem value="alibaba">阿里云 ASR</MenuItem>
+                    <MenuItem value="iflytek">讯飞 ASR</MenuItem>
+                    <MenuItem value="glm">GLM ASR</MenuItem>
+                    <MenuItem value="openai">OpenAI Whisper</MenuItem>
+                    <MenuItem value="browser">浏览器 ASR</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+          )}
+        </Paper>
+
         <MessageScroller.Provider
           key={`answer-scroller-${selectedQa?.id ?? 'empty'}`}
           autoScroll
@@ -303,10 +432,10 @@ export function InterviewPage() {
         >
           <MessageScroller.Root
             className="relative flex flex-col overflow-hidden rounded-xl border border-border/70 bg-background/55"
-            style={{ minHeight: 'calc(100vh - 230px)' }}
+            style={{ minHeight: 'calc(100vh - 360px)' }}
           >
             <MessageScroller.Viewport
-              className="flex max-h-[calc(100vh-230px)] flex-1 flex-col overflow-y-auto scroll-smooth p-1 md:min-h-[calc(100vh-230px)]"
+              className="flex max-h-[calc(100vh-360px)] flex-1 flex-col overflow-y-auto scroll-smooth p-1 md:min-h-[calc(100vh-360px)]"
               aria-label="AI 回答"
             >
               <MessageScroller.Content className="flex flex-col gap-3">
@@ -343,52 +472,41 @@ export function InterviewPage() {
           </MessageScroller.Root>
         </MessageScroller.Provider>
 
-      </Paper>
-
-      <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-          <TuneIcon color="primary" fontSize="small" />
-          <Typography variant="subtitle1" fontWeight={700}>双方对话记录</Typography>
-        </Box>
-
-        <Box sx={{ mb: 1.5, p: 1.25, border: '1px solid', borderColor: 'divider', borderRadius: 1.5, bgcolor: 'background.default' }}>
-          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1 }}>
-            {COMMERCIAL_MODE ? (
-              <>
-                <Chip size="small" color="primary" label="智能听音" />
-                <Chip size="small" label={`剩余 ${Math.floor(remainingSeconds / 60)} 分钟`} />
-                {systemAudioReady && <Chip size="small" color="success" label="已选择面试窗口" />}
-              </>
-            ) : (
-              <>
-                <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
-                <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
-                <Chip size="small" label={`面试官：${sourceLabel(appSettings.interviewerAudioSource)}`} />
-                {appSettings.interviewerAudioSource === 'system' && (
-                  <Chip
-                    size="small"
-                    color={systemAudioReady ? 'success' : 'warning'}
-                    label={systemAudioReady ? '系统音频已共享' : '系统音频未共享'}
-                  />
-                )}
-              </>
-            )}
-          </Box>
-          {appSettings.interviewerAudioSource === 'system' && (
-            <Button
+        <Box sx={{ mt: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
               fullWidth
-              variant={systemAudioReady ? 'outlined' : 'contained'}
-              sx={{ mb: 1 }}
-              onClick={() => { void prepareSystemAudioShare(); }}
-              disabled={isListening}
+              size="small"
+              placeholder="输入你的问题"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
+              multiline
+              maxRows={3}
+            />
+            <Button
+              variant="contained"
+              onClick={handleManualSend}
+              disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
+              sx={{ px: 3, flexShrink: 0 }}
             >
-              {COMMERCIAL_MODE
-                ? systemAudioReady ? '重新选择面试窗口' : '选择面试窗口'
-                : systemAudioReady ? '重新共享系统音频' : '共享系统音频'}
+              发送
             </Button>
-          )}
-          <VoiceControl />
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 1 }}>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
+            {appSettings.interviewerAudioSource === 'system' && (
+              <Button
+                variant={systemAudioReady ? 'outlined' : 'contained'}
+                onClick={() => { void prepareSystemAudioShare(); }}
+                disabled={isListening}
+              >
+                {COMMERCIAL_MODE
+                  ? systemAudioReady ? '重新选择窗口' : '选择面试窗口'
+                  : systemAudioReady ? '重新共享音频' : '共享系统音频'}
+              </Button>
+            )}
+            <VoiceControl />
             <Button
               variant="outlined"
               onClick={() => { void triggerLatestTranscriptQuestion(); }}
@@ -398,100 +516,20 @@ export function InterviewPage() {
             </Button>
             <Button
               color="error"
-              variant="contained"
+              variant="outlined"
               onClick={() => { void endInterview(); }}
               disabled={isProcessing || Boolean(activeSession.archivedAt)}
             >
               结束归档
             </Button>
           </Box>
-          <Box component="details" sx={{ mt: 1.25 }}>
-            <Box component="summary" sx={{ cursor: 'pointer', color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>
-              听音与回答设置
-            </Box>
-            {!COMMERCIAL_MODE && (
-              <Box sx={{ mt: 1.25 }}>
-                <FormControl fullWidth size="small" sx={{ mb: 1.25 }}>
-                  <InputLabel>我的声音</InputLabel>
-                  <Select
-                    label="我的声音"
-                    value={appSettings.myAudioSource}
-                    onChange={(event: SelectChangeEvent) => setMyAudioSource(event.target.value as SpeakerAudioSource)}
-                    disabled={isListening}
-                  >
-                    {SPEAKER_AUDIO_SOURCES.map((source) => (
-                      <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+        </Box>
+      </Paper>
 
-                <FormControl fullWidth size="small" sx={{ mb: 1.25 }}>
-                  <InputLabel>面试官声音</InputLabel>
-                  <Select
-                    label="面试官声音"
-                    value={appSettings.interviewerAudioSource}
-                    onChange={(event: SelectChangeEvent) => handleInterviewerAudioSourceChange(event.target.value as SpeakerAudioSource)}
-                    disabled={isListening}
-                  >
-                    {SPEAKER_AUDIO_SOURCES.map((source) => (
-                      <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-
-                <FormControl fullWidth size="small" sx={{ mb: 1.25 }}>
-                  <InputLabel>识别引擎</InputLabel>
-                  <Select
-                    label="识别引擎"
-                    value={appSettings.asrProvider}
-                    onChange={(event: SelectChangeEvent) => setASRProvider(event.target.value as ASRProvider)}
-                    disabled={isListening}
-                  >
-                    <MenuItem value="gateway-doubao">Gateway 豆包实时（服务端 WS）</MenuItem>
-                    <MenuItem value="gateway-iflytek">Gateway 讯飞实时（服务端 WS）</MenuItem>
-                    <MenuItem value="gateway-alibaba">Gateway 阿里云（服务端兜底）</MenuItem>
-                    <MenuItem value="doubao">豆包 ASR</MenuItem>
-                    <MenuItem value="local-qwen">本地 Qwen3-ASR</MenuItem>
-                    <MenuItem value="mimo">MiMo-V2.5-ASR</MenuItem>
-                    <MenuItem value="baidu">百度 ASR</MenuItem>
-                    <MenuItem value="google">Google ASR</MenuItem>
-                    <MenuItem value="alibaba">阿里云 ASR</MenuItem>
-                    <MenuItem value="iflytek">讯飞 ASR</MenuItem>
-                    <MenuItem value="glm">GLM ASR</MenuItem>
-                    <MenuItem value="openai">OpenAI Whisper</MenuItem>
-                    <MenuItem value="browser">浏览器 ASR</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-            )}
-            <FormControl fullWidth size="small" sx={{ mb: 1.25, mt: COMMERCIAL_MODE ? 1.25 : 0 }}>
-              <InputLabel>句内停顿容忍</InputLabel>
-              <Select
-                label="句内停顿容忍"
-                value={String(appSettings.mergeTimeoutMs)}
-                onChange={(event: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(event.target.value) })}
-              >
-                <MenuItem value="1000">1.0 秒</MenuItem>
-                <MenuItem value="1500">1.5 秒</MenuItem>
-                <MenuItem value="2000">2.0 秒</MenuItem>
-                <MenuItem value="2500">2.5 秒</MenuItem>
-                <MenuItem value="5000">5.0 秒</MenuItem>
-                <MenuItem value="8000">8.0 秒</MenuItem>
-                <MenuItem value="12000">12.0 秒</MenuItem>
-              </Select>
-            </FormControl>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={appSettings.webSearchEnabled}
-                  onChange={(event) => updateAppSettings({ webSearchEnabled: event.target.checked })}
-                />
-              }
-              label="联网搜索补充"
-              sx={{ mb: 1 }}
-            />
-            <AnswerModeToggle />
-          </Box>
+      <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <TuneIcon color="primary" fontSize="small" />
+          <Typography variant="subtitle1" fontWeight={700}>双方对话记录</Typography>
         </Box>
 
         <MessageScroller.Provider
@@ -523,7 +561,7 @@ export function InterviewPage() {
                           size="small"
                           variant="text"
                           onClick={() => { void triggerLatestTranscriptQuestion(); }}
-                          disabled={!aiSettings.apiKey || !/^面试官[：:]/.test(interimText.trim())}
+                          disabled={(!COMMERCIAL_MODE && !aiSettings.apiKey) || !/^面试官[：:]/.test(interimText.trim())}
                           sx={{ minWidth: 0, px: 0.75 }}
                         >
                           触发
@@ -571,7 +609,7 @@ export function InterviewPage() {
                               size="small"
                               variant="text"
                               onClick={() => handleTranscriptQuestion(line.text)}
-                              disabled={!aiSettings.apiKey}
+                              disabled={!COMMERCIAL_MODE && !aiSettings.apiKey}
                               sx={{ minWidth: 0, px: 0.75 }}
                             >
                               触发
@@ -597,31 +635,6 @@ export function InterviewPage() {
             </MessageScroller.Button>
           </MessageScroller.Root>
         </MessageScroller.Provider>
-
-        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="手动输入或修正面试官问题..."
-            value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
-            multiline
-            maxRows={4}
-          />
-          <IconButton
-            color="primary"
-            onClick={handleManualSend}
-            disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
-            sx={{ alignSelf: 'flex-end' }}
-          >
-            <SendIcon />
-          </IconButton>
-        </Box>
-
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-          自动没触发时，可用最近面试官转写触发；也可手动修正问题后 Enter 发送。
-        </Typography>
       </Paper>
     </Box>
     <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} maxWidth="md" fullWidth>
