@@ -3,7 +3,7 @@
  * 集成 Session 管理、回答模式切换、语音控制、手动触发
  */
 
-import { useState, useCallback, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -33,9 +33,11 @@ import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import MicIcon from '@mui/icons-material/Mic';
+import StopIcon from '@mui/icons-material/Stop';
+import ComputerIcon from '@mui/icons-material/Computer';
 import { MessageScroller } from '@shadcn/react/message-scroller';
 import { Link } from 'react-router-dom';
-import { VoiceControl } from './VoiceControl';
 import { QACard } from './QACard';
 import { SessionManager } from './SessionManager';
 import { AnswerModeToggle } from './AnswerModeToggle';
@@ -68,6 +70,10 @@ export function InterviewPage() {
     systemAudioReady,
     transcriptLines,
     qaList,
+    isMerging,
+    error,
+    startListening,
+    stopListening,
     addManualQuestion,
     triggerLatestTranscriptQuestion,
     prepareSystemAudioShare,
@@ -81,6 +87,7 @@ export function InterviewPage() {
   const [setupMode, setSetupMode] = useState<'new' | 'edit'>('new');
   const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [audioGuideOpen, setAudioGuideOpen] = useState(false);
   const lastQaCountRef = useRef(qaList.length);
 
   useEffect(() => {
@@ -102,6 +109,14 @@ export function InterviewPage() {
     lastQaCountRef.current = qaList.length;
   }, [qaList, selectedQaId]);
 
+  useEffect(() => {
+    if (!activeSession || appSettings.interviewerAudioSource !== 'system') return;
+    const key = 'interviewpig_audio_share_guide_seen_v1';
+    if (localStorage.getItem(key) !== '1') {
+      setAudioGuideOpen(true);
+    }
+  }, [activeSession?.id, appSettings.interviewerAudioSource]);
+
   const handleManualSend = useCallback(() => {
     const q = manualInput.trim();
     if (!q || !activeSession) return;
@@ -120,6 +135,16 @@ export function InterviewPage() {
       void prepareSystemAudioShare();
     }
   }, [prepareSystemAudioShare, setInterviewerAudioSource]);
+
+  const closeAudioGuide = useCallback(() => {
+    localStorage.setItem('interviewpig_audio_share_guide_seen_v1', '1');
+    setAudioGuideOpen(false);
+  }, []);
+
+  const handleGuideShare = useCallback(() => {
+    closeAudioGuide();
+    void prepareSystemAudioShare();
+  }, [closeAudioGuide, prepareSystemAudioShare]);
 
   const selectedQa = selectedQaId
     ? qaList.find((qa) => qa.id === selectedQaId) ?? null
@@ -312,6 +337,68 @@ export function InterviewPage() {
             bgcolor: 'background.default',
           }}
         >
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 1.5,
+              borderColor: systemAudioReady ? 'success.main' : 'primary.light',
+              bgcolor: systemAudioReady ? 'rgba(46, 125, 50, 0.08)' : 'rgba(83, 144, 226, 0.08)',
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25, flexWrap: 'wrap' }}>
+              <ComputerIcon color={systemAudioReady ? 'success' : 'primary'} fontSize="small" />
+              <Typography variant="subtitle1" fontWeight={900}>3 步开始实时听音</Typography>
+              {systemAudioReady && <Chip size="small" color="success" label="窗口已选" />}
+              <Button size="small" variant="text" onClick={() => setAudioGuideOpen(true)}>
+                查看共享教程
+              </Button>
+            </Box>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.1fr 1.2fr 1fr' }, gap: 1 }}>
+              <GuideStep
+                index={1}
+                title={COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
+                desc="选择腾讯会议、微信、浏览器标签页，或直接选择整个屏幕。"
+                action={
+                  <Button
+                    size="small"
+                    variant={systemAudioReady ? 'outlined' : 'contained'}
+                    onClick={() => { void prepareSystemAudioShare(); }}
+                    disabled={isListening}
+                  >
+                    {systemAudioReady ? '重新选择' : COMMERCIAL_MODE ? '选择窗口' : '共享音频'}
+                  </Button>
+                }
+              />
+              <GuideStep
+                index={2}
+                title="必须开启同时分享系统音频"
+                desc="Chrome 弹窗底部的“同时分享系统音频”要打开，否则能看到窗口但听不到面试官声音。"
+                tone="warning"
+              />
+              <GuideStep
+                index={3}
+                title="开始实时听音"
+                desc={isListening ? (isMerging ? '正在整理问题...' : '正在聆听面试官问题...') : '确认共享音频后，再开始听音。'}
+                action={
+                  <Button
+                    size="small"
+                    variant="contained"
+                    color={isListening ? 'error' : 'primary'}
+                    startIcon={isListening ? <StopIcon /> : <MicIcon />}
+                    onClick={isListening ? stopListening : startListening}
+                  >
+                    {isListening ? '停止听音' : '开始听音'}
+                  </Button>
+                }
+              />
+            </Box>
+            {error && (
+              <Alert severity="error" sx={{ mt: 1.25 }}>
+                {error}
+              </Alert>
+            )}
+          </Paper>
+
           <AnswerModeToggle />
           <FormControlLabel
             control={
@@ -495,18 +582,6 @@ export function InterviewPage() {
           </Box>
 
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
-            {appSettings.interviewerAudioSource === 'system' && (
-              <Button
-                variant={systemAudioReady ? 'outlined' : 'contained'}
-                onClick={() => { void prepareSystemAudioShare(); }}
-                disabled={isListening}
-              >
-                {COMMERCIAL_MODE
-                  ? systemAudioReady ? '重新选择窗口' : '选择面试窗口'
-                  : systemAudioReady ? '重新共享音频' : '共享系统音频'}
-              </Button>
-            )}
-            <VoiceControl />
             <Button
               variant="outlined"
               onClick={() => { void triggerLatestTranscriptQuestion(); }}
@@ -652,7 +727,76 @@ export function InterviewPage() {
         <Button variant="contained" onClick={() => setReviewOpen(false)}>关闭</Button>
       </DialogActions>
     </Dialog>
+    <Dialog open={audioGuideOpen} onClose={closeAudioGuide} maxWidth="sm" fullWidth>
+      <DialogTitle>开启系统音频共享</DialogTitle>
+      <DialogContent dividers>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Alert severity="warning">
+            重点：在 Chrome 分享弹窗底部，一定要打开“同时分享系统音频”。否则页面能看到你选了窗口，但识别不到会议声音。
+          </Alert>
+          <GuideStep
+            index={1}
+            title="选择会议软件或整个屏幕"
+            desc="推荐选择腾讯会议、微信、飞书会议等正在播放面试官声音的窗口；如果找不到，就选整个屏幕。"
+          />
+          <GuideStep
+            index={2}
+            title="打开同时分享系统音频"
+            desc="窗口模式和整个屏幕模式都要检查底部开关。开关打开后再点“分享”。"
+            tone="warning"
+          />
+          <GuideStep
+            index={3}
+            title="回到页面点击开始听音"
+            desc="共享成功后，再点“开始听音”。你的麦克风只记录你的回答，面试官系统音频会触发 AI 回答。"
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={closeAudioGuide}>我知道了</Button>
+        <Button variant="contained" onClick={handleGuideShare}>现在选择窗口</Button>
+      </DialogActions>
+    </Dialog>
     </>
+  );
+}
+
+function GuideStep({
+  index,
+  title,
+  desc,
+  action,
+  tone = 'default',
+}: {
+  index: number;
+  title: string;
+  desc: string;
+  action?: ReactNode;
+  tone?: 'default' | 'warning';
+}) {
+  return (
+    <Box
+      sx={{
+        p: 1.25,
+        borderRadius: 1.5,
+        border: '1px solid',
+        borderColor: tone === 'warning' ? 'warning.main' : 'divider',
+        bgcolor: tone === 'warning' ? 'rgba(245, 124, 0, 0.08)' : 'background.paper',
+        minHeight: 92,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.75,
+      }}
+    >
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Chip size="small" color={tone === 'warning' ? 'warning' : 'primary'} label={index} />
+        <Typography variant="subtitle2" fontWeight={900}>{title}</Typography>
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.55 }}>
+        {desc}
+      </Typography>
+      {action && <Box sx={{ mt: 'auto' }}>{action}</Box>}
+    </Box>
   );
 }
 
