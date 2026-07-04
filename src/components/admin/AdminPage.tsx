@@ -6,12 +6,16 @@ import {
   Chip,
   Divider,
   Grid,
+  MenuItem,
   Paper,
+  Select,
   Stack,
+  Switch,
   Tab,
   Tabs,
   TextField,
   Typography,
+  FormControlLabel,
 } from '@mui/material';
 import BlockIcon from '@mui/icons-material/Block';
 import AddCardIcon from '@mui/icons-material/AddCard';
@@ -24,6 +28,7 @@ import {
   type AdminConfig,
   type AdminUserRow,
   type BillingTransactionRow,
+  type CommercialOpsPayload,
 } from '../../services/adminService';
 
 function minutes(seconds: number): string {
@@ -39,10 +44,15 @@ export function AdminPage() {
   const [transactions, setTransactions] = useState<BillingTransactionRow[]>([]);
   const [logs, setLogs] = useState<AdminAuditLogRow[]>([]);
   const [configs, setConfigs] = useState<AdminConfig[]>([]);
+  const [ops, setOps] = useState<CommercialOpsPayload | null>(null);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [adjustMinutes, setAdjustMinutes] = useState('60');
   const [adjustNote, setAdjustNote] = useState('后台手动赠送');
   const [configTestResult, setConfigTestResult] = useState<Record<string, { ok: boolean; message: string }>>({});
+  const [couponForm, setCouponForm] = useState({ code: '', discountPercent: '20', bonusMinutes: '30', maxRedemptions: '100', note: '' });
+  const [ticketForm, setTicketForm] = useState({ email: 'xiaosuange@gmail.com', subject: '', message: '', priority: 'normal' });
+  const [experimentForm, setExperimentForm] = useState({ name: '新用户价格实验', status: 'draft', variants: '标准价 99 元 / 新人价 69 元', note: '' });
+  const [riskForm, setRiskForm] = useState({ ruleKey: 'concurrent_sessions', enabled: true, threshold: '2', actionValue: 'limit', note: '同账号超过 2 个设备同时听音时限制新会话。' });
 
   const aiConfig = useMemo(() => configs.find((item) => item.key === 'ai')?.value ?? {}, [configs]);
   const asrConfig = useMemo(() => configs.find((item) => item.key === 'asr')?.value ?? {}, [configs]);
@@ -53,16 +63,18 @@ export function AdminPage() {
     try {
       await adminRequest('me');
       setIsAdmin(true);
-      const [userResult, txResult, configResult, logResult] = await Promise.all([
+      const [userResult, txResult, configResult, logResult, opsResult] = await Promise.all([
         adminRequest<{ users: AdminUserRow[] }>('listUsers'),
         adminRequest<{ transactions: BillingTransactionRow[] }>('listTransactions'),
         adminRequest<{ configs: AdminConfig[] }>('getConfig'),
         adminRequest<{ logs: AdminAuditLogRow[] }>('listAuditLogs'),
+        adminRequest<CommercialOpsPayload>('listCommercialOps'),
       ]);
       setUsers(userResult.users);
       setTransactions(txResult.transactions);
       setConfigs(configResult.configs);
       setLogs(logResult.logs);
+      setOps(opsResult);
       setSelectedUserId((current) => current || userResult.users[0]?.id || '');
     } catch (err) {
       setIsAdmin(false);
@@ -111,6 +123,49 @@ export function AdminPage() {
     setConfigTestResult((current) => ({ ...current, [key]: result }));
   };
 
+  const createCoupon = async () => {
+    await adminRequest('createCoupon', {
+      ...couponForm,
+      discountPercent: Number(couponForm.discountPercent),
+      bonusMinutes: Number(couponForm.bonusMinutes),
+      maxRedemptions: Number(couponForm.maxRedemptions),
+    });
+    setCouponForm({ code: '', discountPercent: '20', bonusMinutes: '30', maxRedemptions: '100', note: '' });
+    await refresh();
+  };
+
+  const updateCouponStatus = async (id: string, status: string) => {
+    await adminRequest('updateCoupon', { id, status });
+    await refresh();
+  };
+
+  const createTicket = async () => {
+    await adminRequest('createTicket', {
+      ...ticketForm,
+      userId: selectedUserId || undefined,
+    });
+    setTicketForm({ email: 'xiaosuange@gmail.com', subject: '', message: '', priority: 'normal' });
+    await refresh();
+  };
+
+  const updateTicketStatus = async (id: string, status: string, adminNote?: string | null) => {
+    await adminRequest('updateTicket', { id, status, adminNote: adminNote ?? '' });
+    await refresh();
+  };
+
+  const saveExperiment = async () => {
+    await adminRequest('saveExperiment', experimentForm);
+    await refresh();
+  };
+
+  const saveRiskRule = async () => {
+    await adminRequest('saveRiskRule', {
+      ...riskForm,
+      threshold: Number(riskForm.threshold),
+    });
+    await refresh();
+  };
+
   if (loading && !isAdmin) {
     return <Typography color="text.secondary">正在检查后台权限...</Typography>;
   }
@@ -142,7 +197,8 @@ export function AdminPage() {
         <Tab label="用户与充值" />
         <Tab label="消费/充值记录" />
         <Tab label="模型与语音配置" />
-        <Tab label="审计与路线图" />
+        <Tab label="增长/工单/风控" />
+        <Tab label="审计日志" />
       </Tabs>
 
       {tab === 0 && (
@@ -282,54 +338,136 @@ export function AdminPage() {
         <Grid container spacing={2}>
           <Grid item xs={12}>
             <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" fontWeight={900} gutterBottom>商业化能力预留</Typography>
+              <Typography variant="h6" fontWeight={900} gutterBottom>运营数据看板</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                下面这些模块已经按后台入口预留，后续可以逐步接入真实表结构、规则引擎和数据看板。
+                支持邮箱：xiaosuange@gmail.com。这里统计注册、付费分钟、消耗分钟、开放工单和有效优惠码。
               </Typography>
               <Grid container spacing={1.25}>
-                {roadmapItems.map((item) => (
-                  <Grid item xs={12} sm={6} md={4} key={item.title}>
+                {[
+                  ['注册用户', ops?.metrics.users ?? 0],
+                  ['付费/赠送分钟', ops?.metrics.paidMinutes ?? 0],
+                  ['已消耗分钟', ops?.metrics.usedMinutes ?? 0],
+                  ['待处理工单', ops?.metrics.openTickets ?? 0],
+                  ['有效优惠码', ops?.metrics.activeCoupons ?? 0],
+                ].map(([title, value]) => (
+                  <Grid item xs={6} md={2.4} key={title}>
                     <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
-                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
-                        <Chip size="small" color={item.statusColor} label={item.status} />
-                        <Typography fontWeight={900}>{item.title}</Typography>
-                      </Stack>
-                      <Typography variant="body2" color="text.secondary">{item.desc}</Typography>
-                      <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 1 }}>
-                        下一步：{item.next}
-                      </Typography>
+                      <Typography variant="caption" color="text.secondary">{title}</Typography>
+                      <Typography variant="h5" fontWeight={900}>{value}</Typography>
                     </Paper>
                   </Grid>
                 ))}
               </Grid>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={7}>
+          <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" fontWeight={800} gutterBottom>后台审计日志</Typography>
-              <Stack spacing={1}>
-                {logs.map((log) => (
-                  <Paper key={log.id} variant="outlined" sx={{ p: 1.25 }}>
-                    <Typography fontWeight={800}>{log.action}</Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {new Date(log.created_at).toLocaleString('zh-CN')} / 操作人 {log.actor_user_id ?? '-'} / 目标 {log.target_user_id ?? '-'}
-                    </Typography>
+              <Typography variant="h6" fontWeight={800} gutterBottom>优惠券和邀请码</Typography>
+              <Stack spacing={1.2}>
+                <Grid container spacing={1}>
+                  <Grid item xs={12} sm={4}><TextField fullWidth label="优惠码" value={couponForm.code} onChange={(e) => setCouponForm((v) => ({ ...v, code: e.target.value }))} /></Grid>
+                  <Grid item xs={4} sm={2}><TextField fullWidth label="折扣%" value={couponForm.discountPercent} onChange={(e) => setCouponForm((v) => ({ ...v, discountPercent: e.target.value }))} /></Grid>
+                  <Grid item xs={4} sm={3}><TextField fullWidth label="赠送分钟" value={couponForm.bonusMinutes} onChange={(e) => setCouponForm((v) => ({ ...v, bonusMinutes: e.target.value }))} /></Grid>
+                  <Grid item xs={4} sm={3}><TextField fullWidth label="次数上限" value={couponForm.maxRedemptions} onChange={(e) => setCouponForm((v) => ({ ...v, maxRedemptions: e.target.value }))} /></Grid>
+                  <Grid item xs={12}><TextField fullWidth label="备注" value={couponForm.note} onChange={(e) => setCouponForm((v) => ({ ...v, note: e.target.value }))} /></Grid>
+                </Grid>
+                <Button variant="contained" onClick={() => { void createCoupon(); }}>创建优惠码</Button>
+                {(ops?.coupons ?? []).map((coupon) => (
+                  <Paper key={coupon.id} variant="outlined" sx={{ p: 1.25 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                      <Typography fontWeight={900}>{coupon.code}</Typography>
+                      <Chip size="small" label={`${coupon.discount_percent}%`} />
+                      <Chip size="small" label={`赠 ${coupon.bonus_minutes} 分钟`} />
+                      <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                        {coupon.redemptions}/{coupon.max_redemptions} 次
+                      </Typography>
+                      <Select size="small" value={coupon.status} onChange={(e) => { void updateCouponStatus(coupon.id, e.target.value); }}>
+                        <MenuItem value="active">启用</MenuItem>
+                        <MenuItem value="paused">暂停</MenuItem>
+                        <MenuItem value="expired">过期</MenuItem>
+                      </Select>
+                    </Stack>
                   </Paper>
                 ))}
               </Stack>
             </Paper>
           </Grid>
-          <Grid item xs={12} md={5}>
+          <Grid item xs={12} md={6}>
             <Paper sx={{ p: 2 }}>
-              <Typography variant="h6" fontWeight={800} gutterBottom>后续建议预留</Typography>
-              <Stack spacing={1.25}>
-                {roadmapItems.map((item) => (
-                  <Paper key={item.title} variant="outlined" sx={{ p: 1.25 }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Chip size="small" color={item.statusColor} label={item.status} />
-                      <Typography fontWeight={800}>{item.title}</Typography>
+              <Typography variant="h6" fontWeight={800} gutterBottom>客服工单</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>用户可联系 xiaosuange@gmail.com，你也可以为当前选中用户手动创建工单。</Typography>
+              <Stack spacing={1.2}>
+                <TextField label="联系邮箱" value={ticketForm.email} onChange={(e) => setTicketForm((v) => ({ ...v, email: e.target.value }))} />
+                <TextField label="标题" value={ticketForm.subject} onChange={(e) => setTicketForm((v) => ({ ...v, subject: e.target.value }))} />
+                <TextField label="内容" multiline minRows={2} value={ticketForm.message} onChange={(e) => setTicketForm((v) => ({ ...v, message: e.target.value }))} />
+                <Select value={ticketForm.priority} onChange={(e) => setTicketForm((v) => ({ ...v, priority: e.target.value }))}>
+                  <MenuItem value="low">低</MenuItem>
+                  <MenuItem value="normal">普通</MenuItem>
+                  <MenuItem value="high">高</MenuItem>
+                  <MenuItem value="urgent">紧急</MenuItem>
+                </Select>
+                <Button variant="contained" onClick={() => { void createTicket(); }}>创建工单</Button>
+                {(ops?.tickets ?? []).map((ticket) => (
+                  <Paper key={ticket.id} variant="outlined" sx={{ p: 1.25 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                      <Box sx={{ flex: 1 }}>
+                        <Typography fontWeight={900}>{ticket.subject}</Typography>
+                        <Typography variant="caption" color="text.secondary">{ticket.email} / {ticket.priority}</Typography>
+                      </Box>
+                      <Select size="small" value={ticket.status} onChange={(e) => { void updateTicketStatus(ticket.id, e.target.value, ticket.admin_note); }}>
+                        <MenuItem value="open">待处理</MenuItem>
+                        <MenuItem value="pending">跟进中</MenuItem>
+                        <MenuItem value="resolved">已解决</MenuItem>
+                        <MenuItem value="closed">关闭</MenuItem>
+                      </Select>
                     </Stack>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{item.desc}</Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" fontWeight={800} gutterBottom>套餐 A/B 测试</Typography>
+              <Stack spacing={1.2}>
+                <TextField label="实验名称" value={experimentForm.name} onChange={(e) => setExperimentForm((v) => ({ ...v, name: e.target.value }))} />
+                <Select value={experimentForm.status} onChange={(e) => setExperimentForm((v) => ({ ...v, status: e.target.value }))}>
+                  <MenuItem value="draft">草稿</MenuItem>
+                  <MenuItem value="running">运行中</MenuItem>
+                  <MenuItem value="paused">暂停</MenuItem>
+                  <MenuItem value="finished">结束</MenuItem>
+                </Select>
+                <TextField label="实验方案（每行一个）" multiline minRows={3} value={experimentForm.variants} onChange={(e) => setExperimentForm((v) => ({ ...v, variants: e.target.value }))} />
+                <TextField label="备注" value={experimentForm.note} onChange={(e) => setExperimentForm((v) => ({ ...v, note: e.target.value }))} />
+                <Button variant="contained" onClick={() => { void saveExperiment(); }}>保存实验</Button>
+                {(ops?.experiments ?? []).map((item) => (
+                  <Paper key={item.id} variant="outlined" sx={{ p: 1.25 }}>
+                    <Chip size="small" label={item.status} sx={{ mr: 1 }} />
+                    <Typography component="span" fontWeight={900}>{item.name}</Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            </Paper>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" fontWeight={800} gutterBottom>风控规则</Typography>
+              <Stack spacing={1.2}>
+                <FormControlLabel control={<Switch checked={riskForm.enabled} onChange={(e) => setRiskForm((v) => ({ ...v, enabled: e.target.checked }))} />} label="启用规则" />
+                <TextField label="规则 Key" value={riskForm.ruleKey} onChange={(e) => setRiskForm((v) => ({ ...v, ruleKey: e.target.value }))} />
+                <TextField label="阈值" value={riskForm.threshold} onChange={(e) => setRiskForm((v) => ({ ...v, threshold: e.target.value }))} />
+                <Select value={riskForm.actionValue} onChange={(e) => setRiskForm((v) => ({ ...v, actionValue: e.target.value }))}>
+                  <MenuItem value="alert">预警</MenuItem>
+                  <MenuItem value="limit">限制</MenuItem>
+                  <MenuItem value="ban">封禁</MenuItem>
+                </Select>
+                <TextField label="备注" value={riskForm.note} onChange={(e) => setRiskForm((v) => ({ ...v, note: e.target.value }))} />
+                <Button variant="contained" onClick={() => { void saveRiskRule(); }}>保存风控规则</Button>
+                {(ops?.riskRules ?? []).map((rule) => (
+                  <Paper key={rule.id} variant="outlined" sx={{ p: 1.25 }}>
+                    <Chip size="small" color={rule.enabled ? 'success' : 'default'} label={rule.enabled ? '启用' : '关闭'} sx={{ mr: 1 }} />
+                    <Typography component="span" fontWeight={900}>{rule.key}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>阈值 {rule.threshold} / {rule.action}</Typography>
                   </Paper>
                 ))}
               </Stack>
@@ -337,23 +475,24 @@ export function AdminPage() {
           </Grid>
         </Grid>
       )}
+      {tab === 4 && (
+        <Paper sx={{ p: 2 }}>
+          <Typography variant="h6" fontWeight={800} gutterBottom>后台审计日志</Typography>
+          <Stack spacing={1}>
+            {logs.map((log) => (
+              <Paper key={log.id} variant="outlined" sx={{ p: 1.25 }}>
+                <Typography fontWeight={800}>{log.action}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {new Date(log.created_at).toLocaleString('zh-CN')} / 操作人 {log.actor_user_id ?? '-'} / 目标 {log.target_user_id ?? '-'}
+                </Typography>
+              </Paper>
+            ))}
+          </Stack>
+        </Paper>
+      )}
     </Box>
   );
 }
-
-const roadmapItems: Array<{
-  title: string;
-  desc: string;
-  next: string;
-  status: string;
-  statusColor: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
-}> = [
-  { title: '优惠券和邀请码', desc: '支持渠道投放、首单折扣、老带新邀请返分钟。', next: '新增 coupon_codes / referrals 表并接入 Checkout 折扣。', status: '预留', statusColor: 'primary' },
-  { title: '套餐 A/B 测试', desc: '不同价格、赠送分钟、月卡权益做转化对比。', next: '按用户分桶记录曝光和购买转化。', status: '预留', statusColor: 'info' },
-  { title: '风控', desc: '同账号多设备并发限制、异常转写用量预警。', next: '记录 session 心跳、设备指纹和并发锁。', status: '预留', statusColor: 'warning' },
-  { title: '客服工单', desc: '支付失败、额度异常、识别失败可按用户和面试记录追踪。', next: '新增 tickets 表并关联 billing/transcript 日志。', status: '预留', statusColor: 'secondary' },
-  { title: '运营数据看板', desc: '注册、试用转化、付费率、ARPU、识别成本和毛利。', next: '沉淀 daily_metrics 聚合任务。', status: '预留', statusColor: 'success' },
-];
 
 function ConfigForm({
   title,

@@ -66,7 +66,7 @@ export function AudioSourceSettings() {
       stream.getTracks().forEach((track) => track.stop());
       setHealthStatus(level > 0.006
         ? { severity: 'success', message: '麦克风权限和输入正常。' }
-        : { severity: 'warning', message: '麦克风权限正常，但暂时没有检测到明显声音。' });
+        : { severity: 'warning', message: '麦克风权限正常。刚才没有检测到明显声音，如果你没说话这是正常的。' });
     } catch (error) {
       setHealthStatus({ severity: 'error', message: `麦克风检测失败：${error instanceof Error ? error.message : '请检查浏览器权限'}` });
     }
@@ -84,9 +84,9 @@ export function AudioSourceSettings() {
         setHealthStatus({ severity: 'error', message: '没有拿到系统音频轨道，请重新共享并勾选“分享音频”。' });
         return;
       }
-      setHealthStatus(level > 0.003
+      setHealthStatus(level > 0.002
         ? { severity: 'success', message: '系统音频共享正常，已经检测到输入。' }
-        : { severity: 'warning', message: '系统音频权限正常，但当前窗口/应用没有明显声音。' });
+        : { severity: 'info', message: '系统音频权限正常。刚才共享的窗口/应用没有明显播放声音，如果当时没放音频这是正常的。' });
     } catch (error) {
       setHealthStatus({ severity: 'error', message: `系统音频检测失败：${error instanceof Error ? error.message : '请使用 Chrome 并允许共享'}` });
     }
@@ -403,7 +403,7 @@ async function measureAudioLevel(stream: MediaStream): Promise<number> {
   const samples = new Float32Array(analyser.fftSize);
   let peak = 0;
   const startedAt = performance.now();
-  while (performance.now() - startedAt < 1200) {
+  while (performance.now() - startedAt < 1800) {
     analyser.getFloatTimeDomainData(samples);
     let sum = 0;
     for (const sample of samples) sum += sample * sample;

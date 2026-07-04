@@ -18,6 +18,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useBilling } from '../../hooks/useBilling';
 import { StatusIndicator } from '../common/StatusIndicator';
 import { AuthPanel } from '../auth/AuthPanel';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 
 function formatRemaining(seconds: number): string {
   return `${Math.floor(seconds / 60)} 分钟`;
@@ -46,7 +47,7 @@ export function TopBar() {
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           {title}
         </Typography>
-        <StatusIndicator status={connectionStatus} />
+        {!COMMERCIAL_MODE && <StatusIndicator status={connectionStatus} />}
         <Chip
           size="small"
           color={remainingSeconds <= 5 * 60 ? 'warning' : 'primary'}

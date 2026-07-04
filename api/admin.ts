@@ -20,7 +20,14 @@ type AdminAction =
   | 'getConfig'
   | 'updateConfig'
   | 'testConfig'
-  | 'listAuditLogs';
+  | 'listAuditLogs'
+  | 'listCommercialOps'
+  | 'createCoupon'
+  | 'updateCoupon'
+  | 'createTicket'
+  | 'updateTicket'
+  | 'saveExperiment'
+  | 'saveRiskRule';
 
 type AdminUser = {
   id: string;
@@ -74,6 +81,23 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     note?: string;
     key?: AppConfigKey;
     value?: Record<string, unknown>;
+    id?: string;
+    code?: string;
+    status?: string;
+    discountPercent?: number;
+    bonusMinutes?: number;
+    maxRedemptions?: number;
+    email?: string;
+    subject?: string;
+    message?: string;
+    priority?: string;
+    adminNote?: string;
+    name?: string;
+    variants?: unknown;
+    enabled?: boolean;
+    threshold?: number;
+    ruleKey?: string;
+    actionValue?: string;
   };
 
   try {
@@ -111,6 +135,34 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     if (body.action === 'listAuditLogs') {
       response.status(200).json(await listAuditLogs(supabase));
+      return;
+    }
+    if (body.action === 'listCommercialOps') {
+      response.status(200).json(await listCommercialOps(supabase));
+      return;
+    }
+    if (body.action === 'createCoupon') {
+      response.status(200).json(await createCoupon(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'updateCoupon') {
+      response.status(200).json(await updateCoupon(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'createTicket') {
+      response.status(200).json(await createTicket(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'updateTicket') {
+      response.status(200).json(await updateTicket(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'saveExperiment') {
+      response.status(200).json(await saveExperiment(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'saveRiskRule') {
+      response.status(200).json(await saveRiskRule(supabase, actor, body));
       return;
     }
     response.status(400).json({ error: '未知后台操作。' });
@@ -361,6 +413,145 @@ async function listAuditLogs(supabase: AdminSupabaseClient) {
   return { logs: data ?? [] };
 }
 
+async function listCommercialOps(supabase: AdminSupabaseClient) {
+  const [couponResult, ticketResult, experimentResult, riskResult, userResult, txResult] = await Promise.all([
+    supabase.from('coupon_codes').select('*').order('created_at', { ascending: false }).limit(100),
+    supabase.from('support_tickets').select('*').order('created_at', { ascending: false }).limit(100),
+    supabase.from('growth_experiments').select('*').order('created_at', { ascending: false }).limit(50),
+    supabase.from('risk_rules').select('*').order('created_at', { ascending: false }).limit(50),
+    supabase.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+    supabase.from('billing_transactions').select('*').order('created_at', { ascending: false }).limit(1000),
+  ]);
+  const firstError = couponResult.error || ticketResult.error || experimentResult.error || riskResult.error || userResult.error || txResult.error;
+  if (firstError) throw firstError;
+  const users = userResult.data?.users ?? [];
+  const transactions = txResult.data ?? [];
+  const paidMinutes = transactions
+    .filter((item: any) => ['stripe_purchase', 'subscription_grant', 'manual_grant'].includes(item.type))
+    .reduce((sum: number, item: any) => sum + Number(item.minutes ?? 0), 0);
+  const usedSeconds = await totalUsedSeconds(supabase);
+  return {
+    coupons: couponResult.data ?? [],
+    tickets: ticketResult.data ?? [],
+    experiments: experimentResult.data ?? [],
+    riskRules: riskResult.data ?? [],
+    metrics: {
+      users: users.length,
+      paidMinutes,
+      usedMinutes: Math.floor(usedSeconds / 60),
+      openTickets: (ticketResult.data ?? []).filter((ticket: any) => ticket.status === 'open').length,
+      activeCoupons: (couponResult.data ?? []).filter((coupon: any) => coupon.status === 'active').length,
+    },
+  };
+}
+
+async function createCoupon(supabase: AdminSupabaseClient, actor: AdminUser, body: any) {
+  const code = str(body.code).toUpperCase();
+  if (!code) throw new Error('请输入优惠码。');
+  const payload = {
+    code,
+    status: str(body.status) || 'active',
+    discount_percent: clampInt(body.discountPercent, 0, 100),
+    bonus_minutes: Math.max(0, int(body.bonusMinutes, 0)),
+    max_redemptions: Math.max(0, int(body.maxRedemptions, 100)),
+    note: str(body.note),
+    created_by: actor.id,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('coupon_codes').insert(payload).select('*').single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'create_coupon', undefined, { code });
+  return { ok: true, coupon: data };
+}
+
+async function updateCoupon(supabase: AdminSupabaseClient, actor: AdminUser, body: any) {
+  if (!body.id) throw new Error('缺少优惠码 ID。');
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (body.status !== undefined) patch.status = str(body.status) || 'active';
+  if (body.discountPercent !== undefined) patch.discount_percent = clampInt(body.discountPercent, 0, 100);
+  if (body.bonusMinutes !== undefined) patch.bonus_minutes = Math.max(0, int(body.bonusMinutes, 0));
+  if (body.maxRedemptions !== undefined) patch.max_redemptions = Math.max(0, int(body.maxRedemptions, 0));
+  if (body.note !== undefined) patch.note = str(body.note);
+  const { data, error } = await supabase.from('coupon_codes').update(patch).eq('id', body.id).select('*').single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'update_coupon', undefined, { id: body.id, patch });
+  return { ok: true, coupon: data };
+}
+
+async function createTicket(supabase: AdminSupabaseClient, actor: AdminUser, body: any) {
+  const email = str(body.email) || actor.email;
+  const subject = str(body.subject);
+  const message = str(body.message);
+  if (!subject || !message) throw new Error('请输入工单标题和内容。');
+  const { data, error } = await supabase.from('support_tickets').insert({
+    user_id: body.userId ?? null,
+    email,
+    subject,
+    message,
+    priority: str(body.priority) || 'normal',
+    status: 'open',
+  }).select('*').single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'create_ticket', body.userId, { subject, email });
+  return { ok: true, ticket: data };
+}
+
+async function updateTicket(supabase: AdminSupabaseClient, actor: AdminUser, body: any) {
+  if (!body.id) throw new Error('缺少工单 ID。');
+  const patch = {
+    status: str(body.status) || 'open',
+    priority: str(body.priority) || 'normal',
+    admin_note: str(body.adminNote),
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('support_tickets').update(patch).eq('id', body.id).select('*').single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'update_ticket', undefined, { id: body.id, patch });
+  return { ok: true, ticket: data };
+}
+
+async function saveExperiment(supabase: AdminSupabaseClient, actor: AdminUser, body: any) {
+  const name = str(body.name);
+  if (!name) throw new Error('请输入实验名称。');
+  const payload = {
+    id: body.id || undefined,
+    name,
+    status: str(body.status) || 'draft',
+    variants: parseJsonArray(body.variants),
+    note: str(body.note),
+    updated_by: actor.id,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('growth_experiments').upsert(payload).select('*').single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'save_experiment', undefined, { id: data.id, name });
+  return { ok: true, experiment: data };
+}
+
+async function saveRiskRule(supabase: AdminSupabaseClient, actor: AdminUser, body: any) {
+  const key = str(body.ruleKey);
+  if (!key) throw new Error('请输入风控规则 key。');
+  const payload = {
+    key,
+    enabled: Boolean(body.enabled),
+    threshold: Math.max(0, int(body.threshold, 0)),
+    action: str(body.actionValue) || 'alert',
+    note: str(body.note),
+    updated_by: actor.id,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('risk_rules').upsert(payload, { onConflict: 'key' }).select('*').single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'save_risk_rule', undefined, { key });
+  return { ok: true, rule: data };
+}
+
+async function totalUsedSeconds(supabase: AdminSupabaseClient): Promise<number> {
+  const { data, error } = await supabase.from('user_entitlements').select('used_seconds');
+  if (error) return 0;
+  return (data ?? []).reduce((sum: number, item: any) => sum + Number(item.used_seconds ?? 0), 0);
+}
+
 async function audit(
   supabase: AdminSupabaseClient,
   actorUserId: string,
@@ -402,6 +593,26 @@ function requiredMissing(config: Record<string, unknown>, keys: string[]): strin
 
 function str(value: unknown): string {
   return typeof value === 'string' && value !== '********' ? value.trim() : '';
+}
+
+function int(value: unknown, fallback: number): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number) : fallback;
+}
+
+function clampInt(value: unknown, min: number, max: number): number {
+  return Math.max(min, Math.min(max, int(value, min)));
+}
+
+function parseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return value.split('\n').map((item) => item.trim()).filter(Boolean);
+  }
 }
 
 function firstHeader(value: string | string[] | undefined): string | undefined {

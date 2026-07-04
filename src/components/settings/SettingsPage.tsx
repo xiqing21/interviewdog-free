@@ -26,6 +26,9 @@ export function SettingsPage() {
         <Alert severity="info">
           商业版由平台统一提供实时理解和 AI 回答能力。你只需要维护简历、知识库、岗位方向和专业热词，不需要配置任何模型或语音服务。
         </Alert>
+        <Alert severity="success">
+          使用、支付、额度或识别异常可以联系：xiaosuange@gmail.com。
+        </Alert>
         <ThemeSettings />
 
         <Divider />

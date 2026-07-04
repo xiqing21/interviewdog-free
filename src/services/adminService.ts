@@ -44,6 +44,67 @@ export type AdminConfig = {
   updatedAt?: string;
 };
 
+export type CouponCodeRow = {
+  id: string;
+  code: string;
+  status: 'active' | 'paused' | 'expired';
+  discount_percent: number;
+  bonus_minutes: number;
+  max_redemptions: number;
+  redemptions: number;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SupportTicketRow = {
+  id: string;
+  user_id: string | null;
+  email: string;
+  subject: string;
+  message: string;
+  status: 'open' | 'pending' | 'resolved' | 'closed';
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  admin_note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type GrowthExperimentRow = {
+  id: string;
+  name: string;
+  status: 'draft' | 'running' | 'paused' | 'finished';
+  variants: unknown[];
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type RiskRuleRow = {
+  id: string;
+  key: string;
+  enabled: boolean;
+  threshold: number;
+  action: 'alert' | 'limit' | 'ban';
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CommercialOpsPayload = {
+  coupons: CouponCodeRow[];
+  tickets: SupportTicketRow[];
+  experiments: GrowthExperimentRow[];
+  riskRules: RiskRuleRow[];
+  metrics: {
+    users: number;
+    paidMinutes: number;
+    usedMinutes: number;
+    openTickets: number;
+    activeCoupons: number;
+  };
+};
+
 export async function adminRequest<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
   if (!supabase) throw new Error('Supabase 未配置，无法进入后台。');
   const { data } = await supabase.auth.getSession();
