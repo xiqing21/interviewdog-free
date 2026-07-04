@@ -1137,7 +1137,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
         onEnd: () => setListeningFromActiveSources(),
         onReady: () => {
-          if (systemAudioService.isActive()) return;
+          if (systemAudioService.isProcessing()) return;
           void systemAudioService.start({
             onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
             onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },

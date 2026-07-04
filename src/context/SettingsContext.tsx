@@ -133,6 +133,9 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
   if (!normalized.mergeTimeoutMs || normalized.mergeTimeoutMs < 1000) {
     normalized.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
   }
+  if (normalized.interviewerAudioSource === 'system' && normalized.asrProvider === 'browser') {
+    normalized.asrProvider = 'gateway-doubao';
+  }
   return normalized;
 }
 
