@@ -70,7 +70,6 @@ export function InterviewPage() {
     systemAudioReady,
     transcriptLines,
     qaList,
-    isMerging,
     error,
     startListening,
     stopListening,
@@ -308,8 +307,18 @@ export function InterviewPage() {
           {isProcessing && <Chip size="small" color="primary" label="生成中" />}
           {isListening && <Chip size="small" color="success" label="识别中" />}
           {activeSession.archivedAt && <Chip size="small" color="default" label="已归档" />}
+          <Button
+            size="small"
+            color="error"
+            variant="outlined"
+            sx={{ ml: 'auto' }}
+            onClick={() => { void endInterview(); }}
+            disabled={isProcessing || Boolean(activeSession.archivedAt)}
+          >
+            结束归档
+          </Button>
           {activeSession.archivedAt && activeSession.review?.summary && (
-            <Button size="small" variant="outlined" sx={{ ml: 'auto' }} onClick={() => setReviewOpen(true)}>
+            <Button size="small" variant="outlined" onClick={() => setReviewOpen(true)}>
               查看复盘
             </Button>
           )}
@@ -317,7 +326,6 @@ export function InterviewPage() {
             <Button
               size="small"
               variant="outlined"
-              sx={{ ml: 'auto' }}
               onClick={() => { void generateReview(); }}
               disabled={isProcessing || !aiSettings.apiKey}
             >
@@ -340,57 +348,52 @@ export function InterviewPage() {
           <Paper
             variant="outlined"
             sx={{
-              p: 1.5,
+              p: 1,
+              width: '100%',
               borderColor: systemAudioReady ? 'success.main' : 'primary.light',
               bgcolor: systemAudioReady ? 'rgba(46, 125, 50, 0.08)' : 'rgba(83, 144, 226, 0.08)',
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.25, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
               <ComputerIcon color={systemAudioReady ? 'success' : 'primary'} fontSize="small" />
-              <Typography variant="subtitle1" fontWeight={900}>3 步开始实时听音</Typography>
+              <Typography variant="subtitle2" fontWeight={900}>3 步开始实时听音</Typography>
               {systemAudioReady && <Chip size="small" color="success" label="窗口已选" />}
               <Button size="small" variant="text" onClick={() => setAudioGuideOpen(true)}>
                 查看共享教程
               </Button>
             </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1.1fr 1.2fr 1fr' }, gap: 1 }}>
-              <GuideStep
-                index={1}
-                title={COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
-                desc="选择腾讯会议、微信、浏览器标签页，或直接选择整个屏幕。"
-                action={
-                  <Button
-                    size="small"
-                    variant={systemAudioReady ? 'outlined' : 'contained'}
-                    onClick={() => { void prepareSystemAudioShare(); }}
-                    disabled={isListening}
-                  >
-                    {systemAudioReady ? '重新选择' : COMMERCIAL_MODE ? '选择窗口' : '共享音频'}
-                  </Button>
-                }
-              />
-              <GuideStep
-                index={2}
-                title="必须开启同时分享系统音频"
-                desc="Chrome 弹窗底部的“同时分享系统音频”要打开，否则能看到窗口但听不到面试官声音。"
-                tone="warning"
-              />
-              <GuideStep
-                index={3}
-                title="开始实时听音"
-                desc={isListening ? (isMerging ? '正在整理问题...' : '正在聆听面试官问题...') : '确认共享音频后，再开始听音。'}
-                action={
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color={isListening ? 'error' : 'primary'}
-                    startIcon={isListening ? <StopIcon /> : <MicIcon />}
-                    onClick={isListening ? stopListening : startListening}
-                  >
-                    {isListening ? '停止听音' : '开始听音'}
-                  </Button>
-                }
-              />
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'auto 1fr auto' }, gap: 1, alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Chip size="small" color="primary" label="1" />
+                <Typography variant="body2" fontWeight={800}>
+                  {COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
+                </Typography>
+                <Button
+                  size="small"
+                  variant={systemAudioReady ? 'outlined' : 'contained'}
+                  onClick={() => { void prepareSystemAudioShare(); }}
+                  disabled={isListening}
+                >
+                  {systemAudioReady ? '重新选择' : COMMERCIAL_MODE ? '选择窗口' : '共享音频'}
+                </Button>
+              </Box>
+              <Alert severity="warning" icon={false} sx={{ py: 0.25, px: 1, '& .MuiAlert-message': { py: 0.25 } }}>
+                <Typography variant="caption" fontWeight={800}>
+                  2 开启 Chrome 弹窗底部“同时分享系统音频”，否则听不到会议声音。
+                </Typography>
+              </Alert>
+              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: { md: 'flex-end' } }}>
+                <Chip size="small" color="primary" label="3" />
+                <Button
+                  size="small"
+                  variant="contained"
+                  color={isListening ? 'error' : 'primary'}
+                  startIcon={isListening ? <StopIcon /> : <MicIcon />}
+                  onClick={isListening ? stopListening : startListening}
+                >
+                  {isListening ? '停止听音' : '开始听音'}
+                </Button>
+              </Box>
             </Box>
             {error && (
               <Alert severity="error" sx={{ mt: 1.25 }}>
@@ -581,23 +584,6 @@ export function InterviewPage() {
             </Button>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, flexWrap: 'wrap' }}>
-            <Button
-              variant="outlined"
-              onClick={() => { void triggerLatestTranscriptQuestion(); }}
-              disabled={!COMMERCIAL_MODE && (!aiSettings.apiKey || !hasTriggerableInterviewerText)}
-            >
-              触发最新问题
-            </Button>
-            <Button
-              color="error"
-              variant="outlined"
-              onClick={() => { void endInterview(); }}
-              disabled={isProcessing || Boolean(activeSession.archivedAt)}
-            >
-              结束归档
-            </Button>
-          </Box>
         </Box>
       </Paper>
 
@@ -605,6 +591,15 @@ export function InterviewPage() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
           <TuneIcon color="primary" fontSize="small" />
           <Typography variant="subtitle1" fontWeight={700}>双方对话记录</Typography>
+          <Button
+            size="small"
+            variant="outlined"
+            sx={{ ml: 'auto' }}
+            onClick={() => { void triggerLatestTranscriptQuestion(); }}
+            disabled={!COMMERCIAL_MODE && (!aiSettings.apiKey || !hasTriggerableInterviewerText)}
+          >
+            触发最新问题
+          </Button>
         </Box>
 
         <MessageScroller.Provider
