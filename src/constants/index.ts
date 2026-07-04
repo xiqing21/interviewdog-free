@@ -198,7 +198,7 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
 
 // ===== 默认应用设置 =====
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  theme: 'dark',
+  theme: 'light',
   language: 'zh',
   privacyAcknowledged: false,
   asrProvider: 'gateway-doubao',

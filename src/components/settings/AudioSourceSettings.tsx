@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   IconButton,
@@ -32,6 +33,7 @@ export function AudioSourceSettings() {
     updateAppSettings,
   } = useSettings();
   const [newHotword, setNewHotword] = useState('');
+  const [healthStatus, setHealthStatus] = useState<{ severity: 'info' | 'success' | 'warning' | 'error'; message: string } | null>(null);
 
   const hotwords = parseHotwords(appSettings.asrHotwords);
 
@@ -56,6 +58,74 @@ export function AudioSourceSettings() {
     updateHotwords(hotwords.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const testMicrophoneHealth = async (): Promise<void> => {
+    setHealthStatus({ severity: 'info', message: '正在检测麦克风输入...' });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const level = await measureAudioLevel(stream);
+      stream.getTracks().forEach((track) => track.stop());
+      setHealthStatus(level > 0.006
+        ? { severity: 'success', message: '麦克风权限和输入正常。' }
+        : { severity: 'warning', message: '麦克风权限正常，但暂时没有检测到明显声音。' });
+    } catch (error) {
+      setHealthStatus({ severity: 'error', message: `麦克风检测失败：${error instanceof Error ? error.message : '请检查浏览器权限'}` });
+    }
+  };
+
+  const testSystemAudioHealth = async (): Promise<void> => {
+    setHealthStatus({ severity: 'info', message: '请在弹窗中选择会议窗口/标签页，并勾选共享音频...' });
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+      stream.getVideoTracks().forEach((track) => track.stop());
+      const hasAudio = stream.getAudioTracks().some((track) => track.readyState === 'live');
+      const level = hasAudio ? await measureAudioLevel(stream) : 0;
+      stream.getTracks().forEach((track) => track.stop());
+      if (!hasAudio) {
+        setHealthStatus({ severity: 'error', message: '没有拿到系统音频轨道，请重新共享并勾选“分享音频”。' });
+        return;
+      }
+      setHealthStatus(level > 0.003
+        ? { severity: 'success', message: '系统音频共享正常，已经检测到输入。' }
+        : { severity: 'warning', message: '系统音频权限正常，但当前窗口/应用没有明显声音。' });
+    } catch (error) {
+      setHealthStatus({ severity: 'error', message: `系统音频检测失败：${error instanceof Error ? error.message : '请使用 Chrome 并允许共享'}` });
+    }
+  };
+
+  const testTranscriptionHealth = async (): Promise<void> => {
+    setHealthStatus({ severity: 'info', message: '正在检测实时转写通道...' });
+    const socket = new WebSocket(buildGatewayTestUrl());
+    const timer = window.setTimeout(() => {
+      socket.close();
+      setHealthStatus({ severity: 'error', message: '实时转写通道超时，请稍后重试。' });
+    }, 6000);
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: 'start',
+        provider: 'gateway-doubao',
+        speaker: 'interviewer',
+        asrEndWindowSize: appSettings.mergeTimeoutMs,
+        config: { hotwords: appSettings.asrHotwords ?? '' },
+      }));
+    };
+    socket.onmessage = (event) => {
+      const data = JSON.parse(String(event.data || '{}'));
+      if (data.type === 'ready') {
+        window.clearTimeout(timer);
+        socket.close();
+        setHealthStatus({ severity: 'success', message: '实时转写服务连接正常。' });
+      } else if (data.type === 'error') {
+        window.clearTimeout(timer);
+        socket.close();
+        setHealthStatus({ severity: 'error', message: data.message || '实时转写服务返回错误。' });
+      }
+    };
+    socket.onerror = () => {
+      window.clearTimeout(timer);
+      setHealthStatus({ severity: 'error', message: '实时转写服务连接失败。' });
+    };
+  };
+
   if (COMMERCIAL_MODE) {
     return (
       <Paper sx={{ p: 3 }}>
@@ -63,6 +133,18 @@ export function AudioSourceSettings() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           开始面试后，请按浏览器提示选择正在面试的窗口或标签页，并勾选共享音频。面试猪会自动区分对话角色，只针对面试官问题生成回答。
         </Typography>
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
+          <Typography variant="subtitle2" fontWeight={800} gutterBottom>听音健康检查</Typography>
+          <Typography variant="caption" color="text.secondary">
+            用来确认本机权限、共享音频和实时转写通道是否正常。
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.25 }}>
+            <Button variant="outlined" onClick={() => { void testMicrophoneHealth(); }}>测试麦克风</Button>
+            <Button variant="outlined" onClick={() => { void testSystemAudioHealth(); }}>测试系统音频</Button>
+            <Button variant="contained" onClick={() => { void testTranscriptionHealth(); }}>测试实时转写</Button>
+          </Box>
+          {healthStatus && <Alert severity={healthStatus.severity} sx={{ mt: 1.25 }}>{healthStatus.message}</Alert>}
+        </Paper>
 
         <Box sx={{ mt: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
@@ -303,6 +385,34 @@ function serializeHotwords(items: string[]): string {
       return true;
     })
     .join('、');
+}
+
+function buildGatewayTestUrl(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/api/asr-gateway`;
+}
+
+async function measureAudioLevel(stream: MediaStream): Promise<number> {
+  const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextCtor) return 0;
+  const context = new AudioContextCtor();
+  const source = context.createMediaStreamSource(stream);
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);
+  const samples = new Float32Array(analyser.fftSize);
+  let peak = 0;
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < 1200) {
+    analyser.getFloatTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) sum += sample * sample;
+    peak = Math.max(peak, Math.sqrt(sum / samples.length));
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+  }
+  source.disconnect();
+  await context.close();
+  return peak;
 }
 
 function providerDescription(provider: ASRProvider): string {

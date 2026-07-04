@@ -42,6 +42,7 @@ import * as localQwenAsrService from '../services/localQwenAsrService';
 import * as mimoAsrService from '../services/mimoAsrService';
 import * as cloudAsrService from '../services/cloudAsrService';
 import * as asrGatewayService from '../services/asrGatewayService';
+import * as billingService from '../services/billingService';
 import type { LocalQwenSession } from '../services/localQwenAsrService';
 import { chat } from '../services/aiService';
 import { webSearch } from '../services/webSearchService';
@@ -140,7 +141,7 @@ export const InterviewContext = createContext<InterviewContextValue | null>(null
 export function InterviewProvider({ children }: { children: ReactNode }) {
   const { aiSettings, appSettings, doubaoConfig, localQwenConfig, mimoConfig, cloudAsrConfig } = useSettings();
   const { profile: knowledgeProfile } = useKnowledge();
-  const { remainingSeconds, hasAccess, consumeSeconds } = useBilling();
+  const { remainingSeconds, refreshBilling, consumeSeconds } = useBilling();
   const {
     activeSession,
     updateSessionQAList,
@@ -1170,7 +1171,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
         onEnd: () => setListeningFromActiveSources(),
         onReady: () => {
-          if (systemAudioService.isActive()) return;
+          if (systemAudioService.isProcessing()) return;
           void systemAudioService.start({
             onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
             onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
@@ -1214,9 +1215,13 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   // ===== 语音监听：支持麦克风、系统音频、双路同时识别 =====
   const startListening = useCallback(async () => {
-    if (COMMERCIAL_MODE && !hasAccess) {
-      dispatch({ type: 'SET_ERROR', payload: '免费试用或购买时长已用完，请购买后继续使用。' });
-      return;
+    if (COMMERCIAL_MODE) {
+      const latestEntitlement = await refreshBilling();
+      const latestRemainingSeconds = billingService.remainingSeconds(latestEntitlement);
+      if (!latestEntitlement || latestRemainingSeconds <= 0) {
+        dispatch({ type: 'SET_ERROR', payload: '免费试用或购买时长已用完，请购买后继续使用。' });
+        return;
+      }
     }
     const app = appRef.current;
     dispatch({ type: 'SET_ERROR', payload: null });
@@ -1270,7 +1275,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }
 
     dispatch({ type: 'SET_LISTENING', payload: started });
-  }, [sendQuestion]);
+  }, [refreshBilling, sendQuestion]);
 
   function isCloudAsrProvider(provider: ASRProvider): provider is CloudASRProvider {
     return provider === 'baidu' || provider === 'google' || provider === 'alibaba' || provider === 'iflytek' || provider === 'glm';

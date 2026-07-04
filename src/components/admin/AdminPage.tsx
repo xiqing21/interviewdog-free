@@ -142,7 +142,7 @@ export function AdminPage() {
         <Tab label="用户与充值" />
         <Tab label="消费/充值记录" />
         <Tab label="模型与语音配置" />
-        <Tab label="审计与规划" />
+        <Tab label="审计与路线图" />
       </Tabs>
 
       {tab === 0 && (
@@ -280,6 +280,30 @@ export function AdminPage() {
 
       {tab === 3 && (
         <Grid container spacing={2}>
+          <Grid item xs={12}>
+            <Paper sx={{ p: 2 }}>
+              <Typography variant="h6" fontWeight={900} gutterBottom>商业化能力预留</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                下面这些模块已经按后台入口预留，后续可以逐步接入真实表结构、规则引擎和数据看板。
+              </Typography>
+              <Grid container spacing={1.25}>
+                {roadmapItems.map((item) => (
+                  <Grid item xs={12} sm={6} md={4} key={item.title}>
+                    <Paper variant="outlined" sx={{ p: 1.5, height: '100%' }}>
+                      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.75 }}>
+                        <Chip size="small" color={item.statusColor} label={item.status} />
+                        <Typography fontWeight={900}>{item.title}</Typography>
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">{item.desc}</Typography>
+                      <Typography variant="caption" color="primary" sx={{ display: 'block', mt: 1 }}>
+                        下一步：{item.next}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
+            </Paper>
+          </Grid>
           <Grid item xs={12} md={7}>
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" fontWeight={800} gutterBottom>后台审计日志</Typography>
@@ -299,19 +323,13 @@ export function AdminPage() {
             <Paper sx={{ p: 2 }}>
               <Typography variant="h6" fontWeight={800} gutterBottom>后续建议预留</Typography>
               <Stack spacing={1.25}>
-                {[
-                  ['优惠券和邀请码', '渠道投放、首单折扣、老带新邀请返分钟。'],
-                  ['套餐 A/B 测试', '不同价格、赠送分钟、月卡权益做转化对比。'],
-                  ['风控', '同账号多设备并发限制、异常转写用量预警。'],
-                  ['客服工单', '支付失败、额度异常、识别失败可按用户和面试记录追踪。'],
-                  ['运营数据看板', '注册、试用转化、付费率、ARPU、识别成本和毛利。'],
-                ].map(([title, desc]) => (
-                  <Paper key={title} variant="outlined" sx={{ p: 1.25 }}>
+                {roadmapItems.map((item) => (
+                  <Paper key={item.title} variant="outlined" sx={{ p: 1.25 }}>
                     <Stack direction="row" spacing={1} alignItems="center">
-                      <Chip size="small" color="primary" label="预留" />
-                      <Typography fontWeight={800}>{title}</Typography>
+                      <Chip size="small" color={item.statusColor} label={item.status} />
+                      <Typography fontWeight={800}>{item.title}</Typography>
                     </Stack>
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{desc}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>{item.desc}</Typography>
                   </Paper>
                 ))}
               </Stack>
@@ -322,6 +340,20 @@ export function AdminPage() {
     </Box>
   );
 }
+
+const roadmapItems: Array<{
+  title: string;
+  desc: string;
+  next: string;
+  status: string;
+  statusColor: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+}> = [
+  { title: '优惠券和邀请码', desc: '支持渠道投放、首单折扣、老带新邀请返分钟。', next: '新增 coupon_codes / referrals 表并接入 Checkout 折扣。', status: '预留', statusColor: 'primary' },
+  { title: '套餐 A/B 测试', desc: '不同价格、赠送分钟、月卡权益做转化对比。', next: '按用户分桶记录曝光和购买转化。', status: '预留', statusColor: 'info' },
+  { title: '风控', desc: '同账号多设备并发限制、异常转写用量预警。', next: '记录 session 心跳、设备指纹和并发锁。', status: '预留', statusColor: 'warning' },
+  { title: '客服工单', desc: '支付失败、额度异常、识别失败可按用户和面试记录追踪。', next: '新增 tickets 表并关联 billing/transcript 日志。', status: '预留', statusColor: 'secondary' },
+  { title: '运营数据看板', desc: '注册、试用转化、付费率、ARPU、识别成本和毛利。', next: '沉淀 daily_metrics 聚合任务。', status: '预留', statusColor: 'success' },
+];
 
 function ConfigForm({
   title,

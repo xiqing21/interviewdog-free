@@ -17,7 +17,7 @@ export interface BillingContextValue {
   error: string | null;
   remainingSeconds: number;
   hasAccess: boolean;
-  refreshBilling: () => Promise<void>;
+  refreshBilling: () => Promise<BillingEntitlement | null>;
   consumeSeconds: (seconds: number) => Promise<void>;
   startCheckout: (planId: CommercialPlanId) => Promise<void>;
 }
@@ -30,17 +30,20 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refreshBilling = useCallback(async () => {
+  const refreshBilling = useCallback(async (): Promise<BillingEntitlement | null> => {
     if (!COMMERCIAL_MODE || !user) {
       setEntitlement(null);
-      return;
+      return null;
     }
     setLoading(true);
     setError(null);
     try {
-      setEntitlement(await billingService.ensureEntitlement());
+      const nextEntitlement = await billingService.ensureEntitlement();
+      setEntitlement(nextEntitlement);
+      return nextEntitlement;
     } catch (err) {
       setError(err instanceof Error ? err.message : '读取账户额度失败');
+      return null;
     } finally {
       setLoading(false);
     }
