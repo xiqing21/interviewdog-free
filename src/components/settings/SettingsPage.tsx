@@ -3,7 +3,7 @@
  * AI配置 / 模型自动发现 / 音频识别 / 简历JD / Prompt / 连接测试
  */
 
-import { Box, Typography, Divider } from '@mui/material';
+import { Alert, Box, Typography, Divider } from '@mui/material';
 import { ProviderConfig } from './ProviderConfig';
 import { ModelConfig } from './ModelConfig';
 import { ModelDiscovery } from './ModelDiscovery';
@@ -17,7 +17,34 @@ import { CloudASRConfig } from './CloudASRConfig';
 import { ResumeJDSettings } from './ResumeJDSettings';
 import { ThemeSettings } from './ThemeSettings';
 
+const COMMERCIAL_MODE = false;
+
 export function SettingsPage() {
+  if (COMMERCIAL_MODE) {
+    return (
+      <Box sx={{ maxWidth: 760, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+        <Typography variant="h5" fontWeight={700}>设置</Typography>
+        <Alert severity="info">
+          商业版由平台统一提供实时理解和 AI 回答能力。你只需要维护简历、知识库、岗位方向和专业热词，不需要配置任何模型或语音服务。
+        </Alert>
+        <Alert severity="success">
+          使用、支付、额度或识别异常可以联系：xiaosuange@gmail.com。
+        </Alert>
+        <ThemeSettings />
+
+        <Divider />
+
+        <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>识别与热词</Typography>
+        <AudioSourceSettings />
+
+        <Divider />
+
+        <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>简历与岗位</Typography>
+        <ResumeJDSettings />
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ maxWidth: 700, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
       <Typography variant="h5" fontWeight={700}>设置</Typography>
