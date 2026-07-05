@@ -2,7 +2,7 @@
   "name": "面试猪",
   "short_name": "面试猪",
   "description": "AI 实时面试辅助工具，支持系统音频识别、简历与知识库上下文、实时面试答案、AI 八股文、STAR 回答和面试复盘。",
-  "start_url": "/interview",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#202938",
@@ -12,6 +12,18 @@
       "src": "/logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

@@ -14,6 +14,7 @@ import { BillingProvider } from './context/BillingContext';
 import { InterviewProvider } from './context/InterviewContext';
 import { ExamProvider } from './context/ExamContext';
 import { AppLayout } from './components/layout/AppLayout';
+import { MarketingPage } from './components/marketing/MarketingPage';
 import { InterviewPage } from './components/interview/InterviewPage';
 import { ExamPage } from './components/exam/ExamPage';
 import { KnowledgePage } from './components/knowledge/KnowledgePage';
@@ -32,8 +33,8 @@ function AppContent(): ReactElement {
       <CssBaseline />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<Navigate to="/interview" replace />} />
+          <Route path="/" element={<MarketingPage />} />
+          <Route element={<AppLayout />}>
             <Route path="interview" element={<InterviewPage />} />
             <Route path="knowledge" element={<KnowledgePage />} />
             <Route path="exam" element={<ExamPage />} />
