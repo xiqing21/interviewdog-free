@@ -15,38 +15,22 @@ export function AnswerModeToggle() {
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-      <Typography variant="caption" color="text.secondary" fontWeight={800}>
-        回答模式
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography variant="body2" color="text.secondary">
+        回答模式：
       </Typography>
       <ToggleButtonGroup
         value={mode}
         exclusive
         onChange={handleChange}
         size="small"
-        sx={{
-          bgcolor: 'background.paper',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 1,
-          overflow: 'hidden',
-          '& .MuiToggleButton-root': {
-            px: 2,
-            py: 0.65,
-            border: 0,
-            borderRadius: 0,
-            fontWeight: 800,
-            color: 'text.secondary',
-          },
-          '& .Mui-selected': {
-            color: 'primary.main',
-            bgcolor: 'primary.50',
-          },
-        }}
       >
-        <ToggleButton value="concise">精简</ToggleButton>
-        <ToggleButton value="detailed">详细</ToggleButton>
+        <ToggleButton value="concise" sx={{ px: 2 }}>简洁</ToggleButton>
+        <ToggleButton value="detailed" sx={{ px: 2 }}>详细</ToggleButton>
       </ToggleButtonGroup>
+      <Typography variant="caption" color="text.secondary">
+        影响后续生成/重新生成
+      </Typography>
     </Box>
   );
 }
