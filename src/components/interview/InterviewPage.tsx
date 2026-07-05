@@ -36,6 +36,11 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 import ComputerIcon from '@mui/icons-material/Computer';
+import GraphicEqIcon from '@mui/icons-material/GraphicEq';
+import SendIcon from '@mui/icons-material/Send';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked';
 import { MessageScroller } from '@shadcn/react/message-scroller';
 import { Link } from 'react-router-dom';
 import { QACard } from './QACard';
@@ -62,7 +67,6 @@ export function InterviewPage() {
     updateAppSettings,
   } = useSettings();
   const { activeSession, sessions, sessionSummaries, switchSession } = useSession();
-  const remainingSeconds = 0;
   const {
     isProcessing,
     isListening,
@@ -87,6 +91,8 @@ export function InterviewPage() {
   const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [audioGuideOpen, setAudioGuideOpen] = useState(false);
+  const [audioSetupCollapsed, setAudioSetupCollapsed] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now());
   const lastQaCountRef = useRef(qaList.length);
 
   useEffect(() => {
@@ -115,6 +121,22 @@ export function InterviewPage() {
       setAudioGuideOpen(true);
     }
   }, [activeSession?.id, appSettings.interviewerAudioSource]);
+
+  useEffect(() => {
+    if (isListening) {
+      setAudioSetupCollapsed(true);
+      return;
+    }
+    if (!systemAudioReady) {
+      setAudioSetupCollapsed(false);
+    }
+  }, [isListening, systemAudioReady]);
+
+  useEffect(() => {
+    if (!activeSession || (!isListening && !isProcessing)) return;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [activeSession, isListening, isProcessing]);
 
   const handleManualSend = useCallback(() => {
     const q = manualInput.trim();
@@ -153,6 +175,14 @@ export function InterviewPage() {
     transcriptLines.some((line) => line.speaker === 'interviewer') ||
     /^面试官[：:]/.test(interimText.trim());
   const visibleTranscriptLines = [...transcriptLines.slice(-30)].reverse();
+  const latestInterviewerLine = [...transcriptLines].reverse().find((line) => line.speaker === 'interviewer');
+  const recognitionPreview =
+    interimText.replace(/^面试官[：:]\s*/, '').trim() ||
+    latestInterviewerLine?.text ||
+    '';
+  const canTriggerLatestQuestion =
+    hasTriggerableInterviewerText && (COMMERCIAL_MODE || Boolean(aiSettings.apiKey));
+  const listeningElapsed = activeSession ? formatDuration(clockNow - activeSession.createdAt) : '00:00';
 
   if (showStartPrompt && activeSession && !showSetup) {
     return (
@@ -302,106 +332,41 @@ export function InterviewPage() {
           </Alert>
         )}
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Typography variant="h6" fontWeight={800}>AI 回答</Typography>
-          {isProcessing && <Chip size="small" color="primary" label="生成中" />}
-          {isListening && <Chip size="small" color="success" label="识别中" />}
-          {activeSession.archivedAt && <Chip size="small" color="default" label="已归档" />}
-          <Button
-            size="small"
-            color="error"
-            variant="outlined"
-            sx={{ ml: 'auto' }}
-            onClick={() => { void endInterview(); }}
-            disabled={isProcessing || Boolean(activeSession.archivedAt)}
-          >
-            结束归档
-          </Button>
-          {activeSession.archivedAt && activeSession.review?.summary && (
-            <Button size="small" variant="outlined" onClick={() => setReviewOpen(true)}>
-              查看复盘
-            </Button>
-          )}
-          {activeSession.archivedAt && !activeSession.review?.summary && (
-            <Button
-              size="small"
-              variant="outlined"
-              onClick={() => { void generateReview(); }}
-              disabled={isProcessing || !aiSettings.apiKey}
-            >
-              生成复盘
-            </Button>
-          )}
-        </Box>
-
         <Paper
           variant="outlined"
           sx={{
-            p: 1.25,
+            p: 1,
             display: 'flex',
-            gap: 1,
             alignItems: 'center',
+            gap: 1,
             flexWrap: 'wrap',
             bgcolor: 'background.default',
+            borderColor: 'divider',
           }}
         >
-          <Paper
-            variant="outlined"
+          <Button
+            variant="contained"
+            color={isListening ? 'primary' : 'inherit'}
+            startIcon={isListening ? <GraphicEqIcon /> : <ComputerIcon />}
+            onClick={isListening ? stopListening : startListening}
             sx={{
-              p: 1,
-              width: '100%',
-              borderColor: systemAudioReady ? 'success.main' : 'primary.light',
-              bgcolor: systemAudioReady ? 'rgba(46, 125, 50, 0.08)' : 'rgba(83, 144, 226, 0.08)',
+              px: 2.2,
+              minHeight: 44,
+              fontWeight: 900,
+              bgcolor: isListening ? undefined : 'background.paper',
+              color: isListening ? undefined : 'text.primary',
+              border: '1px solid',
+              borderColor: isListening ? 'primary.main' : 'divider',
+              boxShadow: isListening ? 2 : 0,
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
-              <ComputerIcon color={systemAudioReady ? 'success' : 'primary'} fontSize="small" />
-              <Typography variant="subtitle2" fontWeight={900}>3 步开始实时听音</Typography>
-              {systemAudioReady && <Chip size="small" color="success" label="窗口已选" />}
-              <Button size="small" variant="text" onClick={() => setAudioGuideOpen(true)}>
-                查看共享教程
-              </Button>
-            </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'auto 1fr auto' }, gap: 1, alignItems: 'center' }}>
-              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
-                <Chip size="small" color="primary" label="1" />
-                <Typography variant="body2" fontWeight={800}>
-                  {COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
-                </Typography>
-                <Button
-                  size="small"
-                  variant={systemAudioReady ? 'outlined' : 'contained'}
-                  onClick={() => { void prepareSystemAudioShare(); }}
-                  disabled={isListening}
-                >
-                  {systemAudioReady ? '重新选择' : COMMERCIAL_MODE ? '选择窗口' : '共享音频'}
-                </Button>
-              </Box>
-              <Alert severity="warning" icon={false} sx={{ py: 0.25, px: 1, '& .MuiAlert-message': { py: 0.25 } }}>
-                <Typography variant="caption" fontWeight={800}>
-                  2 开启 Chrome 弹窗底部“同时分享系统音频”，否则听不到会议声音。
-                </Typography>
-              </Alert>
-              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: { md: 'flex-end' } }}>
-                <Chip size="small" color="primary" label="3" />
-                <Button
-                  size="small"
-                  variant="contained"
-                  color={isListening ? 'error' : 'primary'}
-                  startIcon={isListening ? <StopIcon /> : <MicIcon />}
-                  onClick={isListening ? stopListening : startListening}
-                >
-                  {isListening ? '停止听音' : '开始听音'}
-                </Button>
-              </Box>
-            </Box>
-            {error && (
-              <Alert severity="error" sx={{ mt: 1.25 }}>
-                {error}
-              </Alert>
-            )}
-          </Paper>
-
+            {isListening ? `正在监听中 ${listeningElapsed}` : '开始实时听音'}
+          </Button>
+          {isListening && (
+            <Button variant="outlined" color="inherit" startIcon={<StopIcon />} onClick={stopListening} sx={{ minHeight: 44 }}>
+              停止
+            </Button>
+          )}
           <AnswerModeToggle />
           <FormControlLabel
             control={
@@ -430,13 +395,45 @@ export function InterviewPage() {
               <MenuItem value="12000">12.0 秒</MenuItem>
             </Select>
           </FormControl>
-          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', ml: { md: 'auto' } }}>
-            {COMMERCIAL_MODE ? (
-              <>
-                <Chip size="small" color="primary" label="智能听音" />
-                <Chip size="small" label={`剩余 ${Math.floor(remainingSeconds / 60)} 分钟`} />
-              </>
-            ) : (
+          <Chip
+            size="small"
+            color={systemAudioReady ? 'success' : 'warning'}
+            icon={systemAudioReady ? <CheckCircleIcon /> : <RadioButtonCheckedIcon />}
+            label={systemAudioReady ? '系统音频已连接' : '未选择面试窗口'}
+            sx={{ ml: { md: 'auto' }, fontWeight: 800, height: 32 }}
+          />
+          <Button size="small" variant="outlined" onClick={() => { void prepareSystemAudioShare(); }} disabled={isListening}>
+            {systemAudioReady ? '重选窗口' : '选择窗口'}
+          </Button>
+          <Button size="small" variant="text" onClick={() => setAudioGuideOpen(true)}>
+            共享教程
+          </Button>
+          <Button
+            size="small"
+            color="error"
+            variant="outlined"
+            onClick={() => { void endInterview(); }}
+            disabled={isProcessing || Boolean(activeSession.archivedAt)}
+          >
+            结束归档
+          </Button>
+          {activeSession.archivedAt && activeSession.review?.summary && (
+            <Button size="small" variant="outlined" onClick={() => setReviewOpen(true)}>
+              查看复盘
+            </Button>
+          )}
+          {activeSession.archivedAt && !activeSession.review?.summary && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => { void generateReview(); }}
+              disabled={isProcessing || !aiSettings.apiKey}
+            >
+              生成复盘
+            </Button>
+          )}
+          <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', width: '100%' }}>
+            {!COMMERCIAL_MODE && (
               <>
                 <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
                 <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
@@ -513,6 +510,104 @@ export function InterviewPage() {
           )}
         </Paper>
 
+        {!audioSetupCollapsed && (
+          <Paper
+            variant="outlined"
+            sx={{
+              p: 1,
+              borderColor: systemAudioReady ? 'success.main' : 'primary.light',
+              bgcolor: systemAudioReady ? 'rgba(46, 125, 50, 0.06)' : 'rgba(83, 144, 226, 0.06)',
+            }}
+          >
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'auto 1fr auto' }, gap: 1, alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
+                <Chip size="small" color="primary" label="1" />
+                <Typography variant="body2" fontWeight={800}>
+                  {COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
+                </Typography>
+                <Button
+                  size="small"
+                  variant={systemAudioReady ? 'outlined' : 'contained'}
+                  onClick={() => { void prepareSystemAudioShare(); }}
+                  disabled={isListening}
+                >
+                  {systemAudioReady ? '重新选择' : COMMERCIAL_MODE ? '选择窗口' : '共享音频'}
+                </Button>
+              </Box>
+              <Alert severity="warning" icon={false} sx={{ py: 0.25, px: 1, '& .MuiAlert-message': { py: 0.25 } }}>
+                <Typography variant="caption" fontWeight={800}>
+                  2 在 Chrome 弹窗里选择会议软件或整个屏幕，并打开底部“同时分享系统音频”。
+                </Typography>
+              </Alert>
+              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: { md: 'flex-end' } }}>
+                <Chip size="small" color="primary" label="3" />
+                <Button
+                  size="small"
+                  variant="contained"
+                  color={isListening ? 'error' : 'primary'}
+                  startIcon={isListening ? <StopIcon /> : <MicIcon />}
+                  onClick={isListening ? stopListening : startListening}
+                >
+                  {isListening ? '停止听音' : '开始听音'}
+                </Button>
+              </Box>
+            </Box>
+            {error && (
+              <Alert severity="error" sx={{ mt: 1.25 }}>
+                {error}
+              </Alert>
+            )}
+          </Paper>
+        )}
+
+        <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'background.default' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <RadioButtonCheckedIcon color={isListening ? 'success' : 'disabled'} fontSize="small" />
+            <Typography variant="subtitle1" fontWeight={900}>
+              {isListening ? '正在识别面试官问题' : '等待面试官问题'}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+              interviewer {isListening ? listeningElapsed : ''}
+            </Typography>
+          </Box>
+          <MiniWaveform active={isListening} />
+          <Typography
+            variant="body1"
+            sx={{ mt: 1.25, minHeight: 54, lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            color={recognitionPreview ? 'text.primary' : 'text.secondary'}
+          >
+            {recognitionPreview || '选择面试窗口并开始听音后，识别到的面试官问题会显示在这里。'}
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AutoAwesomeIcon />}
+              onClick={() => { void triggerLatestTranscriptQuestion(); }}
+              disabled={!canTriggerLatestQuestion}
+            >
+              转为正式问题
+            </Button>
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => { void triggerLatestTranscriptQuestion(); }}
+              disabled={!canTriggerLatestQuestion}
+            >
+              按 Enter 直接生成答案
+            </Button>
+          </Box>
+        </Paper>
+
+        <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'background.default' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <AutoAwesomeIcon color="primary" fontSize="small" />
+            <Typography variant="subtitle1" fontWeight={900}>AI 回答</Typography>
+            {isProcessing && <Chip size="small" color="primary" label="生成中" />}
+            {selectedQa && !selectedQa.isStreaming && !selectedQa.error && <Chip size="small" color="success" label="已生成" />}
+          </Box>
+        </Paper>
+
         <MessageScroller.Provider
           key={`answer-scroller-${selectedQa?.id ?? 'empty'}`}
           autoScroll
@@ -562,12 +657,15 @@ export function InterviewPage() {
           </MessageScroller.Root>
         </MessageScroller.Provider>
 
-        <Box sx={{ mt: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+        <Paper variant="outlined" sx={{ p: 1.25, bgcolor: 'background.default' }}>
+          <Typography variant="subtitle2" fontWeight={900} sx={{ mb: 0.75 }}>
+            手动输入问题
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
             <TextField
               fullWidth
               size="small"
-              placeholder="输入你的问题"
+              placeholder="输入你想问的问题，Shift + Enter 换行"
               value={manualInput}
               onChange={(e) => setManualInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
@@ -578,13 +676,14 @@ export function InterviewPage() {
               variant="contained"
               onClick={handleManualSend}
               disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
-              sx={{ px: 3, flexShrink: 0 }}
+              sx={{ minWidth: 48, width: 48, px: 0, flexShrink: 0, minHeight: 40 }}
+              aria-label="发送问题"
             >
-              发送
+              <SendIcon fontSize="small" />
             </Button>
           </Box>
+        </Paper>
 
-        </Box>
       </Paper>
 
       <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
@@ -815,6 +914,46 @@ function asrProviderLabel(provider: ASRProvider): string {
   if (provider === 'glm') return 'GLM ASR';
   if (provider === 'openai') return 'OpenAI 分片 ASR';
   return '浏览器 ASR';
+}
+
+function MiniWaveform({ active }: { active: boolean }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35, height: 24, overflow: 'hidden' }}>
+      {Array.from({ length: 52 }).map((_, index) => {
+        const height = 6 + ((index * 7) % 18);
+        return (
+          <Box
+            // eslint-disable-next-line react/no-array-index-key
+            key={index}
+            sx={{
+              width: 3,
+              height,
+              borderRadius: 999,
+              bgcolor: active ? (index % 5 === 0 ? 'primary.light' : 'primary.main') : 'divider',
+              opacity: active ? 0.35 + ((index % 6) * 0.1) : 0.75,
+              transformOrigin: 'center',
+              animation: active ? `wavePulse ${760 + (index % 8) * 60}ms ease-in-out infinite alternate` : 'none',
+              '@keyframes wavePulse': {
+                from: { transform: 'scaleY(0.55)' },
+                to: { transform: 'scaleY(1.25)' },
+              },
+            }}
+          />
+        );
+      })}
+    </Box>
+  );
+}
+
+function formatDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 function formatTime(timestamp: number): string {
