@@ -165,7 +165,7 @@ export function InterviewPage() {
         sessionCount={sessionSummaries.length}
         onContinue={() => {
           setShowStartPrompt(false);
-          setShowAudioPrep(true);
+          setShowAudioPrep(!activeSession.archivedAt);
         }}
         onCreate={() => {
           setSetupMode('new');
@@ -176,7 +176,8 @@ export function InterviewPage() {
         onOpenSession={(id) => {
           switchSession(id);
           setShowStartPrompt(false);
-          setShowAudioPrep(true);
+          const targetSession = sessions.find((session) => session.id === id);
+          setShowAudioPrep(!targetSession?.archivedAt);
         }}
       />
     );
@@ -201,7 +202,7 @@ export function InterviewPage() {
     );
   }
 
-  if (showAudioPrep && activeSession) {
+  if (showAudioPrep && activeSession && !activeSession.archivedAt) {
     return (
       <AudioPreparationStep
         isListening={isListening}
@@ -229,8 +230,8 @@ export function InterviewPage() {
         display: 'grid',
         gridTemplateColumns: {
           xs: '1fr',
-          md: '180px minmax(0, 1fr) 220px',
-          xl: '260px minmax(0, 1fr) 300px',
+          md: '160px minmax(0, 1fr) 200px',
+          xl: '220px minmax(0, 1.2fr) 260px',
         },
         gap: 2,
         alignItems: 'start',
@@ -324,11 +325,13 @@ export function InterviewPage() {
 
       <Paper
         sx={{
-          p: 2,
-          minHeight: { md: 'calc(100vh - 140px)' },
+          p: 1.5,
+          height: { md: 'calc(100vh - 140px)' },
+          minHeight: { xs: 'auto', md: 'calc(100vh - 140px)' },
           display: 'flex',
           flexDirection: 'column',
-          gap: 1.5,
+          gap: 1,
+          overflow: 'hidden',
         }}
       >
         {!COMMERCIAL_MODE && !aiSettings.apiKey && (
@@ -372,9 +375,9 @@ export function InterviewPage() {
         <Paper
           variant="outlined"
           sx={{
-            p: 1.25,
+            p: 0.85,
             display: 'flex',
-            gap: 1,
+            gap: 0.75,
             alignItems: 'center',
             flexWrap: 'wrap',
             bgcolor: 'background.default',
@@ -498,10 +501,10 @@ export function InterviewPage() {
           )}
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'background.default' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+        <Paper variant="outlined" sx={{ p: 1, bgcolor: 'background.default' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
             <RadioButtonCheckedIcon color={isListening ? 'success' : 'disabled'} fontSize="small" />
-            <Typography variant="subtitle1" fontWeight={900}>
+            <Typography variant="subtitle2" fontWeight={900}>
               {isListening ? '正在识别面试官问题' : '等待面试官问题'}
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
@@ -510,13 +513,13 @@ export function InterviewPage() {
           </Box>
           <MiniWaveform active={isListening} />
           <Typography
-            variant="body1"
-            sx={{ mt: 1.25, minHeight: 54, lineHeight: 1.7, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+            variant="body2"
+            sx={{ mt: 0.75, minHeight: 30, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
             color={recognitionPreview ? 'text.primary' : 'text.secondary'}
           >
             {recognitionPreview || '面试开始后，识别到的面试官问题会显示在这里。'}
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1, mt: 1.5, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
             <Button
               size="small"
               variant="outlined"
@@ -537,42 +540,6 @@ export function InterviewPage() {
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 1.25, bgcolor: 'background.default' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <AutoAwesomeIcon color="primary" fontSize="small" />
-            <Typography variant="subtitle1" fontWeight={900}>AI 回答</Typography>
-            {isProcessing && <Chip size="small" color="primary" label="生成中" />}
-            {selectedQa && !selectedQa.isStreaming && !selectedQa.error && <Chip size="small" color="success" label="已生成" />}
-          </Box>
-        </Paper>
-
-        <Paper variant="outlined" sx={{ p: 1, bgcolor: 'background.default' }}>
-          <Typography variant="subtitle2" fontWeight={900} sx={{ mb: 0.75 }}>
-            手动输入问题
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="手动输入或修正面试官问题，Shift + Enter 换行"
-              value={manualInput}
-              onChange={(e) => setManualInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
-              multiline
-              maxRows={3}
-            />
-            <Button
-              variant="contained"
-              onClick={handleManualSend}
-              disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
-              sx={{ minWidth: 48, width: 48, px: 0, flexShrink: 0, minHeight: 40 }}
-              aria-label="发送问题"
-            >
-              <SendIcon fontSize="small" />
-            </Button>
-          </Box>
-        </Paper>
-
         <MessageScroller.Provider
           key={`answer-scroller-${selectedQa?.id ?? 'empty'}`}
           autoScroll
@@ -582,10 +549,10 @@ export function InterviewPage() {
         >
           <MessageScroller.Root
             className="relative flex flex-col overflow-hidden rounded-xl border border-border/70 bg-background/55"
-            style={{ minHeight: 'calc(100vh - 360px)' }}
+            style={{ minHeight: 0, flex: 1 }}
           >
             <MessageScroller.Viewport
-              className="flex max-h-[calc(100vh-360px)] flex-1 flex-col overflow-y-auto scroll-smooth p-1 md:min-h-[calc(100vh-360px)]"
+              className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth p-1"
               aria-label="AI 回答"
             >
               <MessageScroller.Content className="flex flex-col gap-3">
@@ -621,6 +588,39 @@ export function InterviewPage() {
             </MessageScroller.Button>
           </MessageScroller.Root>
         </MessageScroller.Provider>
+
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 0.9,
+            bgcolor: 'background.default',
+            position: { md: 'sticky' },
+            bottom: 0,
+            zIndex: 1,
+          }}
+        >
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="手动输入或修正面试官问题，Shift + Enter 换行"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
+              multiline
+              maxRows={3}
+            />
+            <Button
+              variant="contained"
+              onClick={handleManualSend}
+              disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
+              sx={{ minWidth: 48, width: 48, px: 0, flexShrink: 0, minHeight: 40 }}
+              aria-label="发送问题"
+            >
+              <SendIcon fontSize="small" />
+            </Button>
+          </Box>
+        </Paper>
 
       </Paper>
 
@@ -834,9 +834,9 @@ function GuideStep({
 
 function MiniWaveform({ active }: { active: boolean }) {
   return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.35, height: 24, overflow: 'hidden' }}>
-      {Array.from({ length: 52 }).map((_, index) => {
-        const height = 6 + ((index * 7) % 18);
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3, height: 16, overflow: 'hidden' }}>
+      {Array.from({ length: 44 }).map((_, index) => {
+        const height = 4 + ((index * 7) % 12);
         return (
           <Box
             // eslint-disable-next-line react/no-array-index-key
