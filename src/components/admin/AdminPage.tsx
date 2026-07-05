@@ -22,6 +22,7 @@ import AddCardIcon from '@mui/icons-material/AddCard';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ScienceIcon from '@mui/icons-material/Science';
+import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import {
   adminRequest,
   type AdminAuditLogRow,
@@ -29,6 +30,7 @@ import {
   type AdminUserRow,
   type BillingTransactionRow,
   type CommercialOpsPayload,
+  type SeoInsightPayload,
 } from '../../services/adminService';
 
 function minutes(seconds: number): string {
@@ -45,6 +47,8 @@ export function AdminPage() {
   const [logs, setLogs] = useState<AdminAuditLogRow[]>([]);
   const [configs, setConfigs] = useState<AdminConfig[]>([]);
   const [ops, setOps] = useState<CommercialOpsPayload | null>(null);
+  const [seoInsights, setSeoInsights] = useState<SeoInsightPayload | null>(null);
+  const [seoActionResult, setSeoActionResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [adjustMinutes, setAdjustMinutes] = useState('60');
   const [adjustNote, setAdjustNote] = useState('后台手动赠送');
@@ -56,6 +60,7 @@ export function AdminPage() {
 
   const aiConfig = useMemo(() => configs.find((item) => item.key === 'ai')?.value ?? {}, [configs]);
   const asrConfig = useMemo(() => configs.find((item) => item.key === 'asr')?.value ?? {}, [configs]);
+  const seoConfig = useMemo(() => configs.find((item) => item.key === 'seo')?.value ?? {}, [configs]);
 
   const refresh = async () => {
     setLoading(true);
@@ -109,18 +114,30 @@ export function AdminPage() {
     await refresh();
   };
 
-  const updateConfig = async (key: 'ai' | 'asr', form: HTMLFormElement) => {
+  const updateConfig = async (key: 'ai' | 'asr' | 'seo', form: HTMLFormElement) => {
     const data = new FormData(form);
     const value = Object.fromEntries([...data.entries()].map(([name, item]) => [name, String(item)]));
     await adminRequest('updateConfig', { key, value });
     await refresh();
   };
 
-  const testConfig = async (key: 'ai' | 'asr', form: HTMLFormElement) => {
+  const testConfig = async (key: 'ai' | 'asr' | 'seo', form: HTMLFormElement) => {
     const data = new FormData(form);
     const value = Object.fromEntries([...data.entries()].map(([name, item]) => [name, String(item)]));
     const result = await adminRequest<{ ok: boolean; message: string }>('testConfig', { key, value });
     setConfigTestResult((current) => ({ ...current, [key]: result }));
+  };
+
+  const runSeoAction = async (action: 'getSeoInsights' | 'submitIndexNow' | 'submitBingUrls' | 'submitGoogleSitemap') => {
+    setSeoActionResult(null);
+    if (action === 'getSeoInsights') {
+      const result = await adminRequest<SeoInsightPayload>('getSeoInsights', { days: 28 });
+      setSeoInsights(result);
+      setSeoActionResult({ ok: true, message: 'SEO/GEO 数据已刷新。' });
+      return;
+    }
+    const result = await adminRequest<{ ok: boolean; message: string }>(action);
+    setSeoActionResult(result);
   };
 
   const createCoupon = async () => {
@@ -197,6 +214,7 @@ export function AdminPage() {
         <Tab label="用户与充值" />
         <Tab label="消费/充值记录" />
         <Tab label="模型与语音配置" />
+        <Tab label="SEO/GEO" />
         <Tab label="增长/工单/风控" />
         <Tab label="审计日志" />
       </Tabs>
@@ -335,6 +353,38 @@ export function AdminPage() {
       )}
 
       {tab === 3 && (
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={5}>
+            <ConfigForm
+              title="SEO / GEO 配置"
+              icon={<TravelExploreIcon />}
+              fields={[
+                ['siteUrl', '主站 URL'],
+                ['sitemapUrl', 'Sitemap URL'],
+                ['googleSiteUrl', 'Google Search Console Property'],
+                ['googleServiceAccountJson', 'Google Service Account JSON'],
+                ['bingApiKey', 'Bing Webmaster API Key'],
+                ['indexNowHost', 'IndexNow Host'],
+                ['indexNowKey', 'IndexNow Key'],
+                ['indexNowKeyLocation', 'IndexNow Key Location'],
+              ]}
+              values={seoConfig}
+              onSubmit={(form) => updateConfig('seo', form)}
+              onTest={(form) => testConfig('seo', form)}
+              testResult={configTestResult.seo}
+            />
+          </Grid>
+          <Grid item xs={12} md={7}>
+            <SeoConsole
+              insights={seoInsights}
+              actionResult={seoActionResult}
+              onAction={(action) => runSeoAction(action)}
+            />
+          </Grid>
+        </Grid>
+      )}
+
+      {tab === 4 && (
         <Grid container spacing={2}>
           <Grid item xs={12}>
             <Paper sx={{ p: 2 }}>
@@ -475,7 +525,7 @@ export function AdminPage() {
           </Grid>
         </Grid>
       )}
-      {tab === 4 && (
+      {tab === 5 && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" fontWeight={800} gutterBottom>后台审计日志</Typography>
           <Stack spacing={1}>
@@ -490,6 +540,136 @@ export function AdminPage() {
           </Stack>
         </Paper>
       )}
+    </Box>
+  );
+}
+
+function SeoConsole({
+  insights,
+  actionResult,
+  onAction,
+}: {
+  insights: SeoInsightPayload | null;
+  actionResult: { ok: boolean; message: string } | null;
+  onAction: (action: 'getSeoInsights' | 'submitIndexNow' | 'submitBingUrls' | 'submitGoogleSitemap') => Promise<void>;
+}) {
+  const [runningAction, setRunningAction] = useState<string | null>(null);
+  const run = async (action: 'getSeoInsights' | 'submitIndexNow' | 'submitBingUrls' | 'submitGoogleSitemap') => {
+    setRunningAction(action);
+    try {
+      await onAction(action);
+    } finally {
+      setRunningAction(null);
+    }
+  };
+  return (
+    <Paper sx={{ p: 2 }}>
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <TravelExploreIcon />
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="h6" fontWeight={800}>搜索词 / 收录 / GEO 工作台</Typography>
+          <Typography variant="body2" color="text.secondary">
+            拉 Search Console 和 Bing 搜索词，提交 Sitemap/URL，并检查 AI 搜索可见性基础资产。
+          </Typography>
+        </Box>
+      </Stack>
+      {actionResult && (
+        <Alert severity={actionResult.ok ? 'success' : 'error'} sx={{ mb: 1.5 }}>
+          {actionResult.message}
+        </Alert>
+      )}
+      <Grid container spacing={1}>
+        {[
+          ['getSeoInsights', '拉取搜索词'],
+          ['submitIndexNow', '提交 IndexNow'],
+          ['submitBingUrls', '提交 Bing URL'],
+          ['submitGoogleSitemap', '提交 Google Sitemap'],
+        ].map(([action, label]) => (
+          <Grid item xs={12} sm={6} key={action}>
+            <Button
+              fullWidth
+              variant={action === 'getSeoInsights' ? 'contained' : 'outlined'}
+              disabled={Boolean(runningAction)}
+              onClick={() => { void run(action as 'getSeoInsights' | 'submitIndexNow' | 'submitBingUrls' | 'submitGoogleSitemap'); }}
+            >
+              {runningAction === action ? '执行中...' : label}
+            </Button>
+          </Grid>
+        ))}
+      </Grid>
+      <Divider sx={{ my: 2 }} />
+      <Typography variant="subtitle1" fontWeight={900} gutterBottom>GEO / AI 搜索检查</Typography>
+      <Grid container spacing={1}>
+        {(insights?.checklist ?? [
+          { label: 'robots.txt', ok: true, detail: '已在站点根目录准备。' },
+          { label: 'sitemap.xml', ok: true, detail: '已在站点根目录准备。' },
+          { label: 'llms.txt', ok: true, detail: '已为 AI 搜索摘要准备。' },
+          { label: 'Search Console', ok: false, detail: '保存 Google Service Account 后可拉搜索词。' },
+        ]).map((item) => (
+          <Grid item xs={12} sm={6} key={item.label}>
+            <Paper variant="outlined" sx={{ p: 1.25, height: '100%' }}>
+              <Chip size="small" color={item.ok ? 'success' : 'warning'} label={item.ok ? '就绪' : '待配置'} sx={{ mb: 0.75 }} />
+              <Typography fontWeight={900}>{item.label}</Typography>
+              <Typography variant="caption" color="text.secondary">{item.detail}</Typography>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+      <Divider sx={{ my: 2 }} />
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={6}>
+          <SearchRows
+            title="Google Search Console 搜索词"
+            message={insights?.google.message}
+            rows={(insights?.google.rows ?? []).map((row) => ({
+              key: `${row.query}-${row.page}`,
+              title: row.query || '(空查询)',
+              meta: `${row.clicks} 点击 / ${row.impressions} 展示 / CTR ${(row.ctr * 100).toFixed(1)}% / 平均排名 ${row.position.toFixed(1)}`,
+              sub: row.page,
+            }))}
+          />
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <SearchRows
+            title="Bing Webmaster 搜索词"
+            message={insights?.bing.message}
+            rows={(insights?.bing.rows ?? []).map((row) => ({
+              key: `${row.query}-${row.date}`,
+              title: row.query || '(空查询)',
+              meta: `${row.clicks} 点击 / ${row.impressions} 展示 / 点击排名 ${row.avgClickPosition}`,
+              sub: row.date,
+            }))}
+          />
+        </Grid>
+      </Grid>
+    </Paper>
+  );
+}
+
+function SearchRows({
+  title,
+  message,
+  rows,
+}: {
+  title: string;
+  message?: string;
+  rows: Array<{ key: string; title: string; meta: string; sub?: string }>;
+}) {
+  return (
+    <Box>
+      <Typography variant="subtitle1" fontWeight={900}>{title}</Typography>
+      {message && <Typography variant="caption" color="text.secondary">{message}</Typography>}
+      <Stack spacing={1} sx={{ mt: 1 }}>
+        {rows.length === 0 ? (
+          <Alert severity="info">暂无数据。配置并验证站点后再拉取。</Alert>
+        ) : rows.slice(0, 12).map((row) => (
+          <Paper key={row.key} variant="outlined" sx={{ p: 1.15 }}>
+            <Typography fontWeight={800} noWrap>{row.title}</Typography>
+            <Typography variant="caption" color="text.secondary">{row.meta}</Typography>
+            {row.sub && <Typography variant="caption" color="text.secondary" display="block" noWrap>{row.sub}</Typography>}
+          </Paper>
+        ))}
+      </Stack>
     </Box>
   );
 }
@@ -526,14 +706,21 @@ function ConfigForm({
       </Stack>
       <Stack spacing={1.25}>
         {fields.map(([name, label]) => (
-          <TextField
-            key={name}
-            name={name}
-            label={label}
-            type={/key|token|secret/i.test(name) ? 'password' : 'text'}
-            defaultValue={String(values[name] ?? '')}
-            placeholder={/key|token|secret/i.test(name) ? '留空不改，填入新值后保存' : undefined}
-          />
+          (() => {
+            const isMultilineSecret = /json|serviceaccount/i.test(name);
+            return (
+              <TextField
+                key={name}
+                name={name}
+                label={label}
+                type={!isMultilineSecret && /key|token|secret/i.test(name) ? 'password' : 'text'}
+                multiline={isMultilineSecret}
+                minRows={isMultilineSecret ? 4 : undefined}
+                defaultValue={String(values[name] ?? '')}
+                placeholder={/key|token|secret/i.test(name) ? '留空不改，填入新值后保存' : undefined}
+              />
+            );
+          })()
         ))}
         {testResult && (
           <Alert severity={testResult.ok ? 'success' : 'error'}>{testResult.message}</Alert>

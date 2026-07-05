@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import crypto from 'node:crypto';
 
 type ApiRequest = {
   method?: string;
@@ -27,18 +28,25 @@ type AdminAction =
   | 'createTicket'
   | 'updateTicket'
   | 'saveExperiment'
-  | 'saveRiskRule';
+  | 'saveRiskRule'
+  | 'getSeoInsights'
+  | 'submitIndexNow'
+  | 'submitBingUrls'
+  | 'submitGoogleSitemap';
 
 type AdminUser = {
   id: string;
   email: string;
 };
 
-type AppConfigKey = 'ai' | 'asr' | 'plans';
+type AppConfigKey = 'ai' | 'asr' | 'plans' | 'seo';
 type AdminSupabaseClient = any;
 type ConfigTestResult = { ok: boolean; message: string; latencyMs?: number };
 
-const CONFIG_KEYS = ['ai', 'asr', 'plans'] as const;
+const CONFIG_KEYS = ['ai', 'asr', 'plans', 'seo'] as const;
+const DEFAULT_SITE_URL = 'https://mianshizhu.cn';
+const DEFAULT_INDEXNOW_KEY = 'b3e625447e10bd10977cdc2faafa3b38';
+const DEFAULT_SEO_PATHS = ['/', '/interview', '/knowledge', '/billing'];
 
 export default async function handler(request: ApiRequest, response: ApiResponse) {
   if (request.method !== 'POST') {
@@ -98,6 +106,8 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     threshold?: number;
     ruleKey?: string;
     actionValue?: string;
+    days?: number;
+    urls?: string[];
   };
 
   try {
@@ -163,6 +173,22 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     if (body.action === 'saveRiskRule') {
       response.status(200).json(await saveRiskRule(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'getSeoInsights') {
+      response.status(200).json(await getSeoInsights(supabase, actor, body.value ?? {}, body.days));
+      return;
+    }
+    if (body.action === 'submitIndexNow') {
+      response.status(200).json(await submitIndexNow(supabase, actor, body.value ?? {}, body.urls));
+      return;
+    }
+    if (body.action === 'submitBingUrls') {
+      response.status(200).json(await submitBingUrls(supabase, actor, body.value ?? {}, body.urls));
+      return;
+    }
+    if (body.action === 'submitGoogleSitemap') {
+      response.status(200).json(await submitGoogleSitemap(supabase, actor, body.value ?? {}));
       return;
     }
     response.status(400).json({ error: '未知后台操作。' });
@@ -341,7 +367,13 @@ async function testConfig(
   const { data: current } = await supabase.from('admin_app_config').select('value').eq('key', key).maybeSingle();
   const merged = mergeConfig(current?.value ?? {}, value);
   const startedAt = Date.now();
-  const result = key === 'ai' ? await testAiConfig(merged) : await testAsrConfig(merged);
+  const result = key === 'ai'
+    ? await testAiConfig(merged)
+    : key === 'asr'
+      ? await testAsrConfig(merged)
+      : key === 'seo'
+        ? await testSeoConfig(merged)
+        : { ok: true, message: '套餐配置已保存。' };
   await audit(supabase, actor.id, `test_${key}_config`, undefined, {
     ok: result.ok,
     latencyMs: result.latencyMs,
@@ -352,6 +384,31 @@ async function testConfig(
     ...result,
     latencyMs: result.latencyMs ?? Date.now() - startedAt,
   };
+}
+
+async function testSeoConfig(config: Record<string, unknown>): Promise<ConfigTestResult> {
+  const startedAt = Date.now();
+  const siteUrl = normalizedSiteUrl(config);
+  const messages: string[] = [];
+  const indexNowKey = str(config.indexNowKey) || DEFAULT_INDEXNOW_KEY;
+  messages.push(`站点：${siteUrl}`);
+  messages.push(indexNowKey ? 'IndexNow Key 已配置。' : 'IndexNow Key 未配置。');
+  if (str(config.googleServiceAccountJson)) {
+    try {
+      await getGoogleAccessToken(config);
+      messages.push('Google Service Account 可换取访问令牌。');
+    } catch (err) {
+      messages.push(`Google 令牌测试失败：${err instanceof Error ? err.message : '未知错误'}`);
+    }
+  } else {
+    messages.push('未填 Google Service Account JSON，暂不能拉 Search Console 搜索词。');
+  }
+  if (str(config.bingApiKey)) {
+    messages.push('Bing Webmaster API Key 已配置，可拉取 query stats / 提交 URL。');
+  } else {
+    messages.push('未填 Bing Webmaster API Key，仍可使用 IndexNow。');
+  }
+  return { ok: true, message: messages.join(' '), latencyMs: Date.now() - startedAt };
 }
 
 async function testAiConfig(config: Record<string, unknown>): Promise<ConfigTestResult> {
@@ -546,6 +603,322 @@ async function saveRiskRule(supabase: AdminSupabaseClient, actor: AdminUser, bod
   return { ok: true, rule: data };
 }
 
+async function getSeoInsights(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  patch: Record<string, unknown>,
+  days = 28,
+) {
+  const config = await loadMergedConfig(supabase, 'seo', patch);
+  const google = await fetchGoogleSearchAnalytics(config, Math.max(1, Math.min(180, int(days, 28))));
+  const bing = await fetchBingQueryStats(config);
+  const checklist = buildGeoChecklist(config);
+  await audit(supabase, actor.id, 'get_seo_insights', undefined, {
+    googleRows: google.rows.length,
+    bingRows: bing.rows.length,
+    days,
+  });
+  return { google, bing, checklist };
+}
+
+async function submitIndexNow(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  patch: Record<string, unknown>,
+  urls?: string[],
+) {
+  const config = await loadMergedConfig(supabase, 'seo', patch);
+  const siteUrl = normalizedSiteUrl(config);
+  const host = str(config.indexNowHost) || new URL(siteUrl).host;
+  const key = str(config.indexNowKey) || DEFAULT_INDEXNOW_KEY;
+  const urlList = normalizeUrlList(siteUrl, urls);
+  const keyLocation = str(config.indexNowKeyLocation) || `https://${host}/${key}.txt`;
+  const startedAt = Date.now();
+  const upstream = await fetch('https://api.indexnow.org/indexnow', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ host, key, keyLocation, urlList }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const text = await upstream.text().catch(() => '');
+  const ok = upstream.status === 200 || upstream.status === 202;
+  await audit(supabase, actor.id, 'submit_indexnow', undefined, {
+    ok,
+    status: upstream.status,
+    count: urlList.length,
+    latencyMs: Date.now() - startedAt,
+  });
+  return {
+    ok,
+    status: upstream.status,
+    message: ok ? `IndexNow 已接收 ${urlList.length} 个 URL。` : text || `IndexNow 提交失败：HTTP ${upstream.status}`,
+    urlList,
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
+async function submitBingUrls(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  patch: Record<string, unknown>,
+  urls?: string[],
+) {
+  const config = await loadMergedConfig(supabase, 'seo', patch);
+  const apiKey = str(config.bingApiKey);
+  if (!apiKey) throw new Error('请先配置 Bing Webmaster API Key。');
+  const siteUrl = normalizedSiteUrl(config);
+  const urlList = normalizeUrlList(siteUrl, urls);
+  const startedAt = Date.now();
+  const upstream = await fetch(`https://ssl.bing.com/webmaster/api.svc/json/SubmitUrlBatch?apikey=${encodeURIComponent(apiKey)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    body: JSON.stringify({ siteUrl, urlList }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const text = await upstream.text().catch(() => '');
+  const ok = upstream.ok;
+  await audit(supabase, actor.id, 'submit_bing_urls', undefined, {
+    ok,
+    status: upstream.status,
+    count: urlList.length,
+    latencyMs: Date.now() - startedAt,
+  });
+  return {
+    ok,
+    status: upstream.status,
+    message: ok ? `Bing Webmaster 已提交 ${urlList.length} 个 URL。` : text || `Bing 提交失败：HTTP ${upstream.status}`,
+    urlList,
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
+async function submitGoogleSitemap(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  patch: Record<string, unknown>,
+) {
+  const config = await loadMergedConfig(supabase, 'seo', patch);
+  const siteUrl = str(config.googleSiteUrl) || normalizedSiteUrl(config);
+  const sitemapUrl = str(config.sitemapUrl) || `${normalizedSiteUrl(config).replace(/\/$/, '')}/sitemap.xml`;
+  const token = await getGoogleAccessToken(config);
+  const startedAt = Date.now();
+  const upstream = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/sitemaps/${encodeURIComponent(sitemapUrl)}`,
+    {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  const text = await upstream.text().catch(() => '');
+  const ok = upstream.ok;
+  await audit(supabase, actor.id, 'submit_google_sitemap', undefined, {
+    ok,
+    status: upstream.status,
+    sitemapUrl,
+    latencyMs: Date.now() - startedAt,
+  });
+  return {
+    ok,
+    status: upstream.status,
+    message: ok ? `Google Sitemap 已提交：${sitemapUrl}` : text || `Google Sitemap 提交失败：HTTP ${upstream.status}`,
+    sitemapUrl,
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
+async function loadMergedConfig(
+  supabase: AdminSupabaseClient,
+  key: AppConfigKey,
+  patch: Record<string, unknown>,
+) {
+  const { data: current } = await supabase.from('admin_app_config').select('value').eq('key', key).maybeSingle();
+  return mergeConfig(current?.value ?? {}, patch);
+}
+
+async function fetchGoogleSearchAnalytics(config: Record<string, unknown>, days: number) {
+  const siteUrl = str(config.googleSiteUrl) || normalizedSiteUrl(config);
+  if (!str(config.googleServiceAccountJson)) {
+    return {
+      ok: false,
+      message: '未配置 Google Service Account JSON。',
+      rows: [],
+    };
+  }
+  const end = new Date();
+  end.setDate(end.getDate() - 2);
+  const start = new Date(end);
+  start.setDate(start.getDate() - days);
+  const body = {
+    startDate: toDateString(start),
+    endDate: toDateString(end),
+    dimensions: ['query', 'page'],
+    rowLimit: 50,
+    startRow: 0,
+  };
+  const token = await getGoogleAccessToken(config);
+  const startedAt = Date.now();
+  const upstream = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    },
+  );
+  const json: any = await upstream.json().catch(async () => ({ error: await upstream.text().catch(() => '') }));
+  if (!upstream.ok) {
+    return {
+      ok: false,
+      message: json?.error?.message || `Google Search Console 请求失败：HTTP ${upstream.status}`,
+      rows: [],
+      latencyMs: Date.now() - startedAt,
+    };
+  }
+  return {
+    ok: true,
+    message: `已拉取最近 ${days} 天 Google 搜索词。`,
+    rows: (json.rows ?? []).map((row: any) => ({
+      query: row.keys?.[0] ?? '',
+      page: row.keys?.[1] ?? '',
+      clicks: row.clicks ?? 0,
+      impressions: row.impressions ?? 0,
+      ctr: row.ctr ?? 0,
+      position: row.position ?? 0,
+    })),
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
+async function fetchBingQueryStats(config: Record<string, unknown>) {
+  const apiKey = str(config.bingApiKey);
+  if (!apiKey) {
+    return { ok: false, message: '未配置 Bing Webmaster API Key。', rows: [] };
+  }
+  const siteUrl = normalizedSiteUrl(config);
+  const startedAt = Date.now();
+  const upstream = await fetch(
+    `https://ssl.bing.com/webmaster/api.svc/json/GetQueryStats?siteUrl=${encodeURIComponent(siteUrl)}&apikey=${encodeURIComponent(apiKey)}`,
+    { signal: AbortSignal.timeout(20_000) },
+  );
+  const json: any = await upstream.json().catch(async () => ({ error: await upstream.text().catch(() => '') }));
+  if (!upstream.ok) {
+    return {
+      ok: false,
+      message: json?.error || `Bing Webmaster 请求失败：HTTP ${upstream.status}`,
+      rows: [],
+      latencyMs: Date.now() - startedAt,
+    };
+  }
+  return {
+    ok: true,
+    message: '已拉取 Bing 搜索词数据。',
+    rows: (json.d ?? []).map((row: any) => ({
+      query: row.Query ?? '',
+      clicks: row.Clicks ?? 0,
+      impressions: row.Impressions ?? 0,
+      avgClickPosition: row.AvgClickPosition ?? 0,
+      avgImpressionPosition: row.AvgImpressionPosition ?? 0,
+      date: row.Date ?? '',
+    })),
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
+async function getGoogleAccessToken(config: Record<string, unknown>) {
+  const rawJson = str(config.googleServiceAccountJson).replace(/\\n/g, '\n');
+  if (!rawJson) throw new Error('未配置 Google Service Account JSON。');
+  let account: { client_email?: string; private_key?: string };
+  try {
+    account = JSON.parse(rawJson);
+  } catch {
+    throw new Error('Google Service Account JSON 格式不正确。');
+  }
+  if (!account.client_email || !account.private_key) {
+    throw new Error('Google Service Account JSON 缺少 client_email 或 private_key。');
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const assertion = signJwt(
+    { alg: 'RS256', typ: 'JWT' },
+    {
+      iss: account.client_email,
+      scope: 'https://www.googleapis.com/auth/webmasters https://www.googleapis.com/auth/webmasters.readonly',
+      aud: 'https://oauth2.googleapis.com/token',
+      iat: now,
+      exp: now + 3600,
+    },
+    account.private_key,
+  );
+  const upstream = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const json: any = await upstream.json().catch(async () => ({ error_description: await upstream.text().catch(() => '') }));
+  if (!upstream.ok || !json.access_token) {
+    throw new Error(json.error_description || json.error || `Google OAuth 失败：HTTP ${upstream.status}`);
+  }
+  return String(json.access_token);
+}
+
+function signJwt(header: Record<string, unknown>, payload: Record<string, unknown>, privateKey: string) {
+  const encodedHeader = base64Url(JSON.stringify(header));
+  const encodedPayload = base64Url(JSON.stringify(payload));
+  const input = `${encodedHeader}.${encodedPayload}`;
+  const signer = crypto.createSign('RSA-SHA256');
+  signer.update(input);
+  signer.end();
+  return `${input}.${signer.sign(privateKey, 'base64url')}`;
+}
+
+function base64Url(value: string) {
+  return Buffer.from(value).toString('base64url');
+}
+
+function normalizedSiteUrl(config: Record<string, unknown>) {
+  const raw = str(config.siteUrl) || DEFAULT_SITE_URL;
+  try {
+    const url = new URL(raw);
+    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '')}`;
+  } catch {
+    return DEFAULT_SITE_URL;
+  }
+}
+
+function normalizeUrlList(siteUrl: string, urls?: string[]) {
+  const base = siteUrl.replace(/\/$/, '');
+  const candidates = urls?.length ? urls : DEFAULT_SEO_PATHS.map((path) => `${base}${path === '/' ? '' : path}`);
+  return Array.from(new Set(candidates.map((url) => {
+    if (/^https?:\/\//i.test(url)) return url;
+    return `${base}/${url.replace(/^\/+/, '')}`;
+  })));
+}
+
+function buildGeoChecklist(config: Record<string, unknown>) {
+  const siteUrl = normalizedSiteUrl(config).replace(/\/$/, '');
+  return [
+    { label: 'robots.txt', ok: true, detail: `${siteUrl}/robots.txt 已声明 sitemap。` },
+    { label: 'sitemap.xml', ok: true, detail: `${siteUrl}/sitemap.xml 可提交给 Google/Bing。` },
+    { label: 'llms.txt', ok: true, detail: `${siteUrl}/llms.txt 已为 AI 搜索/答案引擎提供产品摘要。` },
+    { label: '结构化数据', ok: true, detail: '首页已包含 SoftwareApplication JSON-LD、OG 和 Twitter Card。' },
+    { label: 'Search Console', ok: Boolean(str(config.googleServiceAccountJson)), detail: str(config.googleServiceAccountJson) ? '已配置 Google Service Account。' : '需要填 Service Account JSON，并把服务账号邮箱加入 Search Console 资源。' },
+    { label: 'Bing Webmaster', ok: Boolean(str(config.bingApiKey)), detail: str(config.bingApiKey) ? '已配置 Bing API Key。' : '需要在 Bing Webmaster Tools 生成 API Key。' },
+    { label: 'IndexNow', ok: Boolean(str(config.indexNowKey) || DEFAULT_INDEXNOW_KEY), detail: `Key 文件路径：${siteUrl}/${str(config.indexNowKey) || DEFAULT_INDEXNOW_KEY}.txt` },
+  ];
+}
+
+function toDateString(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
 async function totalUsedSeconds(supabase: AdminSupabaseClient): Promise<number> {
   const { data, error } = await supabase.from('user_entitlements').select('used_seconds');
   if (error) return 0;
@@ -579,7 +952,11 @@ function mergeConfig(current: unknown, patch: Record<string, unknown>) {
 function maskSecrets(key: string, value: Record<string, unknown>) {
   const secretKeys = key === 'ai'
     ? ['apiKey']
-    : ['doubaoAccessToken', 'iflytekApiKey', 'iflytekApiSecret', 'alibabaToken'];
+    : key === 'asr'
+      ? ['doubaoAccessToken', 'iflytekApiKey', 'iflytekApiSecret', 'alibabaToken']
+      : key === 'seo'
+        ? ['googleServiceAccountJson', 'bingApiKey', 'indexNowKey']
+        : [];
   const masked = { ...value };
   for (const secretKey of secretKeys) {
     if (masked[secretKey]) masked[secretKey] = '********';

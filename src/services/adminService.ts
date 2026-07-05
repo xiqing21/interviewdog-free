@@ -39,9 +39,39 @@ export type AdminAuditLogRow = {
 };
 
 export type AdminConfig = {
-  key: 'ai' | 'asr' | 'plans';
+  key: 'ai' | 'asr' | 'plans' | 'seo';
   value: Record<string, unknown>;
   updatedAt?: string;
+};
+
+export type SeoInsightPayload = {
+  google: {
+    ok: boolean;
+    message: string;
+    latencyMs?: number;
+    rows: Array<{
+      query: string;
+      page: string;
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    }>;
+  };
+  bing: {
+    ok: boolean;
+    message: string;
+    latencyMs?: number;
+    rows: Array<{
+      query: string;
+      clicks: number;
+      impressions: number;
+      avgClickPosition: number;
+      avgImpressionPosition: number;
+      date: string;
+    }>;
+  };
+  checklist: Array<{ label: string; ok: boolean; detail: string }>;
 };
 
 export type CouponCodeRow = {
