@@ -47,7 +47,6 @@ import { useSettings } from '../../hooks/useSettings';
 import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
-import { useBilling } from '../../hooks/useBilling';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
 import type { ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
 import { COMMERCIAL_MODE } from '../../config/commercial';
@@ -62,7 +61,6 @@ export function InterviewPage() {
     updateAppSettings,
   } = useSettings();
   const { activeSession, sessions, sessionSummaries, switchSession } = useSession();
-  const { remainingSeconds } = useBilling();
   const {
     isProcessing,
     isListening,
@@ -87,6 +85,7 @@ export function InterviewPage() {
   const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [audioGuideOpen, setAudioGuideOpen] = useState(false);
+  const [audioSetupCollapsed, setAudioSetupCollapsed] = useState(false);
   const lastQaCountRef = useRef(qaList.length);
 
   useEffect(() => {
@@ -115,6 +114,16 @@ export function InterviewPage() {
       setAudioGuideOpen(true);
     }
   }, [activeSession?.id, appSettings.interviewerAudioSource]);
+
+  useEffect(() => {
+    if (isListening) {
+      setAudioSetupCollapsed(true);
+      return;
+    }
+    if (!systemAudioReady) {
+      setAudioSetupCollapsed(false);
+    }
+  }, [isListening, systemAudioReady]);
 
   const handleManualSend = useCallback(() => {
     const q = manualInput.trim();
@@ -348,42 +357,24 @@ export function InterviewPage() {
           <Paper
             variant="outlined"
             sx={{
-              p: 1,
+              p: audioSetupCollapsed ? 0.85 : 1,
               width: '100%',
               borderColor: systemAudioReady ? 'success.main' : 'primary.light',
               bgcolor: systemAudioReady ? 'rgba(46, 125, 50, 0.08)' : 'rgba(83, 144, 226, 0.08)',
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: audioSetupCollapsed ? 0 : 0.75, flexWrap: 'wrap' }}>
               <ComputerIcon color={systemAudioReady ? 'success' : 'primary'} fontSize="small" />
               <Typography variant="subtitle2" fontWeight={900}>3 步开始实时听音</Typography>
               {systemAudioReady && <Chip size="small" color="success" label="窗口已选" />}
+              {!systemAudioReady && appSettings.interviewerAudioSource === 'system' && (
+                <Chip size="small" color="warning" label="先选择面试窗口" />
+              )}
+              {isListening && <Chip size="small" color="success" label="听音中" />}
               <Button size="small" variant="text" onClick={() => setAudioGuideOpen(true)}>
                 查看共享教程
               </Button>
-            </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'auto 1fr auto' }, gap: 1, alignItems: 'center' }}>
-              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
-                <Chip size="small" color="primary" label="1" />
-                <Typography variant="body2" fontWeight={800}>
-                  {COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
-                </Typography>
-                <Button
-                  size="small"
-                  variant={systemAudioReady ? 'outlined' : 'contained'}
-                  onClick={() => { void prepareSystemAudioShare(); }}
-                  disabled={isListening}
-                >
-                  {systemAudioReady ? '重新选择' : COMMERCIAL_MODE ? '选择窗口' : '共享音频'}
-                </Button>
-              </Box>
-              <Alert severity="warning" icon={false} sx={{ py: 0.25, px: 1, '& .MuiAlert-message': { py: 0.25 } }}>
-                <Typography variant="caption" fontWeight={800}>
-                  2 开启 Chrome 弹窗底部“同时分享系统音频”，否则听不到会议声音。
-                </Typography>
-              </Alert>
-              <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: { md: 'flex-end' } }}>
-                <Chip size="small" color="primary" label="3" />
+              {audioSetupCollapsed && (
                 <Button
                   size="small"
                   variant="contained"
@@ -391,14 +382,64 @@ export function InterviewPage() {
                   startIcon={isListening ? <StopIcon /> : <MicIcon />}
                   onClick={isListening ? stopListening : startListening}
                 >
-                  {isListening ? '停止听音' : '开始听音'}
+                  {isListening ? '停止' : '开始听音'}
                 </Button>
-              </Box>
+              )}
+              <Button
+                size="small"
+                variant="text"
+                sx={{ ml: 'auto' }}
+                onClick={() => setAudioSetupCollapsed((value) => !value)}
+              >
+                {audioSetupCollapsed ? '展开设置' : '收起'}
+              </Button>
             </Box>
-            {error && (
-              <Alert severity="error" sx={{ mt: 1.25 }}>
-                {error}
-              </Alert>
+            {!audioSetupCollapsed && (
+              <>
+                {!systemAudioReady && appSettings.interviewerAudioSource === 'system' && (
+                  <Alert severity="info" sx={{ mb: 1, py: 0.35, px: 1, '& .MuiAlert-message': { py: 0.2 } }}>
+                    还没选择面试窗口。先点“选择窗口”，在 Chrome 弹窗里选会议软件或整个屏幕，并打开“同时分享系统音频”。
+                  </Alert>
+                )}
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'auto 1fr auto' }, gap: 1, alignItems: 'center' }}>
+                  <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Chip size="small" color="primary" label="1" />
+                    <Typography variant="body2" fontWeight={800}>
+                      {COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant={systemAudioReady ? 'outlined' : 'contained'}
+                      onClick={() => { void prepareSystemAudioShare(); }}
+                      disabled={isListening}
+                    >
+                      {systemAudioReady ? '重新选择' : COMMERCIAL_MODE ? '选择窗口' : '共享音频'}
+                    </Button>
+                  </Box>
+                  <Alert severity="warning" icon={false} sx={{ py: 0.25, px: 1, '& .MuiAlert-message': { py: 0.25 } }}>
+                    <Typography variant="caption" fontWeight={800}>
+                      2 开启 Chrome 弹窗底部“同时分享系统音频”，否则听不到会议声音。
+                    </Typography>
+                  </Alert>
+                  <Box sx={{ display: 'flex', gap: 0.75, alignItems: 'center', justifyContent: { md: 'flex-end' } }}>
+                    <Chip size="small" color="primary" label="3" />
+                    <Button
+                      size="small"
+                      variant="contained"
+                      color={isListening ? 'error' : 'primary'}
+                      startIcon={isListening ? <StopIcon /> : <MicIcon />}
+                      onClick={isListening ? stopListening : startListening}
+                    >
+                      {isListening ? '停止听音' : '开始听音'}
+                    </Button>
+                  </Box>
+                </Box>
+                {error && (
+                  <Alert severity="error" sx={{ mt: 1.25 }}>
+                    {error}
+                  </Alert>
+                )}
+              </>
             )}
           </Paper>
 
@@ -431,25 +472,18 @@ export function InterviewPage() {
             </Select>
           </FormControl>
           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', ml: { md: 'auto' } }}>
-            {COMMERCIAL_MODE ? (
-              <>
-                <Chip size="small" color="primary" label="智能听音" />
-                <Chip size="small" label={`剩余 ${Math.floor(remainingSeconds / 60)} 分钟`} />
-              </>
-            ) : (
+            {!COMMERCIAL_MODE && (
               <>
                 <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
                 <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
                 <Chip size="small" label={`面试官：${sourceLabel(appSettings.interviewerAudioSource)}`} />
               </>
             )}
-            {appSettings.interviewerAudioSource === 'system' && (
+            {!COMMERCIAL_MODE && appSettings.interviewerAudioSource === 'system' && (
               <Chip
                 size="small"
                 color={systemAudioReady ? 'success' : 'warning'}
-                label={COMMERCIAL_MODE
-                  ? systemAudioReady ? '已选择面试窗口' : '未选择面试窗口'
-                  : systemAudioReady ? '系统音频已共享' : '系统音频未共享'}
+                label={systemAudioReady ? '系统音频已共享' : '系统音频未共享'}
               />
             )}
           </Box>
@@ -513,6 +547,29 @@ export function InterviewPage() {
           )}
         </Paper>
 
+        <Paper variant="outlined" sx={{ p: 1, bgcolor: 'background.default' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="手动输入或修正面试官问题..."
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
+              multiline
+              maxRows={3}
+            />
+            <Button
+              variant="contained"
+              onClick={handleManualSend}
+              disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
+              sx={{ px: 2.5, flexShrink: 0, minHeight: 40 }}
+            >
+              发送
+            </Button>
+          </Box>
+        </Paper>
+
         <MessageScroller.Provider
           key={`answer-scroller-${selectedQa?.id ?? 'empty'}`}
           autoScroll
@@ -562,29 +619,6 @@ export function InterviewPage() {
           </MessageScroller.Root>
         </MessageScroller.Provider>
 
-        <Box sx={{ mt: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="输入你的问题"
-              value={manualInput}
-              onChange={(e) => setManualInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
-              multiline
-              maxRows={3}
-            />
-            <Button
-              variant="contained"
-              onClick={handleManualSend}
-              disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
-              sx={{ px: 3, flexShrink: 0 }}
-            >
-              发送
-            </Button>
-          </Box>
-
-        </Box>
       </Paper>
 
       <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
