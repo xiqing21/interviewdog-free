@@ -390,6 +390,270 @@
         align-items: stretch;
       }
 
+      .stealth-compare {
+        --split: 52%;
+        position: relative;
+        max-width: 1120px;
+        margin: 0 auto;
+        border-radius: 34px;
+        padding: 14px;
+        background: linear-gradient(135deg, #ffd15f, #ff8a2d 48%, #f05a28);
+        border: 1px solid rgba(255, 122, 0, 0.35);
+        box-shadow: 0 34px 90px rgba(180, 84, 20, 0.24);
+        overflow: hidden;
+      }
+
+      .stealth-compare::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 12% 18%, rgba(80, 170, 255, 0.52), transparent 21%),
+          radial-gradient(circle at 86% 8%, rgba(64, 151, 231, 0.5), transparent 18%),
+          linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 40%);
+        pointer-events: none;
+      }
+
+      .compare-stage {
+        position: relative;
+        aspect-ratio: 16 / 8.8;
+        min-height: 430px;
+        border-radius: 26px;
+        overflow: hidden;
+        background:
+          linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 38%),
+          linear-gradient(160deg, #ffd467 0%, #ff9b31 42%, #d73b20 100%);
+        isolation: isolate;
+      }
+
+      .compare-stage::after {
+        content: "";
+        position: absolute;
+        inset: auto 0 0;
+        height: 48px;
+        background: rgba(22, 22, 22, 0.42);
+        border-top: 1px solid rgba(255, 255, 255, 0.28);
+        z-index: 2;
+      }
+
+      .compare-note {
+        margin: -12px auto 26px;
+        text-align: center;
+        color: #8a8177;
+        font-weight: 850;
+        font-size: 16px;
+      }
+
+      .compare-label {
+        position: absolute;
+        top: 34px;
+        z-index: 7;
+        padding: 12px 24px;
+        border-radius: 14px;
+        color: #fff;
+        background: #050505;
+        font-size: clamp(22px, 3vw, 40px);
+        font-weight: 950;
+        letter-spacing: 0.08em;
+        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+      }
+
+      .compare-label.left { left: 34px; }
+      .compare-label.right { right: 34px; }
+
+      .meeting-window {
+        position: absolute;
+        left: 12%;
+        right: 12%;
+        top: 24%;
+        bottom: 14%;
+        z-index: 3;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 30px 80px rgba(31, 31, 31, 0.22);
+        overflow: hidden;
+      }
+
+      .meeting-topbar {
+        height: 38px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 14px;
+        color: #6b7280;
+        background: #f8fafc;
+        border-bottom: 1px solid #e5e7eb;
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .meeting-dots {
+        margin-left: auto;
+        display: flex;
+        gap: 10px;
+        color: #a1a1aa;
+        font-size: 15px;
+      }
+
+      .video-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        padding: 56px 16px 58px;
+        height: calc(100% - 38px);
+      }
+
+      .video-tile {
+        position: relative;
+        overflow: hidden;
+        border-radius: 10px;
+        background:
+          radial-gradient(circle at 42% 24%, #f5d6bd 0 8%, transparent 9%),
+          radial-gradient(circle at 50% 44%, #f2c49d 0 14%, transparent 15%),
+          linear-gradient(135deg, #eef2f7, #d6dee8);
+        border: 1px solid #d8dee8;
+      }
+
+      .video-tile::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 26%;
+        width: 74px;
+        height: 98px;
+        transform: translateX(-50%);
+        border-radius: 52% 48% 42% 42%;
+        background: linear-gradient(180deg, #242424, #111827);
+        box-shadow: -14px 18px 0 -8px rgba(16, 24, 39, 0.28);
+      }
+
+      .video-tile::after {
+        content: attr(data-name);
+        position: absolute;
+        left: 18px;
+        bottom: 14px;
+        padding: 7px 18px;
+        border-radius: 8px;
+        color: #222;
+        background: rgba(255, 255, 255, 0.86);
+        border: 1px solid rgba(0, 0, 0, 0.16);
+        font-size: 18px;
+        font-weight: 950;
+        letter-spacing: 0.18em;
+      }
+
+      .meeting-controls {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: rgba(255, 255, 255, 0.94);
+        border-top: 1px solid #e5e7eb;
+        z-index: 4;
+      }
+
+      .control-pill {
+        width: 34px;
+        height: 26px;
+        border-radius: 8px;
+        background: #eef2f7;
+        border: 1px solid #dde3ea;
+      }
+
+      .control-pill.red { background: #ef4444; border-color: #ef4444; }
+      .control-pill.ai { width: 54px; background: #f6f1e8; }
+
+      .candidate-layer {
+        position: absolute;
+        inset: 0;
+        z-index: 5;
+        clip-path: inset(0 calc(100% - var(--split)) 0 0);
+      }
+
+      .assistant-mask {
+        position: absolute;
+        left: 30%;
+        top: 18%;
+        width: 36%;
+        min-height: 48%;
+        border-radius: 16px;
+        padding: 16px;
+        color: #3f3f46;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(255, 255, 255, 0.62);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 26px 70px rgba(72, 55, 34, 0.22);
+      }
+
+      .mask-title {
+        color: #f97316;
+        font-weight: 950;
+        margin-bottom: 12px;
+      }
+
+      .mask-line {
+        height: 14px;
+        margin: 9px 0;
+        border-radius: 999px;
+        background: rgba(31, 41, 55, 0.16);
+      }
+
+      .mask-line.hot { width: 88%; background: rgba(255, 122, 0, 0.35); }
+      .mask-line.short { width: 58%; }
+
+      .split-handle {
+        position: absolute;
+        left: var(--split);
+        top: -2%;
+        bottom: -2%;
+        z-index: 8;
+        width: 6px;
+        transform: translateX(-50%);
+        background: #ffc400;
+        box-shadow: 0 0 0 1px rgba(121, 76, 0, 0.08), 0 0 24px rgba(255, 196, 0, 0.46);
+        pointer-events: none;
+      }
+
+      .split-handle::after {
+        content: "↔";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 52px;
+        height: 52px;
+        transform: translate(-50%, -50%);
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        color: #191919;
+        background: #ffc400;
+        font-size: 22px;
+        font-weight: 950;
+      }
+
+      .split-range {
+        position: absolute;
+        inset: 0;
+        z-index: 9;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: ew-resize;
+      }
+
+      .compare-actions {
+        display: flex;
+        justify-content: center;
+        gap: 18px;
+        margin-top: 24px;
+        flex-wrap: wrap;
+      }
+
       .stealth-card {
         border-radius: 28px;
         background: #15181f;
@@ -623,6 +887,40 @@
         .stealth-card {
           min-height: 360px;
         }
+
+        .compare-stage {
+          min-height: 360px;
+          aspect-ratio: 4 / 5;
+        }
+
+        .compare-label {
+          top: 18px;
+          padding: 8px 12px;
+          font-size: 18px;
+          border-radius: 10px;
+        }
+
+        .compare-label.left { left: 16px; }
+        .compare-label.right { right: 16px; }
+
+        .meeting-window {
+          left: 6%;
+          right: 6%;
+          top: 25%;
+          bottom: 13%;
+        }
+
+        .video-grid {
+          padding: 46px 10px 52px;
+          gap: 8px;
+        }
+
+        .assistant-mask {
+          left: 13%;
+          top: 20%;
+          width: 58%;
+          min-height: 38%;
+        }
       }
     </style>
   </head>
@@ -719,35 +1017,49 @@
         <section id="stealth" class="section">
           <div class="container">
             <div class="section-title">
-              <h2>遮板式低干扰视图</h2>
-              <p>左侧是你的辅助视角，右侧是面试官看到的正常会议画面。答案浮层尽量低调，不打断你的表达节奏。</p>
+              <h2>完美隐身不可见</h2>
+              <p>左侧：面试者视角（AI 助手可见）｜右侧：面试官视角（会议画面正常）。拖动中间滑杆，直观看到遮板差异。</p>
             </div>
-            <div class="stealth-wrap">
-              <div class="stealth-card">
-                <h3>面试者视角：AI 助手可见</h3>
-                <p style="color: rgba(255,255,255,.7); line-height: 1.8;">识别、问题、答案和复盘上下文都在你这一侧，随时可手动触发和重新生成。</p>
-                <div class="meeting-grid">
-                  <div class="camera"></div>
-                  <div class="camera"></div>
-                  <div class="camera"></div>
-                  <div class="camera"></div>
+            <p class="compare-note">拖动黄色滑杆，看“你看到的辅助层”和“对方看到的正常画面”如何分离。</p>
+            <div class="stealth-compare" data-compare>
+              <div class="compare-stage">
+                <div class="compare-label left">面试者视角</div>
+                <div class="compare-label right">面试官视角</div>
+                <div class="meeting-window" aria-hidden="true">
+                  <div class="meeting-topbar">
+                    <span>外部会议</span>
+                    <span>01:31</span>
+                    <span style="color: #22c55e;">▮▮▮</span>
+                    <span class="meeting-dots">□ － ×</span>
+                  </div>
+                  <div class="video-grid">
+                    <div class="video-tile" data-name="面试官"></div>
+                    <div class="video-tile" data-name="面试者"></div>
+                  </div>
+                  <div class="meeting-controls">
+                    <span class="control-pill"></span>
+                    <span class="control-pill"></span>
+                    <span class="control-pill"></span>
+                    <span class="control-pill ai"></span>
+                    <span class="control-pill red"></span>
+                  </div>
                 </div>
-                <div class="overlay-mask">
-                  <strong>面试猪遮板</strong>
-                  <div class="overlay-line"></div>
-                  <div class="overlay-line"></div>
-                  <div class="overlay-line"></div>
+                <div class="candidate-layer" aria-hidden="true">
+                  <div class="assistant-mask">
+                    <div class="mask-title">面试猪 · 实时辅助</div>
+                    <div class="mask-line hot"></div>
+                    <div class="mask-line"></div>
+                    <div class="mask-line"></div>
+                    <div class="mask-line short"></div>
+                    <div class="mask-line hot"></div>
+                  </div>
                 </div>
+                <div class="split-handle"></div>
+                <input class="split-range" type="range" min="18" max="82" value="52" aria-label="拖动查看面试者和面试官视角差异" />
               </div>
-              <div class="stealth-card light">
-                <h3>面试官视角：画面保持正常</h3>
-                <p style="line-height: 1.8;">屏幕共享和会议窗口依然清爽，辅助内容不混入你的会议主画面。真正使用时建议提前测试共享窗口和系统音频。</p>
-                <div class="meeting-grid">
-                  <div class="camera light"></div>
-                  <div class="camera light"></div>
-                  <div class="camera light"></div>
-                  <div class="camera light"></div>
-                </div>
+              <div class="compare-actions">
+                <span class="btn btn-disabled">Mac 下载 · 即将上线</span>
+                <a class="btn btn-primary" href="https://mianshizhu.cn/interview">使用网页版</a>
               </div>
             </div>
           </div>
@@ -865,5 +1177,15 @@
         </div>
       </footer>
     </div>
+    <script>
+      document.querySelectorAll('[data-compare]').forEach((compare) => {
+        const range = compare.querySelector('.split-range');
+        const setSplit = () => {
+          compare.style.setProperty('--split', `${range.value}%`);
+        };
+        range.addEventListener('input', setSplit);
+        setSplit();
+      });
+    </script>
   </body>
 </html>
