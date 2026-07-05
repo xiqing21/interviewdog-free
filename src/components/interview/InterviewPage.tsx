@@ -38,9 +38,7 @@ import StopIcon from '@mui/icons-material/Stop';
 import ComputerIcon from '@mui/icons-material/Computer';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import SendIcon from '@mui/icons-material/Send';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import RadioButtonCheckedIcon from '@mui/icons-material/RadioButtonChecked';
 import { MessageScroller } from '@shadcn/react/message-scroller';
 import { Link } from 'react-router-dom';
 import { QACard } from './QACard';
@@ -150,13 +148,6 @@ export function InterviewPage() {
     transcriptLines.some((line) => line.speaker === 'interviewer') ||
     /^面试官[：:]/.test(interimText.trim());
   const visibleTranscriptLines = [...transcriptLines.slice(-30)].reverse();
-  const latestInterviewerLine = [...transcriptLines].reverse().find((line) => line.speaker === 'interviewer');
-  const recognitionPreview =
-    interimText.replace(/^面试官[：:]\s*/, '').trim() ||
-    latestInterviewerLine?.text ||
-    '';
-  const canTriggerLatestQuestion =
-    hasTriggerableInterviewerText && (COMMERCIAL_MODE || Boolean(aiSettings.apiKey));
 
   if (showStartPrompt && activeSession && !showSetup) {
     return (
@@ -386,7 +377,7 @@ export function InterviewPage() {
           <Chip
             size="small"
             color={isListening ? 'success' : 'warning'}
-            icon={isListening ? <GraphicEqIcon /> : <RadioButtonCheckedIcon />}
+            icon={isListening ? <GraphicEqIcon /> : <MicIcon />}
             label={isListening ? '正在听音' : '听音未开始'}
             sx={{ fontWeight: 800 }}
           />
@@ -499,45 +490,6 @@ export function InterviewPage() {
               </Box>
             </Box>
           )}
-        </Paper>
-
-        <Paper variant="outlined" sx={{ p: 1, bgcolor: 'background.default' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
-            <RadioButtonCheckedIcon color={isListening ? 'success' : 'disabled'} fontSize="small" />
-            <Typography variant="subtitle2" fontWeight={900}>
-              {isListening ? '正在识别面试官问题' : '等待面试官问题'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
-              interviewer
-            </Typography>
-          </Box>
-          <MiniWaveform active={isListening} />
-          <Typography
-            variant="body2"
-            sx={{ mt: 0.75, minHeight: 30, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
-            color={recognitionPreview ? 'text.primary' : 'text.secondary'}
-          >
-            {recognitionPreview || '面试开始后，识别到的面试官问题会显示在这里。'}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 0.75, mt: 0.75, flexWrap: 'wrap' }}>
-            <Button
-              size="small"
-              variant="outlined"
-              startIcon={<AutoAwesomeIcon />}
-              onClick={() => { void triggerLatestTranscriptQuestion(); }}
-              disabled={!canTriggerLatestQuestion}
-            >
-              转为正式问题
-            </Button>
-            <Button
-              size="small"
-              variant="text"
-              onClick={() => { void triggerLatestTranscriptQuestion(); }}
-              disabled={!canTriggerLatestQuestion}
-            >
-              用最新识别生成答案
-            </Button>
-          </Box>
         </Paper>
 
         <MessageScroller.Provider
@@ -828,35 +780,6 @@ function GuideStep({
         {desc}
       </Typography>
       {action && <Box sx={{ mt: 'auto' }}>{action}</Box>}
-    </Box>
-  );
-}
-
-function MiniWaveform({ active }: { active: boolean }) {
-  return (
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3, height: 16, overflow: 'hidden' }}>
-      {Array.from({ length: 44 }).map((_, index) => {
-        const height = 4 + ((index * 7) % 12);
-        return (
-          <Box
-            // eslint-disable-next-line react/no-array-index-key
-            key={index}
-            sx={{
-              width: 3,
-              height,
-              borderRadius: 999,
-              bgcolor: active ? (index % 5 === 0 ? 'primary.light' : 'primary.main') : 'divider',
-              opacity: active ? 0.35 + ((index % 6) * 0.1) : 0.75,
-              transformOrigin: 'center',
-              animation: active ? `wavePulse ${760 + (index % 8) * 60}ms ease-in-out infinite alternate` : 'none',
-              '@keyframes wavePulse': {
-                from: { transform: 'scaleY(0.55)' },
-                to: { transform: 'scaleY(1.25)' },
-              },
-            }}
-          />
-        );
-      })}
     </Box>
   );
 }
