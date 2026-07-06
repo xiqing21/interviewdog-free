@@ -155,3 +155,38 @@ app.on('window-all-closed', () => {
 - [openaiChunkAsrService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/openaiChunkAsrService.ts) — 处理 OpenAI 音频分片识别。
 - [webSearchService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/webSearchService.ts) — 处理 AI 联网搜索相关 API。
 
+---
+
+## 八、 免选择器原生系统音频内录（Native ScreenCaptureKit Audio Loopback）
+
+### 1. 功能描述
+在 macOS 桌面端中，无需每次弹出浏览器的“分享窗口/共享屏幕”选择器，应用将自动拉取系统主屏幕的声音。只要该应用在系统的“屏幕录制”权限中已被授权，即可静默拉取系统和所有会议软件的声音，极大地提升了用户体验。
+
+### 2. 实现原理
+
+#### A. Swift 独立原生采集器 ([mac-audio-helper.swift](file:///Users/felix/Documents/interview-copilot/interviewdog-free/electron/mac-audio-helper.swift))
+使用 macOS 13+ 推出的原生安全音频框架 `ScreenCaptureKit`，绕过 WebRTC 层级限制：
+- 利用 `SCShareableContent.excludingDesktopWindows` 自动查找主屏幕并创建 `SCContentFilter` 过滤条件。
+- 配置 `SCStreamConfiguration.capturesAudio = true` 开启系统声音捕捉，并自动将采集信号在系统底层重采样至 AI 识别专用的 **16000Hz 单声道 (Mono) 16-bit Linear PCM**。
+- 将捕获到的原始 PCM 音频二进制数据以流的方式实时写入标准输出 (`stdout`)。
+
+#### B. Electron 主进程管道桥接与分发 ([main.cjs](file:///Users/felix/Documents/interview-copilot/interviewdog-free/electron/main.cjs) & [preload.cjs](file:///Users/felix/Documents/interview-copilot/interviewdog-free/electron/preload.cjs))
+- 当渲染进程请求开启录音时，主进程通过 `child_process.spawn` 启动编译好的 `mac-audio-helper` 原生助手程序。
+- 监听原生助手的 `stdout` 事件，在接收到 16-bit PCM 二进制包时，通过 IPC 通道 `desktop-audio:data` 直接将其传输回 React 渲染端。
+- 当渲染端停止面试或窗口关闭时，主进程强制 `kill` 该子进程以释放声卡捕获通道。
+
+#### C. React 前端零感知切换 ([systemAudioService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/systemAudioService.ts))
+我们对全局系统声音采集服务进行了重构：
+- 自动检测是否处于拥有 `window.desktopWindow.startSystemAudio` 的桌面端原生环境。
+- 如果是，直接走原生 IPC 音频流总线监听器，静默激活内录，前端 UI 和转写引擎在数据流层面**完全透明、零感知，无缝兼容**。
+- 如果是非桌面环境，则自动优雅降级，回弹至浏览器自带的 `getDisplayMedia` 窗口共享选择弹窗。
+
+**更新覆盖的文件**：
+- [mac-audio-helper.swift](file:///Users/felix/Documents/interview-copilot/interviewdog-free/electron/mac-audio-helper.swift) [NEW] — 原生声音读取 Swift 源码。
+- [main.cjs](file:///Users/felix/Documents/interview-copilot/interviewdog-free/electron/main.cjs) — 添加音频助手子进程调度与 IPC 交互管道。
+- [preload.cjs](file:///Users/felix/Documents/interview-copilot/interviewdog-free/electron/preload.cjs) — 向渲染层暴露音频启动、停止、数据接收钩子。
+- [vite-env.d.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/vite-env.d.ts) — 新增原生音频相关 TypeScript 声明。
+- [systemAudioService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/systemAudioService.ts) — 融合原生流与 WebRTC 流的无缝重构桥接。
+- [package.json](file:///Users/felix/Documents/interview-copilot/interviewdog-free/package.json) — 配置 `extraResources` 将编译好的 `mac-audio-helper` 打包进应用安装包。
+
+
