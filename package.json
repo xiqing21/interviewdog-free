@@ -1,11 +1,17 @@
 {
   "name": "interviewdog-free",
+  "productName": "MianshiZhu Pro",
   "private": true,
   "version": "1.0.0",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "desktop:dev": "concurrently -k \"pnpm dev -- --host 127.0.0.1\" \"wait-on tcp:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "build": "tsc -b && vite build",
+    "desktop:pack": "pnpm build && electron-builder --mac --dir",
+    "desktop:dist": "pnpm build && electron-builder --mac dmg",
+    "desktop:dist:signed": "pnpm build && electron-builder --mac dmg --publish never",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -37,9 +43,50 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
+    "concurrently": "^10.0.3",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.7",
     "typescript": "^5.5.4",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "com.mianshizhu.pro",
+    "productName": "MianshiZhu Pro",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.icns",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "icon": "build/icon.icns",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "面试猪需要访问您的麦克风以采集您的声音并进行实时转写。",
+        "NSScreenCaptureUsageDescription": "面试猪需要屏幕录制权限以捕获会议窗口并提取系统/会议音频进行实时转写。"
+      },
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   }
 }

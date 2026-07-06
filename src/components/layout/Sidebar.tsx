@@ -29,6 +29,7 @@ import { NAV_ITEMS } from '../../constants';
 import { COMMERCIAL_MODE } from '../../config/commercial';
 import { useTheme } from '../../hooks/useTheme';
 import { useAuth } from '../../hooks/useAuth';
+import { publicAssetUrl } from '../../lib/assets';
 import { adminRequest } from '../../services/adminService';
 
 /** Maps icon name strings from NAV_ITEMS to actual icon components. */
@@ -80,8 +81,8 @@ export function Sidebar() {
       }}
     >
       {/* Logo / Title */}
-      <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Box component="img" src="/logo.svg" alt="面试猪" sx={{ width: 30, height: 30, flexShrink: 0 }} />
+      <Box sx={{ p: 1.5, pt: 3.5, display: 'flex', alignItems: 'center', gap: 1, WebkitAppRegion: 'drag', userSelect: 'none' }}>
+        <Box component="img" src={publicAssetUrl('logo.svg')} alt="面试猪" sx={{ width: 30, height: 30, flexShrink: 0, WebkitAppRegion: 'no-drag' }} />
         {!collapsed && (
           <>
             <Typography variant="h6" fontWeight={700}>

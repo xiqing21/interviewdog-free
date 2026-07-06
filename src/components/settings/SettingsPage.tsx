@@ -16,6 +16,7 @@ import { MiMoConfig } from './MiMoConfig';
 import { CloudASRConfig } from './CloudASRConfig';
 import { ResumeJDSettings } from './ResumeJDSettings';
 import { ThemeSettings } from './ThemeSettings';
+import { DesktopWindowSettings } from './DesktopWindowSettings';
 import { COMMERCIAL_MODE } from '../../config/commercial';
 
 export function SettingsPage() {
@@ -30,6 +31,7 @@ export function SettingsPage() {
           使用、支付、额度或识别异常可以联系：xiaosuange@gmail.com。
         </Alert>
         <ThemeSettings />
+        <DesktopWindowSettings />
 
         <Divider />
 
@@ -48,6 +50,7 @@ export function SettingsPage() {
     <Box sx={{ maxWidth: 700, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2.5 }}>
       <Typography variant="h5" fontWeight={700}>设置</Typography>
       <ThemeSettings />
+      <DesktopWindowSettings />
 
       {/* AI 服务商 */}
       <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>🤖 AI 模型</Typography>

@@ -3,9 +3,9 @@
  * Provider nesting: SettingsProvider > SessionProvider > InterviewProvider > ExamProvider
  */
 
-import { useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { ThemeProvider, CssBaseline } from '@mui/material';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SettingsProvider } from './context/SettingsContext';
 import { AuthProvider } from './context/AuthContext';
 import { SessionProvider } from './context/SessionContext';
@@ -21,16 +21,22 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { BillingPage } from './components/billing/BillingPage';
 import { AdminPage } from './components/admin/AdminPage';
 import { useSettings } from './hooks/useSettings';
+import { isDesktopApp, syncStoredDesktopOpacity } from './services/desktopWindowService';
 import { createAppTheme } from './styles/theme';
 
 function AppContent(): ReactElement {
   const { appSettings } = useSettings();
   const theme = useMemo(() => createAppTheme(appSettings.theme), [appSettings.theme]);
+  const Router = isDesktopApp() ? HashRouter : BrowserRouter;
+
+  useEffect(() => {
+    void syncStoredDesktopOpacity();
+  }, []);
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <BrowserRouter>
+      <Router>
         <Routes>
           <Route path="/" element={<AppLayout />}>
             <Route index element={<Navigate to="/interview" replace />} />
@@ -43,7 +49,7 @@ function AppContent(): ReactElement {
             <Route path="*" element={<Navigate to="/interview" replace />} />
           </Route>
         </Routes>
-      </BrowserRouter>
+      </Router>
     </ThemeProvider>
   );
 }

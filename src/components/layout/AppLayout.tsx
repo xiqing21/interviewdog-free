@@ -15,6 +15,7 @@ import { useSettings } from '../../hooks/useSettings';
 import { useExam } from '../../hooks/useExam';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkeys } from '../../hooks/useHotkeys';
+import { publicAssetUrl } from '../../lib/assets';
 
 export function AppLayout() {
   const { appSettings, acknowledgePrivacy } = useSettings();
@@ -64,7 +65,7 @@ export function AppLayout() {
               bottom: { xs: 12, md: 18 },
               width: { xs: 420, md: 760 },
               aspectRatio: '1731 / 909',
-              backgroundImage: 'url(/og-image.png)',
+              backgroundImage: `url(${publicAssetUrl('og-image.png')})`,
               backgroundSize: 'contain',
               backgroundRepeat: 'no-repeat',
               backgroundPosition: 'center',

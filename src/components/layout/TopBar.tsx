@@ -4,6 +4,7 @@
 
 import {
   AppBar,
+  Box,
   Chip,
   Toolbar,
   Typography,
@@ -41,22 +42,28 @@ export function TopBar() {
       position="static"
       color="transparent"
       elevation={0}
-      sx={{ borderBottom: 1, borderColor: 'divider' }}
+      sx={{ borderBottom: 1, borderColor: 'divider', WebkitAppRegion: 'drag', userSelect: 'none' }}
     >
       <Toolbar variant="dense">
         <Typography variant="h6" sx={{ flexGrow: 1 }}>
           {title}
         </Typography>
-        {!COMMERCIAL_MODE && <StatusIndicator status={connectionStatus} />}
+        {!COMMERCIAL_MODE && (
+          <Box sx={{ WebkitAppRegion: 'no-drag' }}>
+            <StatusIndicator status={connectionStatus} />
+          </Box>
+        )}
         <Chip
           size="small"
           color={remainingSeconds <= 5 * 60 ? 'warning' : 'primary'}
           label={`剩余 ${formatRemaining(remainingSeconds)}`}
           onClick={() => navigate('/billing')}
-          sx={{ ml: 1, cursor: 'pointer' }}
+          sx={{ ml: 1, cursor: 'pointer', WebkitAppRegion: 'no-drag' }}
         />
-        <AuthPanel />
-        <IconButton onClick={toggleTheme} size="small" sx={{ ml: 1 }}>
+        <Box sx={{ WebkitAppRegion: 'no-drag' }}>
+          <AuthPanel />
+        </Box>
+        <IconButton onClick={toggleTheme} size="small" sx={{ ml: 1, WebkitAppRegion: 'no-drag' }}>
           {mode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
         </IconButton>
       </Toolbar>

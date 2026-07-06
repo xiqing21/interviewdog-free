@@ -50,6 +50,7 @@ import { useSettings } from '../../hooks/useSettings';
 import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
+import { publicAssetUrl } from '../../lib/assets';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
 import type { AppSettings, ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
 import { COMMERCIAL_MODE } from '../../config/commercial';
@@ -512,7 +513,7 @@ export function InterviewPage() {
                     <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
                       <Box
                         component="img"
-                        src="/logo.svg"
+                        src={publicAssetUrl('logo.svg')}
                         alt="面试猪"
                         sx={{ width: 72, height: 72, mb: 1, opacity: 0.72 }}
                       />
