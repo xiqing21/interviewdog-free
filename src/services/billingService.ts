@@ -1,6 +1,7 @@
 import type { BillingEntitlement, CommercialPlanId } from '../types';
 import { FREE_TRIAL_MINUTES } from '../config/commercial';
 import { supabase } from './supabaseClient';
+import { getApiUrl } from './apiHelper';
 
 type EntitlementRow = {
   user_id: string;
@@ -34,7 +35,7 @@ async function billingRequest(action: 'ensure' | 'consume', seconds?: number): P
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) return null;
-  const response = await fetch('/api/billing', {
+  const response = await fetch(getApiUrl('/api/billing'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -71,7 +72,7 @@ export async function createCheckoutSession(planId: CommercialPlanId): Promise<s
   const token = data.session?.access_token;
   if (!token) throw new Error('登录状态已过期，请重新登录。');
 
-  const response = await fetch('/api/create-checkout-session', {
+  const response = await fetch(getApiUrl('/api/create-checkout-session'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

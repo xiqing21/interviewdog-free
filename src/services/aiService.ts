@@ -20,6 +20,7 @@ import { EXAM_TYPES } from '../constants';
 import { deobfuscate } from './cryptoService';
 import { API_TIMEOUT_MS, STREAM_TIMEOUT_MS } from '../constants';
 import { COMMERCIAL_MODE } from '../config/commercial';
+import { getApiUrl } from './apiHelper';
 
 /**
  * 从设置中解混淆 API Key
@@ -323,7 +324,7 @@ async function serverManagedChat(
   signal?: AbortSignal,
 ): Promise<string> {
   const useStreaming = stream && typeof onChunk === 'function';
-  const response = await fetch('/api/chat', {
+  const response = await fetch(getApiUrl('/api/chat'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages, stream: useStreaming, modelType }),

@@ -89,6 +89,9 @@ app.setName(APP_TITLE);
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   checkAndRequestPermissions();
+  if (process.platform === 'darwin') {
+    app.dock.hide(); // 隐藏 macOS Dock 栏图标
+  }
   createWindow();
 
   app.on('activate', () => {
@@ -97,7 +100,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  app.quit(); // 所有窗口关闭时直接退出应用，避免后台无图标运行常驻
 });
 
 ipcMain.handle('desktop-window:get-opacity', () => {

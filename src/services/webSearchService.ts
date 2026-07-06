@@ -1,7 +1,8 @@
 import type { WebSearchResult } from '../types';
+import { getApiUrl } from './apiHelper';
 
 export async function webSearch(query: string, signal?: AbortSignal): Promise<WebSearchResult[]> {
-  const response = await fetch('/api/web-search', {
+  const response = await fetch(getApiUrl('/api/web-search'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query }),

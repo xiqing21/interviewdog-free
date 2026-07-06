@@ -110,3 +110,48 @@
 <key>com.apple.security.device.audio-input</key>
 <true/>
 ```
+
+---
+
+## 六、 隐藏 Dock 栏图标（Dock Icon Hidden）
+
+### 1. 功能描述
+为满足客户端在使用过程中的低调与隐蔽需求，应用在运行时不会在 macOS 底部 Dock 栏显示应用图标，也不会显示在应用切换器 (Cmd + Tab) 中。
+
+### 2. 实现原理
+在 `electron/main.cjs` 中，利用 Electron 的 `app.dock.hide()` 接口：
+```javascript
+if (process.platform === 'darwin') {
+  app.dock.hide(); // 隐藏 macOS Dock 栏图标
+}
+```
+**退出安全防错机制**：由于隐藏了 Dock 图标，为防止应用在关闭窗口后仍在后台常驻导致内存泄露，我们修改了窗口关闭逻辑，强制关闭所有窗口时立即安全退出程序：
+```javascript
+app.on('window-all-closed', () => {
+  app.quit(); // 所有窗口关闭时直接退出应用
+});
+```
+
+---
+
+## 七、 解决本地客户端中 API 相对路径请求失效问题（Absolute API URL Resolving）
+
+### 1. 功能描述
+在网页版中，前端可以使用 `/api/billing` 等相对路径进行 API 请求。但在 Electron 客户端生产环境中，由于页面是通过本地文件协议（`file://`）加载的，相对路径请求会被解析为本地磁盘文件（如 `file:///api/billing`），从而导致 `Failed to fetch` 报错。
+
+### 2. 实现原理
+我们设计了全局 API 地址解析工具 [apiHelper.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/apiHelper.ts)：
+- 在网页端运行时，自动沿用相对路径访问当前域名。
+- 在桌面端（Electron 环境下 `file:` 协议）运行时，自动将请求路由解析重定向到生产环境 API 域名 `https://interviewdog-free.vercel.app`。
+
+**更新覆盖的文件**：
+- [apiHelper.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/apiHelper.ts) [NEW]
+- [KnowledgePage.tsx](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/components/knowledge/KnowledgePage.tsx) — 处理网页读取请求。
+- [adminService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/adminService.ts) — 处理后台管理相关 API。
+- [aiService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/aiService.ts) — 处理聊天与对话相关 API。
+- [billingService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/billingService.ts) — 解决购买页面的 `Failed to fetch` 问题。
+- [cloudAsrService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/cloudAsrService.ts) — 处理云端语音识别代理请求。
+- [mimoAsrService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/mimoAsrService.ts) — 处理 MiMo ASR 识别代理。
+- [openaiChunkAsrService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/openaiChunkAsrService.ts) — 处理 OpenAI 音频分片识别。
+- [webSearchService.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/webSearchService.ts) — 处理 AI 联网搜索相关 API。
+

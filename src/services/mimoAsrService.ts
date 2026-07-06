@@ -1,5 +1,6 @@
 import type { MiMoASRConfig } from '../types';
 import { deobfuscate } from './cryptoService';
+import { getApiUrl } from './apiHelper';
 
 interface MiMoAsrCallbacks {
   onResult: (text: string, isFinal: boolean) => void;
@@ -147,7 +148,7 @@ async function flush(force: boolean): Promise<void> {
 }
 
 async function callMiMo(config: MiMoASRConfig, audioBase64: string): Promise<string> {
-  const response = await fetch('/api/mimo-asr', {
+  const response = await fetch(getApiUrl('/api/mimo-asr'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

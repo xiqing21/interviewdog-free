@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { getApiUrl } from './apiHelper';
 
 export type AdminUserRow = {
   id: string;
@@ -140,7 +141,7 @@ export async function adminRequest<T>(action: string, payload: Record<string, un
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new Error('请先登录管理员账号。');
-  const response = await fetch('/api/admin', {
+  const response = await fetch(getApiUrl('/api/admin'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
