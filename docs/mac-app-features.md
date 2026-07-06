@@ -43,22 +43,22 @@
 ## 三、 窗口透明度调优（Opacity Limit Adjustment）
 
 ### 1. 功能描述
-为了防止用户误将窗口透明度设置过低（例如 35% 或 50%），导致界面文字难以看清甚至完全“隐形”，我们将最低透明度阈值从 `35%` 提高到了 `80%`。
+支持桌面窗口透明度调节，默认透明度为 `100%`（完全不透明），允许调节的最低限度为 `35%`。
 
 ### 2. 实现原理
 - **主进程限制**：修改 `electron/main.cjs` 中的限制常量：
   ```javascript
-  const MIN_OPACITY = 0.8; // 限制最低透明度为 80%
+  const MIN_OPACITY = 0.35; // 限制最低透明度为 35%
   ```
 - **数据层过滤**：在 `src/services/desktopWindowService.ts` 的读取和设置中限制最小值：
   ```typescript
   export function readStoredOpacity(): number {
     const saved = Number(window.localStorage.getItem(STORAGE_KEY));
     if (Number.isNaN(saved)) return DEFAULT_OPACITY;
-    return Math.min(1, Math.max(0.8, saved)); // 过滤出最低 0.8
+    return Math.min(1, Math.max(0.35, saved)); // 过滤出最低 0.35
   }
   ```
-- **设置界面滑块约束**：在 `src/components/settings/DesktopWindowSettings.tsx` 中，将 opacity 调节 `Slider` 的 `min` 属性修改为 `80`。
+- **设置界面滑块约束**：在 `src/components/settings/DesktopWindowSettings.tsx` 中，将 opacity 调节 `Slider` 的 `min` 属性设置为 `35`。
 
 ---
 

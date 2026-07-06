@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapt
 const path = require('node:path');
 
 const APP_TITLE = 'MianshiZhu Pro';
-const MIN_OPACITY = 0.8;
+const MIN_OPACITY = 0.35;
 const MAX_OPACITY = 1;
 
 let mainWindow;

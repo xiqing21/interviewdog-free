@@ -37,7 +37,7 @@ export function DesktopWindowSettings() {
           透明度
         </Typography>
         <Slider
-          min={80}
+          min={35}
           max={100}
           step={5}
           value={opacity}
