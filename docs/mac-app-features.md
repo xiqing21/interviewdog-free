@@ -142,7 +142,7 @@ app.on('window-all-closed', () => {
 ### 2. 实现原理
 我们设计了全局 API 地址解析工具 [apiHelper.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/apiHelper.ts)：
 - 在网页端运行时，自动沿用相对路径访问当前域名。
-- 在桌面端（Electron 环境下 `file:` 协议）运行时，自动将请求路由解析重定向到生产环境 API 域名 `https://interviewdog-free.vercel.app`。
+- 在桌面端（Electron 环境下 `file:` 协议）运行时，自动将请求路由解析重定向到生产环境 API 域名 `https://mianshizhu-commercial.vercel.app`。
 
 **更新覆盖的文件**：
 - [apiHelper.ts](file:///Users/felix/Documents/interview-copilot/interviewdog-free/src/services/apiHelper.ts) [NEW]

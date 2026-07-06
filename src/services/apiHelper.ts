@@ -8,7 +8,7 @@ export function getApiUrl(path: string): string {
   if (typeof window !== 'undefined') {
     // If running under 'file:' scheme (Electron production) or desktop context, use production Vercel backend.
     if (window.location.protocol === 'file:' || window.desktopWindow?.isDesktop) {
-      return `https://interviewdog-free.vercel.app${cleanPath}`;
+      return `https://mianshizhu-commercial.vercel.app${cleanPath}`;
     }
   }
   

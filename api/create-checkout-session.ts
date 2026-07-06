@@ -62,7 +62,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const origin = process.env.PUBLIC_APP_URL ?? requestOrigin(request.headers) ?? 'https://interviewdog-free.vercel.app';
+  const origin = process.env.PUBLIC_APP_URL ?? requestOrigin(request.headers) ?? 'https://mianshizhu-commercial.vercel.app';
   const priceId = process.env[plan.priceEnv];
   const form = new URLSearchParams();
   form.set('mode', plan.mode);
