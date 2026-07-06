@@ -230,7 +230,13 @@ function flushQueue(): void {
 }
 
 function buildGatewayUrl(): string {
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'file:' ||
+      window.desktopWindow?.isDesktop ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1')
+  ) {
     return 'wss://mianshizhu-commercial.vercel.app/api/asr-gateway';
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
