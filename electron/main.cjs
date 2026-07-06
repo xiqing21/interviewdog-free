@@ -1,11 +1,13 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapturer } = require('electron');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 
 const APP_TITLE = 'MianshiZhu Pro';
 const MIN_OPACITY = 0.35;
 const MAX_OPACITY = 1;
 
 let mainWindow;
+let audioProcess = null;
 
 function clampOpacity(value) {
   const opacity = Number(value);
@@ -100,6 +102,10 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (audioProcess) {
+    audioProcess.kill();
+    audioProcess = null;
+  }
   app.quit(); // 所有窗口关闭时直接退出应用，避免后台无图标运行常驻
 });
 
@@ -115,4 +121,42 @@ ipcMain.handle('desktop-window:set-opacity', (_event, value) => {
 
 ipcMain.handle('desktop-window:hide', () => {
   mainWindow?.hide();
+});
+
+ipcMain.handle('desktop-audio:start', () => {
+  if (audioProcess) return;
+
+  let helperPath = path.join(__dirname, '..', 'build', 'mac-audio-helper');
+  if (app.isPackaged) {
+    helperPath = path.join(process.resourcesPath, 'build', 'mac-audio-helper');
+  }
+
+  console.log('[main] Spawning audio helper at:', helperPath);
+  try {
+    audioProcess = spawn(helperPath);
+  } catch (err) {
+    console.error('[main] Failed to spawn audio helper:', err);
+    throw new Error('无法启动原生声音捕捉助手，请检查权限设置。');
+  }
+
+  audioProcess.stdout.on('data', (chunk) => {
+    mainWindow?.webContents.send('desktop-audio:data', chunk);
+  });
+
+  audioProcess.stderr.on('data', (data) => {
+    console.warn(`[mac-audio-helper]: ${data.toString().trim()}`);
+  });
+
+  audioProcess.on('close', (code) => {
+    console.log(`[mac-audio-helper] exited with code ${code}`);
+    audioProcess = null;
+    mainWindow?.webContents.send('desktop-audio:ended');
+  });
+});
+
+ipcMain.handle('desktop-audio:stop', () => {
+  if (audioProcess) {
+    audioProcess.kill();
+    audioProcess = null;
+  }
 });

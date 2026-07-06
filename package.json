@@ -58,6 +58,12 @@
     "directories": {
       "output": "release"
     },
+    "extraResources": [
+      {
+        "from": "build/mac-audio-helper",
+        "to": "build/mac-audio-helper"
+      }
+    ],
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -77,7 +83,7 @@
       },
       "target": [
         {
-          "target": "dmg",
+          "target": "zip",
           "arch": [
             "arm64",
             "x64"

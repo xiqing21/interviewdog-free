@@ -11,6 +11,9 @@ let processor: ScriptProcessorNode | null = null;
 let sourceNode: MediaStreamAudioSourceNode | null = null;
 let currentCallbacks: SystemAudioCallbacks | null = null;
 
+let isDesktopCapturing = false;
+let desktopCleanup: (() => void) | null = null;
+
 /** 音频数据回调 */
 export interface SystemAudioCallbacks {
   onPcmData: (pcm: Int16Array) => void;
@@ -23,6 +26,9 @@ export interface SystemAudioCallbacks {
  * Chrome 74+ 支持 getDisplayMedia({ audio: true })。
  */
 export function isSupported(): boolean {
+  if (window.desktopWindow?.startSystemAudio) {
+    return true;
+  }
   return (
     typeof navigator !== 'undefined' &&
     typeof navigator.mediaDevices?.getDisplayMedia === 'function'
@@ -38,6 +44,37 @@ export async function start(
   sampleRate: number = 16000,
 ): Promise<void> {
   currentCallbacks = callbacks;
+
+  if (window.desktopWindow?.startSystemAudio) {
+    const bridge = window.desktopWindow;
+    try {
+      cleanup();
+      
+      const unsubscribeData = bridge.onSystemAudioData((pcm) => {
+        callbacks.onPcmData(pcm);
+      });
+      
+      const unsubscribeEnded = bridge.onSystemAudioEnded(() => {
+        callbacks.onEnd();
+        cleanup();
+      });
+      
+      desktopCleanup = () => {
+        unsubscribeData();
+        unsubscribeEnded();
+        bridge.stopSystemAudio();
+      };
+      
+      await bridge.startSystemAudio();
+      isDesktopCapturing = true;
+      return;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '原生系统音频捕获失败';
+      callbacks.onError(msg);
+      cleanup();
+      return;
+    }
+  }
 
   try {
     await prepare(callbacks);
@@ -73,6 +110,10 @@ export async function start(
 }
 
 export async function prepare(callbacks?: Pick<SystemAudioCallbacks, 'onError' | 'onEnd'>): Promise<boolean> {
+  if (window.desktopWindow?.startSystemAudio) {
+    return true; // 桌面端原生捕获不需要提前授权弹窗
+  }
+
   if (audioStream?.getAudioTracks().some((track) => track.readyState === 'live')) {
     return true;
   }
@@ -114,14 +155,17 @@ export function stop(): void {
 }
 
 export function isActive(): boolean {
-  return audioStream !== null;
+  return audioStream !== null || isDesktopCapturing;
 }
 
 export function isProcessing(): boolean {
-  return processor !== null;
+  return processor !== null || isDesktopCapturing;
 }
 
 export function getStream(): MediaStream | null {
+  if (window.desktopWindow?.startSystemAudio) {
+    return null; // 原生流不通过 MediaStream 传递
+  }
   if (!audioStream?.getAudioTracks().some((track) => track.readyState === 'live')) {
     return null;
   }
@@ -134,6 +178,11 @@ function cleanup(): void {
     audioStream.getTracks().forEach((track) => track.stop());
     audioStream = null;
   }
+  if (desktopCleanup) {
+    desktopCleanup();
+    desktopCleanup = null;
+  }
+  isDesktopCapturing = false;
   currentCallbacks = null;
 }
 
