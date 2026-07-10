@@ -23,6 +23,11 @@ type GatewaySession = {
 };
 
 const MAX_RECONNECT_ATTEMPTS = 8;
+const NON_RETRYABLE_ERROR_PATTERNS = [
+  /quota exceeded/i,
+  /concurrency/i,
+  /45000292/,
+];
 
 let ws: WebSocket | null = null;
 let callbacksRef: GatewayCallbacks | null = null;
@@ -94,7 +99,12 @@ function connectGateway(session: GatewaySession): void {
       return;
     }
     if (data.type === 'error') {
-      session.callbacks.onError(data.message || 'ASR Gateway 错误');
+      const message = data.message || 'ASR Gateway 错误';
+      if (isNonRetryableError(message)) {
+        stopAfterRemoteError(session, normalizeNonRetryableError(message));
+      } else {
+        session.callbacks.onError(message);
+      }
       return;
     }
     if (data.type === 'end') {
@@ -221,6 +231,43 @@ function scheduleReconnect(_reason: string): void {
     if (!currentSession || manuallyStopped) return;
     connectGateway(currentSession);
   }, delay);
+}
+
+function stopAfterRemoteError(session: GatewaySession, message: string): void {
+  manuallyStopped = true;
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  cleanupAudioNodes();
+  if (ownedStream) {
+    ownedStream.getTracks().forEach((track) => track.stop());
+    ownedStream = null;
+  }
+  const socket = ws;
+  ws = null;
+  currentSession = null;
+  ready = false;
+  queued = [];
+  reconnectAttempts = 0;
+  callbacksRef = null;
+  if (socket) {
+    try { socket.send(JSON.stringify({ type: 'stop' })); } catch {}
+    try { socket.close(1000, 'non retryable asr error'); } catch {}
+  }
+  session.callbacks.onError(message);
+  session.callbacks.onEnd();
+}
+
+function isNonRetryableError(message: string): boolean {
+  return NON_RETRYABLE_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+function normalizeNonRetryableError(message: string): string {
+  if (/quota exceeded/i.test(message) && /concurrency/i.test(message)) {
+    return '豆包 ASR 并发额度已满：已停止本次听音并释放连接，请稍等几十秒后再开始，或检查是否有其他窗口/设备正在使用同一套豆包凭证。';
+  }
+  return message;
 }
 
 function flushQueue(): void {
