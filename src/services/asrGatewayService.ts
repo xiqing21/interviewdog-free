@@ -66,6 +66,11 @@ export function start(
 
 function connectGateway(session: GatewaySession): void {
   ready = false;
+  const previousSocket = ws;
+  if (previousSocket) {
+    ws = null;
+    try { previousSocket.close(1000, 'reconnecting'); } catch {}
+  }
   const socket = new WebSocket(buildGatewayUrl());
   ws = socket;
   socket.onopen = () => {
@@ -81,10 +86,19 @@ function connectGateway(session: GatewaySession): void {
     }));
   };
   socket.onmessage = (event) => {
-    const data = JSON.parse(String(event.data || '{}'));
+    if (ws !== socket || !currentSession) return;
+    let data: { type?: string; message?: string; text?: string; isFinal?: boolean };
+    try {
+      data = JSON.parse(String(event.data || '{}'));
+    } catch {
+      session.callbacks.onError('ASR Gateway 返回了无法解析的数据。');
+      scheduleReconnect('invalid gateway message');
+      return;
+    }
     if (data.type === 'ready') {
       ready = true;
       reconnectAttempts = 0;
+      console.info('[ASR Gateway] connected');
       session.callbacks.onReady?.();
       flushQueue();
       return;
@@ -106,13 +120,13 @@ function connectGateway(session: GatewaySession): void {
     }
   };
   socket.onerror = () => {
+    if (ws !== socket) return;
     if (!manuallyStopped) scheduleReconnect('gateway error');
   };
   socket.onclose = () => {
-    if (ws === socket) {
-      ready = false;
-      ws = null;
-    }
+    if (ws !== socket) return;
+    ready = false;
+    ws = null;
     if (manuallyStopped || !currentSession) {
       callbacksRef?.onEnd();
       return;
@@ -202,7 +216,7 @@ function queueAudio(pcm: Int16Array): void {
   queued = queued.slice(-160);
 }
 
-function scheduleReconnect(_reason: string): void {
+function scheduleReconnect(reason: string): void {
   if (!currentSession || manuallyStopped || reconnectTimer !== null) return;
 
   reconnectAttempts += 1;
@@ -216,6 +230,14 @@ function scheduleReconnect(_reason: string): void {
   }
 
   const delay = Math.min(2500, 250 * reconnectAttempts);
+  if (reconnectAttempts === 1) {
+    currentSession.callbacks.onError('识别连接暂时中断，正在自动恢复。');
+  }
+  console.warn('[ASR Gateway] reconnect scheduled', {
+    reason,
+    attempt: reconnectAttempts,
+    delay,
+  });
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null;
     if (!currentSession || manuallyStopped) return;
