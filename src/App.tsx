@@ -3,7 +3,7 @@
  * Provider nesting: SettingsProvider > SessionProvider > InterviewProvider > ExamProvider
  */
 
-import { useMemo } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SettingsProvider } from './context/SettingsContext';
@@ -20,7 +20,7 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { useSettings } from './hooks/useSettings';
 import { createAppTheme } from './styles/theme';
 
-function AppContent(): JSX.Element {
+function AppContent(): ReactElement {
   const { appSettings } = useSettings();
   const theme = useMemo(() => createAppTheme(appSettings.theme), [appSettings.theme]);
 
@@ -43,7 +43,7 @@ function AppContent(): JSX.Element {
   );
 }
 
-export default function App(): JSX.Element {
+export default function App(): ReactElement {
   return (
     <SettingsProvider>
       <AuthProvider>
