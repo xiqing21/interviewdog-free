@@ -86,6 +86,7 @@ function connectGateway(session: GatewaySession): void {
     }));
   };
   socket.onmessage = (event) => {
+    if (ws !== socket || !currentSession) return;
     const data = JSON.parse(String(event.data || '{}'));
     if (data.type === 'ready') {
       ready = true;
@@ -116,13 +117,13 @@ function connectGateway(session: GatewaySession): void {
     }
   };
   socket.onerror = () => {
+    if (ws !== socket) return;
     if (!manuallyStopped) scheduleReconnect('gateway error');
   };
   socket.onclose = () => {
-    if (ws === socket) {
-      ready = false;
-      ws = null;
-    }
+    if (ws !== socket) return;
+    ready = false;
+    ws = null;
     if (manuallyStopped || !currentSession) {
       callbacksRef?.onEnd();
       return;

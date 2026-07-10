@@ -1002,6 +1002,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
       },
       onEnd: () => {
+        dispatch({ type: 'SET_ERROR', payload: '系统音频捕获已结束，听音已停止。请重新选择面试窗口后再开始。' });
         doubaoAsrService.stop();
         openaiChunkAsrService.stop();
         localQwenAsrService.stop();
@@ -1158,7 +1159,11 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
           void systemAudioService.start({
             onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
             onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
-            onEnd: () => { asrGatewayService.stop(); setListeningFromActiveSources(); },
+            onEnd: () => {
+              dispatch({ type: 'SET_ERROR', payload: '系统音频捕获已结束，听音已停止。请重新选择面试窗口后再开始。' });
+              asrGatewayService.stop();
+              setListeningFromActiveSources();
+            },
           });
         },
       });
@@ -1189,7 +1194,11 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         void systemAudioService.start({
           onPcmData: (pcm) => doubaoAsrService.sendAudio(pcm),
           onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); doubaoAsrService.stop(); setListeningFromActiveSources(); },
-          onEnd: () => { doubaoAsrService.stop(); setListeningFromActiveSources(); },
+          onEnd: () => {
+            dispatch({ type: 'SET_ERROR', payload: '系统音频捕获已结束，听音已停止。请重新选择面试窗口后再开始。' });
+            doubaoAsrService.stop();
+            setListeningFromActiveSources();
+          },
         });
       },
     });
