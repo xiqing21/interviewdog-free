@@ -50,8 +50,8 @@ wss.on('connection', (client) => {
   let config: Record<string, string | number | string[]> = {};
 
   const closeUpstream = () => {
-    if (upstream && (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING)) {
-      upstream.close();
+    if (upstream) {
+      closeSocket(upstream, 'gateway cleanup');
     }
     upstream = null;
   };
@@ -72,6 +72,9 @@ wss.on('connection', (client) => {
     }
 
     if (message.type === 'start') {
+      if (started || upstream) {
+        closeUpstream();
+      }
       provider = message.provider;
       speaker = message.speaker ?? 'interviewer';
       config = {
@@ -129,6 +132,8 @@ wss.on('connection', (client) => {
       }
       if (provider === 'gateway-alibaba' && upstream?.readyState === WebSocket.OPEN) upstream.send(JSON.stringify(buildAlibabaControl('StopTranscription', config)));
       closeUpstream();
+      started = false;
+      provider = null;
       send({ type: 'end' });
     }
   });
@@ -171,6 +176,7 @@ function startDoubao(
       const frame = parseDoubaoFrame(toArrayBuffer(data));
       if (frame.type === 'error') {
         send({ type: 'error', message: `豆包 ${frame.code}: ${frame.message}` });
+        closeSocket(upstream, 'doubao error');
         return;
       }
       const text = extractDoubaoText(frame.payload);
@@ -179,8 +185,17 @@ function startDoubao(
       send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao response parse failed' });
     }
   });
-  upstream.on('error', (error) => send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao upstream error' }));
+  upstream.on('error', (error) => {
+    send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao upstream error' });
+    closeSocket(upstream, 'doubao upstream error');
+  });
   upstream.on('close', () => send({ type: 'end' }));
+}
+
+function closeSocket(socket: WebSocket, reason: string): void {
+  if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+    socket.close(1000, reason);
+  }
 }
 
 function serverProviderConfig(provider: GatewayProvider): Record<string, string | number | string[]> {

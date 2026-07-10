@@ -849,6 +849,23 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: systemAudioService.isActive() });
   }
 
+  function isFatalDoubaoAsrError(message: string): boolean {
+    return /45000292|quota exceeded|concurrency/i.test(message);
+  }
+
+  function handleAsrError(message: string, options: { stopSystemAudio?: boolean } = {}): void {
+    dispatch({ type: 'SET_ERROR', payload: message });
+    if (isFatalDoubaoAsrError(message)) {
+      asrGatewayService.stop();
+      doubaoAsrService.stop();
+      if (options.stopSystemAudio) {
+        systemAudioService.stop();
+        dispatch({ type: 'SET_SYSTEM_AUDIO_READY', payload: false });
+      }
+    }
+    setListeningFromActiveSources();
+  }
+
   function startMicrophoneRecognition(speaker: 'interviewer' | 'me'): boolean {
     if (!speechService.isSupported()) {
       dispatch({ type: 'SET_ERROR', payload: '当前浏览器不支持麦克风语音识别。请使用 Chrome，或只开启系统音频 + 豆包 ASR。' });
@@ -900,7 +917,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       hotwords: appRef.current.asrHotwords,
     }, {
       onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
-      onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+      onError: (e) => handleAsrError(e),
       onEnd: () => setListeningFromActiveSources(),
     });
     setListeningFromActiveSources();
@@ -1134,7 +1151,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         hotwords: appRef.current.asrHotwords,
       }, {
         onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
-        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+        onError: (e) => handleAsrError(e, { stopSystemAudio: true }),
         onEnd: () => setListeningFromActiveSources(),
         onReady: () => {
           if (systemAudioService.isProcessing()) return;
@@ -1166,7 +1183,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
     doubaoAsrService.start(config, {
       onResult: (text, isFinal) => handleRecognitionResult(text, isFinal, speaker),
-      onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); setListeningFromActiveSources(); },
+      onError: (e) => handleAsrError(e, { stopSystemAudio: true }),
       onEnd: () => setListeningFromActiveSources(),
       onReady: () => {
         void systemAudioService.start({

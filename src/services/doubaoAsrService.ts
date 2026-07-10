@@ -85,6 +85,7 @@ export function start(
       .then((frame) => {
         if (frame.type === 'error') {
           callbacks.onError(`豆包语音识别错误 ${frame.code}：${frame.message}`);
+          stop();
           return;
         }
         handleResultPayload(frame.payload, callbacks, frame.isLast);
