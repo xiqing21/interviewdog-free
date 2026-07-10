@@ -8,6 +8,7 @@ const MAX_OPACITY = 1;
 
 let mainWindow;
 let audioProcess = null;
+let audioStopRequested = false;
 
 function clampOpacity(value) {
   const opacity = Number(value);
@@ -133,6 +134,7 @@ ipcMain.handle('desktop-audio:start', () => {
 
   console.log('[main] Spawning audio helper at:', helperPath);
   try {
+    audioStopRequested = false;
     audioProcess = spawn(helperPath);
   } catch (err) {
     console.error('[main] Failed to spawn audio helper:', err);
@@ -148,14 +150,19 @@ ipcMain.handle('desktop-audio:start', () => {
   });
 
   audioProcess.on('close', (code) => {
+    const endedUnexpectedly = !audioStopRequested;
     console.log(`[mac-audio-helper] exited with code ${code}`);
     audioProcess = null;
-    mainWindow?.webContents.send('desktop-audio:ended');
+    audioStopRequested = false;
+    if (endedUnexpectedly) {
+      mainWindow?.webContents.send('desktop-audio:ended');
+    }
   });
 });
 
 ipcMain.handle('desktop-audio:stop', () => {
   if (audioProcess) {
+    audioStopRequested = true;
     audioProcess.kill();
     audioProcess = null;
   }

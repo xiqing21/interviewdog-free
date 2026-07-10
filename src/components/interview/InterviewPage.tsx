@@ -50,7 +50,6 @@ import { useSettings } from '../../hooks/useSettings';
 import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
-import { publicAssetUrl } from '../../lib/assets';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
 import type { AppSettings, ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
 import { COMMERCIAL_MODE } from '../../config/commercial';
@@ -317,8 +316,8 @@ export function InterviewPage() {
       <Paper
         sx={{
           p: 1.5,
-          height: { md: 'calc(100vh - 140px)' },
-          minHeight: { xs: 'auto', md: 'calc(100vh - 140px)' },
+          height: { md: 'calc(100vh - 116px)' },
+          minHeight: { xs: 'auto', md: 'calc(100vh - 116px)' },
           display: 'flex',
           flexDirection: 'column',
           gap: 1,
@@ -511,12 +510,6 @@ export function InterviewPage() {
                 {!selectedQa ? (
                   <MessageScroller.Item messageId="empty-answer" scrollAnchor>
                     <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
-                      <Box
-                        component="img"
-                        src={publicAssetUrl('logo.svg')}
-                        alt="面试猪"
-                        sx={{ width: 72, height: 72, mb: 1, opacity: 0.72 }}
-                      />
                       <Typography variant="subtitle1">等待第一道面试问题</Typography>
                       <Typography variant="body2" sx={{ mt: 0.5 }}>
                         开始语音识别，或在右侧手动输入问题。
@@ -549,6 +542,8 @@ export function InterviewPage() {
             position: { md: 'sticky' },
             bottom: 0,
             zIndex: 1,
+            mt: 'auto',
+            flexShrink: 0,
           }}
         >
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>

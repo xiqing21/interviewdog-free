@@ -13,6 +13,7 @@ let currentCallbacks: SystemAudioCallbacks | null = null;
 
 let isDesktopCapturing = false;
 let desktopCleanup: (() => void) | null = null;
+let desktopGeneration = 0;
 
 /** 音频数据回调 */
 export interface SystemAudioCallbacks {
@@ -43,18 +44,20 @@ export async function start(
   callbacks: SystemAudioCallbacks,
   sampleRate: number = 16000,
 ): Promise<void> {
-  currentCallbacks = callbacks;
-
   if (window.desktopWindow?.startSystemAudio) {
     const bridge = window.desktopWindow;
     try {
       cleanup();
+      const generation = desktopGeneration;
+      currentCallbacks = callbacks;
       
       const unsubscribeData = bridge.onSystemAudioData((pcm) => {
+        if (generation !== desktopGeneration) return;
         callbacks.onPcmData(pcm);
       });
       
       const unsubscribeEnded = bridge.onSystemAudioEnded(() => {
+        if (generation !== desktopGeneration) return;
         callbacks.onEnd();
         cleanup();
       });
@@ -173,6 +176,7 @@ export function getStream(): MediaStream | null {
 }
 
 function cleanup(): void {
+  desktopGeneration += 1;
   cleanupAudioNodes();
   if (audioStream) {
     audioStream.getTracks().forEach((track) => track.stop());
