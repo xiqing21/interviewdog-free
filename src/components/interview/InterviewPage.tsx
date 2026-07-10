@@ -42,7 +42,6 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { MessageScroller } from '@shadcn/react/message-scroller';
 import { Link } from 'react-router-dom';
 import { QACard } from './QACard';
-import { SessionManager } from './SessionManager';
 import { AnswerModeToggle } from './AnswerModeToggle';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { INTERVIEW_FOCUS_OPTIONS, INTERVIEW_ROLE_PRESETS, SPEAKER_AUDIO_SOURCES } from '../../constants';
@@ -232,25 +231,6 @@ export function InterviewPage() {
           <QuestionAnswerIcon color="primary" fontSize="small" />
           <Typography variant="subtitle1" fontWeight={700}>面试官问题</Typography>
           <Chip size="small" label={qaList.length} sx={{ ml: 'auto' }} />
-        </Box>
-
-        <SessionManager />
-        <Button
-          fullWidth
-          size="small"
-          variant="outlined"
-          sx={{ mt: 1.5 }}
-          onClick={() => {
-            setSetupMode('edit');
-            setShowSetup(true);
-          }}
-        >
-          项目准备 / 简历岗位
-        </Button>
-
-        <Box sx={{ mt: 2, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-          {activeSession.targetRole && <Chip size="small" label={activeSession.targetRole} />}
-          {activeSession.focusAreas?.map((focus) => <Chip key={focus} size="small" label={focus} variant="outlined" />)}
         </Box>
 
         <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
