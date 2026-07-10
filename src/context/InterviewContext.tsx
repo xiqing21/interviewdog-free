@@ -1155,6 +1155,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         onError: (e) => handleAsrError(e, { stopSystemAudio: true }),
         onEnd: () => setListeningFromActiveSources(),
         onReady: () => {
+          dispatch({ type: 'SET_ERROR', payload: null });
           if (systemAudioService.isProcessing()) return;
           void systemAudioService.start({
             onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
@@ -1191,6 +1192,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       onError: (e) => handleAsrError(e, { stopSystemAudio: true }),
       onEnd: () => setListeningFromActiveSources(),
       onReady: () => {
+        dispatch({ type: 'SET_ERROR', payload: null });
         void systemAudioService.start({
           onPcmData: (pcm) => doubaoAsrService.sendAudio(pcm),
           onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); doubaoAsrService.stop(); setListeningFromActiveSources(); },
