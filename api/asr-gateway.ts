@@ -35,6 +35,12 @@ const SERIALIZATION = { NONE: 0x00, JSON: 0x01 } as const;
 const COMPRESSION = { NONE: 0x00, GZIP: 0x01 } as const;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const MAX_CLIENTS = Math.max(1, Number(process.env.ASR_GATEWAY_MAX_CLIENTS) || 20);
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ASR_GATEWAY_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
 
 const server = createServer((_, response) => {
   response.writeHead(426, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -44,7 +50,12 @@ const server = createServer((_, response) => {
 const wss = new WebSocketServer({ server });
 const activeClients = new Set<WebSocket>();
 
-wss.on('connection', (client) => {
+wss.on('connection', (client, request) => {
+  const origin = request.headers.origin;
+  if (origin && ALLOWED_ORIGINS.size > 0 && !ALLOWED_ORIGINS.has(origin)) {
+    client.close(1008, 'origin not allowed');
+    return;
+  }
   if (activeClients.size >= MAX_CLIENTS) {
     client.close(1013, 'gateway at capacity');
     return;
@@ -56,7 +67,14 @@ wss.on('connection', (client) => {
   let started = false;
   let iflytekFirstFrame = true;
   let config: Record<string, string | number | string[]> = {};
+  let clientAlive = true;
+  client.on('pong', () => { clientAlive = true; });
   const clientHeartbeat = setInterval(() => {
+    if (!clientAlive) {
+      client.terminate();
+      return;
+    }
+    clientAlive = false;
     if (client.readyState === WebSocket.OPEN) client.ping();
   }, HEARTBEAT_INTERVAL_MS);
 
