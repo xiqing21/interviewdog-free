@@ -324,6 +324,8 @@ function flushQueue(): void {
 }
 
 function buildGatewayUrl(): string {
+  const configuredUrl = import.meta.env.VITE_ASR_GATEWAY_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '');
   if (
     typeof window !== 'undefined' &&
     (window.location.protocol === 'file:' ||
@@ -331,7 +333,7 @@ function buildGatewayUrl(): string {
       window.location.hostname === 'localhost' ||
       window.location.hostname === '127.0.0.1')
   ) {
-    return 'wss://mianshizhu-commercial.vercel.app/api/asr-gateway';
+    return 'wss://bwg.yihan.me/api/asr-gateway';
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/api/asr-gateway`;

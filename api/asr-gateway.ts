@@ -35,6 +35,7 @@ const MESSAGE_FLAGS = { NONE: 0x00, HAS_SEQUENCE: 0x01, LAST_PACKET: 0x02 } as c
 const SERIALIZATION = { NONE: 0x00, JSON: 0x01 } as const;
 const COMPRESSION = { NONE: 0x00, GZIP: 0x01 } as const;
 const HEARTBEAT_INTERVAL_MS = 20_000;
+const MAX_CLIENTS = Math.max(1, Number(process.env.ASR_GATEWAY_MAX_CLIENTS) || 20);
 
 const server = createServer((_, response) => {
   response.writeHead(426, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -42,8 +43,14 @@ const server = createServer((_, response) => {
 });
 
 const wss = new WebSocketServer({ server });
+const activeClients = new Set<WebSocket>();
 
 wss.on('connection', (client) => {
+  if (activeClients.size >= MAX_CLIENTS) {
+    client.close(1013, 'gateway at capacity');
+    return;
+  }
+  activeClients.add(client);
   let provider: GatewayProvider | null = null;
   let speaker: 'interviewer' | 'me' = 'interviewer';
   let upstream: WebSocket | null = null;
@@ -153,6 +160,7 @@ wss.on('connection', (client) => {
   const cleanup = () => {
     clearInterval(clientHeartbeat);
     closeUpstream();
+    activeClients.delete(client);
   };
   client.on('close', cleanup);
   client.on('error', cleanup);
@@ -492,3 +500,10 @@ function parseHotwords(value: unknown): string[] {
 }
 
 export default server;
+
+if (process.env.GATEWAY_STANDALONE === 'true') {
+  const port = Number(process.env.PORT) || 8080;
+  server.listen(port, '127.0.0.1', () => {
+    console.info(`[ASR Gateway] listening on 127.0.0.1:${port}`);
+  });
+}
