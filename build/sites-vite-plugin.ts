@@ -29,7 +29,7 @@ export function sites(): Plugin {
       await mkdir(openaiDirectory, { recursive: true });
       await writeFile(
         resolve(serverDirectory, 'index.js'),
-        `export default {\n  async fetch(request, env) {\n    const response = await env.ASSETS.fetch(request);\n    if (response.status !== 404 || request.method !== 'GET') return response;\n    const fallbackUrl = new URL('/index.html', request.url);\n    return env.ASSETS.fetch(new Request(fallbackUrl, request));\n  },\n};\n`,
+        `export default {\n  async fetch(request, env) {\n    const url = new URL(request.url);\n    const upgrade = request.headers.get('Upgrade');\n    if (url.pathname === '/api/asr-gateway' && upgrade?.toLowerCase() === 'websocket') {\n      const gatewayUrl = new URL('https://bwg.yihan.me/api/asr-gateway');\n      return fetch(new Request(gatewayUrl, request));\n    }\n    if (url.pathname.startsWith('/api/')) {\n      const backendUrl = new URL(request.url);\n      backendUrl.protocol = 'https:';\n      backendUrl.hostname = 'mianshizhu.xyz';\n      backendUrl.port = '';\n      return fetch(new Request(backendUrl, request));\n    }\n    const response = await env.ASSETS.fetch(request);\n    if (response.status !== 404 || request.method !== 'GET') return response;\n    const fallbackUrl = new URL('/index.html', request.url);\n    return env.ASSETS.fetch(new Request(fallbackUrl, request));\n  },\n};\n`,
         'utf8',
       );
       const hostingConfig = resolve(root, '.openai/hosting.json');
