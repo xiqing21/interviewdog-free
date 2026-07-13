@@ -5,6 +5,9 @@
   "outputDirectory": "dist",
   "installCommand": "pnpm install",
   "functions": {
+    "api/asr-gateway.ts": {
+      "maxDuration": 300
+    },
     "api/**/*.ts": {
       "maxDuration": 60
     }
