@@ -33,6 +33,7 @@ const MESSAGE_TYPE = {
 const MESSAGE_FLAGS = { NONE: 0x00, HAS_SEQUENCE: 0x01, LAST_PACKET: 0x02 } as const;
 const SERIALIZATION = { NONE: 0x00, JSON: 0x01 } as const;
 const COMPRESSION = { NONE: 0x00, GZIP: 0x01 } as const;
+const HEARTBEAT_INTERVAL_MS = 20_000;
 
 const server = createServer((_, response) => {
   response.writeHead(426, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -48,6 +49,9 @@ wss.on('connection', (client) => {
   let started = false;
   let iflytekFirstFrame = true;
   let config: Record<string, string | number | string[]> = {};
+  const clientHeartbeat = setInterval(() => {
+    if (client.readyState === WebSocket.OPEN) client.ping();
+  }, HEARTBEAT_INTERVAL_MS);
 
   const closeUpstream = () => {
     if (upstream) {
@@ -85,6 +89,11 @@ wss.on('connection', (client) => {
       if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
       if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
       if (provider === 'gateway-alibaba') startAlibaba(config, send, (ws) => { upstream = ws; }, speaker);
+      return;
+    }
+
+    if ((message as { type?: string }).type === 'keepalive') {
+      send({ type: 'pong' });
       return;
     }
 
@@ -138,8 +147,12 @@ wss.on('connection', (client) => {
     }
   });
 
-  client.on('close', closeUpstream);
-  client.on('error', closeUpstream);
+  const cleanup = () => {
+    clearInterval(clientHeartbeat);
+    closeUpstream();
+  };
+  client.on('close', cleanup);
+  client.on('error', cleanup);
 });
 
 function startDoubao(
@@ -166,6 +179,9 @@ function startDoubao(
       'X-Api-Sequence': '-1',
     },
   });
+  const upstreamHeartbeat = setInterval(() => {
+    if (upstream.readyState === WebSocket.OPEN) upstream.ping();
+  }, HEARTBEAT_INTERVAL_MS);
   setUpstream(upstream);
   upstream.on('open', () => {
     upstream.send(buildDoubaoFullRequest(config));
@@ -189,7 +205,11 @@ function startDoubao(
     send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao upstream error' });
     closeSocket(upstream, 'doubao upstream error');
   });
-  upstream.on('close', () => send({ type: 'end' }));
+  upstream.on('close', () => {
+    clearInterval(upstreamHeartbeat);
+    send({ type: 'end' });
+  });
+  upstream.on('error', () => clearInterval(upstreamHeartbeat));
 }
 
 function closeSocket(socket: WebSocket, reason: string): void {

@@ -23,6 +23,7 @@ type GatewaySession = {
 };
 
 const MAX_RECONNECT_ATTEMPTS = 8;
+const CLIENT_HEARTBEAT_INTERVAL_MS = 20_000;
 const NON_RETRYABLE_ERROR_PATTERNS = [
   /quota exceeded/i,
   /concurrency/i,
@@ -37,6 +38,7 @@ let queued: Int16Array[] = [];
 let reconnectTimer: number | null = null;
 let reconnectAttempts = 0;
 let manuallyStopped = false;
+let clientHeartbeatTimer: number | null = null;
 let ownedStream: MediaStream | null = null;
 let context: AudioContext | null = null;
 let source: MediaStreamAudioSourceNode | null = null;
@@ -79,6 +81,7 @@ function connectGateway(session: GatewaySession): void {
   const socket = new WebSocket(buildGatewayUrl());
   ws = socket;
   socket.onopen = () => {
+    startClientHeartbeat(socket);
     socket.send(JSON.stringify({
       type: 'start',
       provider: session.provider,
@@ -108,6 +111,7 @@ function connectGateway(session: GatewaySession): void {
       flushQueue();
       return;
     }
+    if (data.type === 'pong') return;
     if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
       session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
       return;
@@ -135,6 +139,7 @@ function connectGateway(session: GatewaySession): void {
   };
   socket.onclose = () => {
     if (ws !== socket) return;
+    stopClientHeartbeat();
     ready = false;
     ws = null;
     if (manuallyStopped || !currentSession) {
@@ -204,6 +209,7 @@ export function stop(): void {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  stopClientHeartbeat();
   cleanupAudioNodes();
   if (ownedStream) {
     ownedStream.getTracks().forEach((track) => track.stop());
@@ -253,6 +259,25 @@ function scheduleReconnect(reason: string): void {
     if (!currentSession || manuallyStopped) return;
     connectGateway(currentSession);
   }, delay);
+}
+
+function startClientHeartbeat(socket: WebSocket): void {
+  stopClientHeartbeat();
+  clientHeartbeatTimer = window.setInterval(() => {
+    if (ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      socket.send(JSON.stringify({ type: 'keepalive' }));
+    } catch {
+      scheduleReconnect('keepalive send failed');
+    }
+  }, CLIENT_HEARTBEAT_INTERVAL_MS);
+}
+
+function stopClientHeartbeat(): void {
+  if (clientHeartbeatTimer !== null) {
+    window.clearInterval(clientHeartbeatTimer);
+    clientHeartbeatTimer = null;
+  }
 }
 
 function stopAfterRemoteError(session: GatewaySession, message: string): void {
