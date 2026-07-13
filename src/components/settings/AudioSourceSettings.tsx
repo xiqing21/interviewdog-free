@@ -23,6 +23,7 @@ import type { ASRProvider, SpeakerAudioSource } from '../../types';
 import { SPEAKER_AUDIO_SOURCES } from '../../constants';
 import { useSettings } from '../../hooks/useSettings';
 import { COMMERCIAL_MODE } from '../../config/commercial';
+import * as systemAudioService from '../../services/systemAudioService';
 
 export function AudioSourceSettings() {
   const {
@@ -34,6 +35,7 @@ export function AudioSourceSettings() {
   } = useSettings();
   const [newHotword, setNewHotword] = useState('');
   const [healthStatus, setHealthStatus] = useState<{ severity: 'info' | 'success' | 'warning' | 'error'; message: string } | null>(null);
+  const isDesktop = Boolean(window.desktopWindow?.isDesktop);
 
   const hotwords = parseHotwords(appSettings.asrHotwords);
 
@@ -74,6 +76,30 @@ export function AudioSourceSettings() {
 
   const testSystemAudioHealth = async (): Promise<void> => {
     setHealthStatus({ severity: 'info', message: '请在弹窗中选择会议窗口/标签页，并勾选共享音频...' });
+    if (isDesktop) {
+      let packetCount = 0;
+      let captureError = '';
+      try {
+        await systemAudioService.start({
+          onPcmData: () => { packetCount += 1; },
+          onError: (message) => { captureError = message; },
+          onEnd: () => {},
+        });
+        await new Promise((resolve) => window.setTimeout(resolve, 1800));
+        systemAudioService.stop();
+        if (captureError) {
+          setHealthStatus({ severity: 'error', message: `Mac 系统音频检测失败：${captureError}` });
+          return;
+        }
+        setHealthStatus(packetCount > 0
+          ? { severity: 'success', message: 'Mac 原生系统音频捕获正常，未启用麦克风。' }
+          : { severity: 'info', message: '系统音频权限正常，但刚才没有检测到播放中的会议声音。' });
+      } catch (error) {
+        systemAudioService.stop();
+        setHealthStatus({ severity: 'error', message: `Mac 系统音频检测失败：${error instanceof Error ? error.message : '请检查屏幕录制权限'}` });
+      }
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
       stream.getVideoTracks().forEach((track) => track.stop());
@@ -130,8 +156,10 @@ export function AudioSourceSettings() {
     return (
       <Paper sx={{ p: 3 }}>
         <Typography variant="h6" gutterBottom>实时听音与专业热词</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          开始面试后，请按浏览器提示选择正在面试的窗口或标签页，并勾选共享音频。面试猪会自动区分对话角色，只针对面试官问题生成回答。
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {isDesktop
+            ? 'Mac 客户端只捕获系统音频中的面试官声音，不启用麦克风；请先确认系统设置中已允许本应用进行屏幕录制。'
+            : '开始面试后，请按浏览器提示选择正在面试的窗口或标签页，并勾选共享音频。面试猪会自动区分对话角色，只针对面试官问题生成回答。'}
         </Typography>
         <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
           <Typography variant="subtitle2" fontWeight={800} gutterBottom>听音健康检查</Typography>
@@ -139,7 +167,7 @@ export function AudioSourceSettings() {
             用来确认本机权限、共享音频和实时转写通道是否正常。
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.25 }}>
-            <Button variant="outlined" onClick={() => { void testMicrophoneHealth(); }}>测试麦克风</Button>
+            {!isDesktop && <Button variant="outlined" onClick={() => { void testMicrophoneHealth(); }}>测试麦克风</Button>}
             <Button variant="outlined" onClick={() => { void testSystemAudioHealth(); }}>测试系统音频</Button>
             <Button variant="contained" onClick={() => { void testTranscriptionHealth(); }}>测试实时转写</Button>
           </Box>
@@ -388,6 +416,11 @@ function serializeHotwords(items: string[]): string {
 }
 
 function buildGatewayTestUrl(): string {
+  const configuredUrl = import.meta.env.VITE_ASR_GATEWAY_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+  if (window.location.protocol === 'file:' || window.desktopWindow?.isDesktop) {
+    return 'wss://bwg.yihan.me/api/asr-gateway';
+  }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/api/asr-gateway`;
 }

@@ -19,17 +19,6 @@ function clampOpacity(value) {
 function checkAndRequestPermissions() {
   if (process.platform === 'darwin') {
     try {
-      const micStatus = systemPreferences.getMediaAccessStatus('microphone');
-      if (micStatus !== 'granted') {
-        systemPreferences.askForMediaAccess('microphone')
-          .then(granted => {
-            console.log('Microphone access granted:', granted);
-          })
-          .catch(err => {
-            console.error('Error requesting microphone access:', err);
-          });
-      }
-
       const screenStatus = systemPreferences.getMediaAccessStatus('screen');
       if (screenStatus !== 'granted') {
         desktopCapturer.getSources({ types: ['screen'] })

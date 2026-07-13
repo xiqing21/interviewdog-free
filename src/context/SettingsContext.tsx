@@ -83,6 +83,11 @@ function getInitialState(): SettingsState {
     appSettings.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
   }
   Object.assign(appSettings, normalizeAppSettings(appSettings));
+  if (window.desktopWindow?.isDesktop) {
+    appSettings.audioSource = 'system';
+    appSettings.myAudioSource = 'muted';
+    appSettings.interviewerAudioSource = 'system';
+  }
 
   const doubaoConfig: DoubaoASRConfig = {
     ...DEFAULT_DOUBAO_ASR_CONFIG,

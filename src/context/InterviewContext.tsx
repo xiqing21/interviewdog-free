@@ -1254,8 +1254,13 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const app = appRef.current;
     dispatch({ type: 'SET_ERROR', payload: null });
 
-    const mySource = app.myAudioSource ?? (app.audioSource === 'microphone' || app.audioSource === 'both' ? 'microphone' : 'muted');
-    const interviewerSource = app.interviewerAudioSource ?? (app.audioSource === 'system' || app.audioSource === 'both' ? 'system' : 'muted');
+    const desktopSystemAudioOnly = Boolean(window.desktopWindow?.isDesktop);
+    const mySource = desktopSystemAudioOnly
+      ? 'muted'
+      : (app.myAudioSource ?? (app.audioSource === 'microphone' || app.audioSource === 'both' ? 'microphone' : 'muted'));
+    const interviewerSource = desktopSystemAudioOnly
+      ? 'system'
+      : (app.interviewerAudioSource ?? (app.audioSource === 'system' || app.audioSource === 'both' ? 'system' : 'muted'));
     let started = false;
 
     const microphoneSpeaker = resolveMicrophoneSpeaker(mySource, interviewerSource);
