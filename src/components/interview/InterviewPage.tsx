@@ -340,6 +340,29 @@ export function InterviewPage() {
               生成复盘
             </Button>
           )}
+          <Button
+            size="small"
+            variant="text"
+            sx={{ ml: 'auto' }}
+            onClick={() => {
+              stopListening();
+              setShowAudioPrep(true);
+              void prepareSystemAudioShare();
+            }}
+            disabled={Boolean(activeSession.archivedAt)}
+          >
+            重新准备听音
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color={isListening ? 'error' : 'primary'}
+            startIcon={isListening ? <StopIcon /> : <MicIcon />}
+            onClick={isListening ? stopListening : startListening}
+            disabled={Boolean(activeSession.archivedAt)}
+          >
+            {isListening ? '停止听音' : '开始听音'}
+          </Button>
         </Box>
 
         <Paper
@@ -394,23 +417,6 @@ export function InterviewPage() {
               <MenuItem value="12000">12.0 秒</MenuItem>
             </Select>
           </FormControl>
-          <Button
-            size="small"
-            variant="text"
-            sx={{ ml: { md: 'auto' } }}
-            onClick={() => setShowAudioPrep(true)}
-          >
-            重新准备听音
-          </Button>
-          <Button
-            size="small"
-            variant="outlined"
-            color={isListening ? 'error' : 'primary'}
-            startIcon={isListening ? <StopIcon /> : <MicIcon />}
-            onClick={isListening ? stopListening : startListening}
-          >
-            {isListening ? '停止听音' : '开始听音'}
-          </Button>
           {!COMMERCIAL_MODE && (
             <Box component="details" sx={{ width: '100%' }}>
               <Box component="summary" sx={{ cursor: 'pointer', color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>
