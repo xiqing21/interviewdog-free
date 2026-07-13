@@ -248,7 +248,9 @@ function closeSocket(socket: WebSocket, reason: string): void {
 }
 
 async function serverProviderConfig(provider: GatewayProvider): Promise<Record<string, string | number | string[]>> {
-  const adminConfig = await loadAdminConfig<Record<string, string>>('asr');
+  const localConfig = await loadAdminConfig<Record<string, string>>('asr');
+  const remoteConfig = await loadRemoteAdminConfig();
+  const adminConfig = { ...remoteConfig, ...localConfig };
   if (provider === 'gateway-doubao') {
     return {
       appId: firstNonEmpty(adminConfig.doubaoAppId, process.env.DOUBAO_ASR_APP_ID),
@@ -268,6 +270,23 @@ async function serverProviderConfig(provider: GatewayProvider): Promise<Record<s
     alibabaToken: firstNonEmpty(adminConfig.alibabaToken, process.env.ALIBABA_NLS_TOKEN),
     alibabaEndpoint: firstNonEmpty(adminConfig.alibabaEndpoint, process.env.ALIBABA_NLS_ENDPOINT, 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1'),
   };
+}
+
+async function loadRemoteAdminConfig(): Promise<Partial<Record<string, string>>> {
+  const endpoint = process.env.ASR_GATEWAY_CONFIG_URL?.trim();
+  const secret = process.env.ASR_GATEWAY_SYNC_SECRET?.trim();
+  if (!endpoint || !secret) return {};
+  try {
+    const response = await fetch(endpoint, {
+      headers: { 'x-asr-gateway-secret': secret },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return {};
+    const body = await response.json() as { config?: Record<string, string> };
+    return body.config ?? {};
+  } catch {
+    return {};
+  }
 }
 
 async function loadAdminConfig<T extends Record<string, unknown>>(key: string): Promise<Partial<T>> {
