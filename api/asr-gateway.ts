@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import { createClient } from '@supabase/supabase-js';
 
 type GatewayProvider = 'gateway-doubao' | 'gateway-iflytek' | 'gateway-alibaba';
 
@@ -106,14 +107,16 @@ wss.on('connection', (client, request) => {
       }
       provider = message.provider;
       speaker = message.speaker ?? 'interviewer';
-      config = {
-        ...mergeNonEmpty(serverProviderConfig(message.provider), message.config ?? {}),
-        asrEndWindowSize: message.asrEndWindowSize ?? 1500,
-      };
-      started = true;
-      if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
-      if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
-      if (provider === 'gateway-alibaba') startAlibaba(config, send, (ws) => { upstream = ws; }, speaker);
+      void (async () => {
+        config = {
+          ...mergeNonEmpty(await serverProviderConfig(message.provider), message.config ?? {}),
+          asrEndWindowSize: message.asrEndWindowSize ?? 1500,
+        };
+        started = true;
+        if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
+        if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
+        if (provider === 'gateway-alibaba') startAlibaba(config, send, (ws) => { upstream = ws; }, speaker);
+      })();
       return;
     }
 
@@ -244,26 +247,72 @@ function closeSocket(socket: WebSocket, reason: string): void {
   }
 }
 
-function serverProviderConfig(provider: GatewayProvider): Record<string, string | number | string[]> {
+async function serverProviderConfig(provider: GatewayProvider): Promise<Record<string, string | number | string[]>> {
+  const localConfig = await loadAdminConfig<Record<string, string>>('asr');
+  const remoteConfig = await loadRemoteAdminConfig();
+  const adminConfig = { ...remoteConfig, ...localConfig };
   if (provider === 'gateway-doubao') {
     return {
-      appId: firstNonEmpty(process.env.DOUBAO_ASR_APP_ID),
-      accessToken: firstNonEmpty(process.env.DOUBAO_ASR_ACCESS_TOKEN),
-      resourceId: firstNonEmpty(process.env.DOUBAO_ASR_RESOURCE_ID, 'volc.bigasr.sauc.duration'),
+      appId: firstNonEmpty(adminConfig.doubaoAppId, process.env.DOUBAO_ASR_APP_ID),
+      accessToken: firstNonEmpty(adminConfig.doubaoAccessToken, process.env.DOUBAO_ASR_ACCESS_TOKEN),
+      resourceId: firstNonEmpty(adminConfig.doubaoResourceId, process.env.DOUBAO_ASR_RESOURCE_ID, 'volc.bigasr.sauc.duration'),
     };
   }
   if (provider === 'gateway-iflytek') {
     return {
-      iflytekAppId: firstNonEmpty(process.env.IFLYTEK_APP_ID),
-      iflytekApiKey: firstNonEmpty(process.env.IFLYTEK_API_KEY),
-      iflytekApiSecret: firstNonEmpty(process.env.IFLYTEK_API_SECRET),
+      iflytekAppId: firstNonEmpty(adminConfig.iflytekAppId, process.env.IFLYTEK_APP_ID),
+      iflytekApiKey: firstNonEmpty(adminConfig.iflytekApiKey, process.env.IFLYTEK_API_KEY),
+      iflytekApiSecret: firstNonEmpty(adminConfig.iflytekApiSecret, process.env.IFLYTEK_API_SECRET),
     };
   }
   return {
-    alibabaAppKey: firstNonEmpty(process.env.ALIBABA_NLS_APP_KEY),
-    alibabaToken: firstNonEmpty(process.env.ALIBABA_NLS_TOKEN),
-    alibabaEndpoint: firstNonEmpty(process.env.ALIBABA_NLS_ENDPOINT, 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1'),
+    alibabaAppKey: firstNonEmpty(adminConfig.alibabaAppKey, process.env.ALIBABA_NLS_APP_KEY),
+    alibabaToken: firstNonEmpty(adminConfig.alibabaToken, process.env.ALIBABA_NLS_TOKEN),
+    alibabaEndpoint: firstNonEmpty(adminConfig.alibabaEndpoint, process.env.ALIBABA_NLS_ENDPOINT, 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1'),
   };
+}
+
+async function loadRemoteAdminConfig(): Promise<Partial<Record<string, string>>> {
+  const endpoint = process.env.ASR_GATEWAY_CONFIG_URL?.trim();
+  const secret = process.env.ASR_GATEWAY_SYNC_SECRET?.trim();
+  if (!endpoint || !secret) return {};
+  try {
+    const response = await fetch(endpoint, {
+      headers: { 'x-asr-gateway-secret': secret },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return {};
+    const body = await response.json() as { config?: Record<string, string> };
+    return body.config ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function loadAdminConfig<T extends Record<string, unknown>>(key: string): Promise<Partial<T>> {
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return {};
+  try {
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data } = await supabase
+      .from('admin_app_config')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle();
+    return (data?.value ?? {}) as Partial<T>;
+  } catch {
+    return {};
+  }
+}
+
+function firstNonEmpty(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() && value.trim() !== '********') return value.trim();
+  }
+  return '';
 }
 
 function mergeNonEmpty(
@@ -277,13 +326,6 @@ function mergeNonEmpty(
     next[key] = value;
   }
   return next;
-}
-
-function firstNonEmpty(...values: Array<unknown>): string {
-  for (const value of values) {
-    if (typeof value === 'string' && value.trim() && value.trim() !== '********') return value.trim();
-  }
-  return '';
 }
 
 function startIflytek(
