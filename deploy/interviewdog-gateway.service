@@ -1,0 +1,19 @@
+[Unit]
+Description=InterviewDog ASR Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/interviewdog-gateway
+EnvironmentFile=/etc/interviewdog-gateway.env
+Environment=GATEWAY_STANDALONE=true
+Environment=PORT=8080
+Environment=ASR_GATEWAY_MAX_CLIENTS=20
+ExecStart=/root/.bun/bin/bun run /opt/interviewdog-gateway/api/asr-gateway.ts
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

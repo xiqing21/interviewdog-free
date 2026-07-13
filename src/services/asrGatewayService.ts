@@ -324,8 +324,16 @@ function flushQueue(): void {
 }
 
 function buildGatewayUrl(): string {
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return 'wss://interviewdog-free.vercel.app/api/asr-gateway';
+  const configuredUrl = import.meta.env.VITE_ASR_GATEWAY_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'file:' ||
+      window.desktopWindow?.isDesktop ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1')
+  ) {
+    return 'wss://bwg.yihan.me/api/asr-gateway';
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/api/asr-gateway`;
