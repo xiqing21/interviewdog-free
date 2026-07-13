@@ -35,7 +35,11 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+.env.production
 electron-builder.env
+
+# Sites build helper declarations
+build/*.d.ts
 
 # WorkBuddy project memory
 .workbuddy/

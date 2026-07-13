@@ -13,5 +13,5 @@
     "emitDeclarationOnly": true,
     "strict": true
   },
-  "include": ["vite.config.ts", "api/**/*.ts"]
+  "include": ["vite.config.ts", "build/**/*.ts", "api/**/*.ts"]
 }

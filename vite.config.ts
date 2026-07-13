@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { fileURLToPath, URL } from 'node:url';
+import { sites } from './build/sites-vite-plugin';
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -12,6 +13,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    sites(),
     {
       name: 'local-mimo-asr-api',
       configureServer(server) {
