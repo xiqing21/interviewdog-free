@@ -43,7 +43,25 @@ const ALLOWED_ORIGINS = new Set(
     .filter(Boolean),
 );
 
-const server = createServer((_, response) => {
+const server = createServer(async (request, response) => {
+  const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+  if (request.method === 'GET' && requestUrl.searchParams.get('config') === '1') {
+    const expectedSecret = process.env.ASR_GATEWAY_SYNC_SECRET?.trim();
+    const receivedHeader = request.headers['x-asr-gateway-secret'];
+    const receivedSecret = (Array.isArray(receivedHeader) ? receivedHeader[0] : receivedHeader ?? '').trim();
+    if (!expectedSecret || receivedSecret !== expectedSecret) {
+      response.writeHead(401, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    const config = await loadAdminConfig<Record<string, string>>('asr');
+    response.writeHead(200, {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'application/json',
+    });
+    response.end(JSON.stringify({ config }));
+    return;
+  }
   response.writeHead(426, { 'Content-Type': 'text/plain; charset=utf-8' });
   response.end('WebSocket upgrade required');
 });
