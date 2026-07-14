@@ -135,10 +135,12 @@ function connectGateway(session: GatewaySession): void {
   };
   socket.onerror = () => {
     if (ws !== socket) return;
+    console.warn('[ASR Gateway] socket error');
     if (!manuallyStopped) scheduleReconnect('gateway error');
   };
-  socket.onclose = () => {
+  socket.onclose = (event) => {
     if (ws !== socket) return;
+    console.warn('[ASR Gateway] socket closed', { code: event.code, reason: event.reason });
     stopClientHeartbeat();
     ready = false;
     ws = null;

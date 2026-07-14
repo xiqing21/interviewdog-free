@@ -10,7 +10,7 @@ EnvironmentFile=/etc/interviewdog-gateway.env
 Environment=GATEWAY_STANDALONE=true
 Environment=PORT=8080
 Environment=ASR_GATEWAY_MAX_CLIENTS=20
-Environment=ASR_GATEWAY_ALLOWED_ORIGINS=https://interviewpig.xyz,https://www.interviewpig.xyz,https://interviewpig.cn,https://www.interviewpig.cn,https://mianshizhu.xyz,https://www.mianshizhu.xyz,https://mianshizhu.cn,https://www.mianshizhu.cn
+Environment=ASR_GATEWAY_ALLOWED_ORIGINS=https://interviewpig.xyz,https://www.interviewpig.xyz,https://interviewpig.cn,https://www.interviewpig.cn,https://mianshizhu.xyz,https://www.mianshizhu.xyz,https://mianshizhu.cn,https://www.mianshizhu.cn,file://
 Environment=ASR_GATEWAY_CONFIG_URL=https://mianshizhu.xyz/api/asr-gateway?config=1
 ExecStart=/root/.bun/bin/bun run /opt/interviewdog-gateway/api/asr-gateway.ts
 Restart=always

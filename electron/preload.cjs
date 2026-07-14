@@ -9,13 +9,26 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   startSystemAudio: () => ipcRenderer.invoke('desktop-audio:start'),
   stopSystemAudio: () => ipcRenderer.invoke('desktop-audio:stop'),
   onSystemAudioData: (callback) => {
+    let pendingBytes = new Uint8Array(0);
     const subscription = (_event, buffer) => {
-      const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-      const int16Array = new Int16Array(ab);
-      callback(int16Array);
+      const bytes = buffer instanceof Uint8Array
+        ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+        : new Uint8Array(buffer);
+      const merged = new Uint8Array(pendingBytes.length + bytes.length);
+      merged.set(pendingBytes);
+      merged.set(bytes, pendingBytes.length);
+      const alignedLength = merged.length - (merged.length % 2);
+      if (alignedLength > 0) {
+        const aligned = merged.slice(0, alignedLength);
+        callback(new Int16Array(aligned.buffer));
+      }
+      pendingBytes = merged.slice(alignedLength);
     };
     ipcRenderer.on('desktop-audio:data', subscription);
-    return () => ipcRenderer.removeListener('desktop-audio:data', subscription);
+    return () => {
+      pendingBytes = new Uint8Array(0);
+      ipcRenderer.removeListener('desktop-audio:data', subscription);
+    };
   },
   onSystemAudioEnded: (callback) => {
     const subscription = () => callback();

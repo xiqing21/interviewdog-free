@@ -1190,16 +1190,16 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         onEnd: () => setListeningFromActiveSources(),
         onReady: () => {
           dispatch({ type: 'SET_ERROR', payload: null });
-          if (systemAudioService.isProcessing()) return;
-          void systemAudioService.start({
-            onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
-            onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
-            onEnd: () => {
-              dispatch({ type: 'SET_ERROR', payload: '系统音频捕获已结束，听音已停止。请重新选择面试窗口后再开始。' });
-              asrGatewayService.stop();
-              setListeningFromActiveSources();
-            },
-          });
+        },
+      });
+      // Mac 原生采集不依赖 Gateway 先握手成功；连接恢复后，Gateway 会发送队列中的 PCM。
+      void systemAudioService.start({
+        onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
+        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
+        onEnd: () => {
+          dispatch({ type: 'SET_ERROR', payload: '系统音频捕获已结束，听音已停止。' });
+          asrGatewayService.stop();
+          setListeningFromActiveSources();
         },
       });
       setListeningFromActiveSources();
