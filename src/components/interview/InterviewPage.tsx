@@ -54,6 +54,7 @@ import type { AppSettings, ASRProvider, InterviewSession, KnowledgeLibraryItem, 
 import { COMMERCIAL_MODE } from '../../config/commercial';
 
 export function InterviewPage() {
+  const isDesktop = Boolean(window.desktopWindow?.isDesktop);
   const {
     aiSettings,
     appSettings,
@@ -154,7 +155,7 @@ export function InterviewPage() {
         sessionCount={sessionSummaries.length}
         onContinue={() => {
           setShowStartPrompt(false);
-          setShowAudioPrep(!activeSession.archivedAt);
+          setShowAudioPrep(!activeSession.archivedAt && !isDesktop);
         }}
         onCreate={() => {
           setSetupMode('new');
@@ -166,7 +167,7 @@ export function InterviewPage() {
           switchSession(id);
           setShowStartPrompt(false);
           const targetSession = sessions.find((session) => session.id === id);
-          setShowAudioPrep(!targetSession?.archivedAt);
+          setShowAudioPrep(!targetSession?.archivedAt && !isDesktop);
         }}
       />
     );
@@ -184,7 +185,7 @@ export function InterviewPage() {
           mode={setupMode}
           onDone={() => {
             setShowSetup(false);
-            setShowAudioPrep(true);
+            setShowAudioPrep(!isDesktop);
           }}
         />
       </Box>
@@ -340,19 +341,21 @@ export function InterviewPage() {
               生成复盘
             </Button>
           )}
-          <Button
-            size="small"
-            variant="text"
-            sx={{ ml: 'auto' }}
-            onClick={() => {
-              stopListening();
-              setShowAudioPrep(true);
-              void prepareSystemAudioShare();
-            }}
-            disabled={Boolean(activeSession.archivedAt)}
-          >
-            重新准备听音
-          </Button>
+          {!isDesktop && (
+            <Button
+              size="small"
+              variant="text"
+              sx={{ ml: 'auto' }}
+              onClick={() => {
+                stopListening();
+                setShowAudioPrep(true);
+                void prepareSystemAudioShare();
+              }}
+              disabled={Boolean(activeSession.archivedAt)}
+            >
+              重新准备听音
+            </Button>
+          )}
           <Button
             size="small"
             variant="outlined"
@@ -385,9 +388,9 @@ export function InterviewPage() {
           />
           <Chip
             size="small"
-            color={systemAudioReady ? 'success' : 'default'}
-            icon={systemAudioReady ? <CheckCircleIcon /> : <ComputerIcon />}
-            label={systemAudioReady ? '面试窗口已选择' : '未选择面试窗口'}
+            color={isDesktop || systemAudioReady ? 'success' : 'default'}
+            icon={isDesktop || systemAudioReady ? <CheckCircleIcon /> : <ComputerIcon />}
+            label={isDesktop ? (isListening ? '系统音频已连接' : '系统音频待启动') : (systemAudioReady ? '面试窗口已选择' : '未选择面试窗口')}
           />
           <AnswerModeToggle />
           <FormControlLabel
