@@ -5,7 +5,6 @@ const { spawn } = require('node:child_process');
 const APP_TITLE = 'MianshiZhu Pro';
 const MIN_OPACITY = 0.35;
 const MAX_OPACITY = 1;
-const DEBUG_VISIBLE = process.env.MIANSHIZHU_DEBUG_VISIBLE === '1';
 
 let mainWindow;
 let audioProcess = null;
@@ -58,9 +57,7 @@ function createWindow() {
   });
 
   mainWindow.setOpacity(MAX_OPACITY);
-  if (!DEBUG_VISIBLE) {
-    mainWindow.setContentProtection(true);
-  }
+  mainWindow.setContentProtection(true);
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -84,7 +81,7 @@ app.setName(APP_TITLE);
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   checkAndRequestPermissions();
-  if (process.platform === 'darwin' && !DEBUG_VISIBLE) {
+  if (process.platform === 'darwin') {
     app.dock.hide(); // 隐藏 macOS Dock 栏图标
   }
   createWindow();
