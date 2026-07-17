@@ -13,6 +13,7 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
 import { COMMERCIAL_PLANS, FREE_TRIAL_MINUTES } from '../../config/commercial';
+import { ContactSupport } from '../common/ContactSupport';
 import { useAuth } from '../../hooks/useAuth';
 import { useBilling } from '../../hooks/useBilling';
 
@@ -134,6 +135,8 @@ export function BillingPage() {
           </Box>
         </Stack>
       </Paper>
+
+      <ContactSupport />
     </Box>
   );
 }

@@ -63,7 +63,8 @@ function createWindow() {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    // Web deploy uses dist/index.html as marketing site; the SPA shell is app.html.
+    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'app.html'));
   }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

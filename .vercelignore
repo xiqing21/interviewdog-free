@@ -7,6 +7,7 @@ __pycache__/
 node_modules/
 dist/
 dist-ssr/
+release/
 *.tsbuildinfo
 vite.config.d.ts
 
@@ -17,3 +18,10 @@ vite.config.d.ts
 logs/
 *.log
 .DS_Store
+
+# Electron / local build artifacts
+build/mac-audio-helper
+*.dmg
+*.blockmap
+.pnpm-store/
+.workbuddy/

@@ -43,3 +43,5 @@ electron-builder.env
 # pnpm
 .pnpm-store/
 .vercel
+
+.venv-ffmpeg/

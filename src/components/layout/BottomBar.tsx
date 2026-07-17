@@ -2,22 +2,34 @@
  * BottomBar — Bottom status bar with API status and hotkey hints.
  */
 
-import { Box, Typography } from '@mui/material';
+import type { ReactNode } from 'react';
+import { Box, Link, Typography } from '@mui/material';
 import { useSettings } from '../../hooks/useSettings';
 import { COMMERCIAL_MODE } from '../../config/commercial';
+import { SUPPORT_EMAIL, SUPPORT_MAILTO } from '../../config/contact';
 
 export function BottomBar() {
   const { connectionStatus } = useSettings();
 
-  let statusText = COMMERCIAL_MODE ? '需要帮助：xiaosuange@gmail.com' : 'API 未测试';
+  let statusNode: ReactNode = COMMERCIAL_MODE ? (
+    <>
+      需要帮助：
+      <Link href={SUPPORT_MAILTO} underline="hover" color="inherit" fontWeight={700}>
+        {SUPPORT_EMAIL}
+      </Link>
+    </>
+  ) : (
+    'API 未测试'
+  );
+
   if (!COMMERCIAL_MODE && connectionStatus) {
     if (connectionStatus.success) {
-      statusText =
+      statusNode =
         connectionStatus.latency !== undefined
           ? `API 已连接 · ${connectionStatus.latency}ms`
           : 'API 已连接';
     } else {
-      statusText = 'API 连接失败';
+      statusNode = 'API 连接失败';
     }
   }
 
@@ -34,8 +46,8 @@ export function BottomBar() {
         bgcolor: 'background.paper',
       }}
     >
-      <Typography variant="caption" color="text.secondary">
-        {statusText}
+      <Typography variant="caption" color="text.secondary" component="div">
+        {statusNode}
       </Typography>
       <Typography variant="caption" color="text.secondary">
         Ctrl+Shift+S 截图 · ↑↓ 滚动 · M 切换主题

@@ -4,10 +4,19 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "installCommand": "pnpm install",
+  "cleanUrls": true,
   "rewrites": [
-    {
-      "source": "/((?!api/.*).*)",
-      "destination": "/index.html"
-    }
+    { "source": "/interview", "destination": "/app" },
+    { "source": "/interview/(.*)", "destination": "/app" },
+    { "source": "/exam", "destination": "/app" },
+    { "source": "/exam/(.*)", "destination": "/app" },
+    { "source": "/knowledge", "destination": "/app" },
+    { "source": "/knowledge/(.*)", "destination": "/app" },
+    { "source": "/billing", "destination": "/app" },
+    { "source": "/billing/(.*)", "destination": "/app" },
+    { "source": "/settings", "destination": "/app" },
+    { "source": "/settings/(.*)", "destination": "/app" },
+    { "source": "/admin", "destination": "/app" },
+    { "source": "/admin/(.*)", "destination": "/app" }
   ]
 }

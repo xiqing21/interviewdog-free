@@ -3,1189 +3,694 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>面试猪 - AI 实时面试辅助工具</title>
-    <meta name="description" content="面试猪是一款 AI 实时面试辅助工具，支持面试官语音实时识别、AI 实时回答、简历与知识库上下文、STAR 回答、复盘总结和低干扰遮板模式。" />
-    <meta name="keywords" content="面试猪,AI面试辅助,实时面试答案,面试实时给答案,面试官语音识别,系统音频识别,AI八股文,项目深挖,STAR面试,面试复盘" />
+    <title>面试猪 - AI 时代的实时面试助手 | 语音识别 · 答案秒出 · 简历上下文</title>
+    <meta
+      name="description"
+      content="面试猪是 AI 实时面试辅助工具：系统音频识别面试官问题，结合简历、岗位 JD 与知识库秒出答案，支持 STAR 重写、面试复盘、网页版与 Mac 客户端。"
+    />
+    <meta
+      name="keywords"
+      content="面试猪,AI面试辅助,实时面试答案,面试官语音识别,系统音频识别,八股文,STAR面试,面试复盘,笔试辅助,Mac面试助手"
+    />
     <meta name="robots" content="index,follow" />
-    <link rel="icon" type="image/png" sizes="48x48" href="https://mianshizhu.cn/favicon-48x48.png" />
     <link rel="canonical" href="https://mianshizhu.cn/" />
+    <link rel="icon" type="image/png" sizes="48x48" href="./assets/favicon-48x48.png" />
+    <link rel="icon" type="image/png" href="./assets/logo.png" />
+    <link rel="apple-touch-icon" href="./assets/logo.png" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="面试猪 - AI 实时面试辅助工具" />
-    <meta property="og:description" content="实时听面试官问题，结合简历和知识库生成更贴合你的回答。" />
-    <meta property="og:image" content="https://mianshizhu.cn/og-image.png" />
-    <style>
-      :root {
-        --orange: #ff7a00;
-        --orange-dark: #d95f00;
-        --ink: #242424;
-        --muted: #6f6f75;
-        --line: #ece7df;
-        --cream: #fff9f0;
-        --soft: #fff4e5;
-        --green: #25b86f;
-        --blue: #3b82f6;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      html {
-        scroll-behavior: smooth;
-      }
-
-      body {
-        margin: 0;
-        color: var(--ink);
-        background: #fff;
-        font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-      }
-
-      a {
-        color: inherit;
-        text-decoration: none;
-      }
-
-      .page {
-        overflow: hidden;
-      }
-
-      .container {
-        width: min(1180px, calc(100% - 40px));
-        margin: 0 auto;
-      }
-
-      .nav {
-        position: sticky;
-        top: 0;
-        z-index: 20;
-        background: rgba(255, 255, 255, 0.88);
-        backdrop-filter: blur(18px);
-        border-bottom: 1px solid rgba(230, 224, 214, 0.8);
-      }
-
-      .nav-inner {
-        height: 72px;
-        display: flex;
-        align-items: center;
-        gap: 28px;
-      }
-
-      .brand {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        font-weight: 950;
-        font-size: 20px;
-        margin-right: auto;
-      }
-
-      .logo {
-        width: 38px;
-        height: 38px;
-        border-radius: 12px;
-        display: grid;
-        place-items: center;
-        background: linear-gradient(135deg, #fff, #ffe6d1);
-        box-shadow: inset 0 0 0 1px #ffd4ac, 0 8px 24px rgba(255, 122, 0, 0.18);
-      }
-
-      .nav-link {
-        color: #4f4f56;
-        font-size: 15px;
-        font-weight: 700;
-      }
-
-      .nav-link:hover {
-        color: var(--orange);
-      }
-
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        min-height: 44px;
-        padding: 0 20px;
-        border-radius: 999px;
-        border: 1px solid transparent;
-        font-weight: 900;
-        cursor: pointer;
-        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
-        white-space: nowrap;
-      }
-
-      .btn:hover {
-        transform: translateY(-1px);
-      }
-
-      .btn-primary {
-        color: #fff;
-        background: linear-gradient(135deg, #ff8a00, #ff6500);
-        box-shadow: 0 12px 28px rgba(255, 122, 0, 0.28);
-      }
-
-      .btn-secondary {
-        color: var(--orange-dark);
-        background: #fff;
-        border-color: #ffd6ae;
-      }
-
-      .btn-ghost {
-        color: #9a5c22;
-        background: #fff7ef;
-        border-color: #ffe2c5;
-      }
-
-      .btn-disabled {
-        color: #a6a6ad;
-        background: #f1f1f3;
-        border-color: #e5e5e7;
-        cursor: not-allowed;
-        box-shadow: none;
-      }
-
-      .hero {
-        position: relative;
-        padding: 82px 0 54px;
-        background:
-          radial-gradient(circle at 12% 16%, rgba(255, 122, 0, 0.16), transparent 28%),
-          radial-gradient(circle at 86% 10%, rgba(255, 199, 125, 0.25), transparent 24%),
-          linear-gradient(180deg, #fffaf3 0%, #fff 82%);
-      }
-
-      .hero-grid {
-        display: grid;
-        grid-template-columns: 0.95fr 1.05fr;
-        gap: 52px;
-        align-items: center;
-      }
-
-      .eyebrow {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 14px;
-        border-radius: 999px;
-        color: #9a5000;
-        background: #fff1dd;
-        border: 1px solid #ffd6a7;
-        font-size: 14px;
-        font-weight: 900;
-      }
-
-      h1 {
-        margin: 24px 0 18px;
-        font-size: clamp(42px, 6vw, 76px);
-        line-height: 1.04;
-        font-weight: 950;
-      }
-
-      .hero-highlight {
-        color: var(--orange);
-      }
-
-      .lead {
-        max-width: 640px;
-        color: #56565d;
-        font-size: 20px;
-        line-height: 1.85;
-        margin: 0;
-      }
-
-      .hero-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 14px;
-        margin-top: 30px;
-      }
-
-      .trust-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-top: 26px;
-      }
-
-      .trust-pill {
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: #fff;
-        border: 1px solid #f0e5d8;
-        color: #5e5e65;
-        font-weight: 800;
-        font-size: 13px;
-      }
-
-      .product-card {
-        position: relative;
-        border-radius: 28px;
-        padding: 14px;
-        background: linear-gradient(135deg, #fff, #fff3df);
-        border: 1px solid #ffdfbd;
-        box-shadow: 0 28px 70px rgba(164, 91, 16, 0.18);
-      }
-
-      .window {
-        border-radius: 22px;
-        overflow: hidden;
-        background: #f8fafc;
-        border: 1px solid #e5e7eb;
-      }
-
-      .window-bar {
-        height: 44px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 0 16px;
-        background: #fff;
-        border-bottom: 1px solid #e9edf2;
-      }
-
-      .dot {
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-      }
-
-      .dot.red { background: #ff6b6b; }
-      .dot.yellow { background: #f6c177; }
-      .dot.green { background: #4ade80; }
-
-      .screen {
-        min-height: 410px;
-        display: grid;
-        grid-template-columns: 0.8fr 1.2fr 0.9fr;
-        gap: 12px;
-        padding: 16px;
-        background: #f5f7fb;
-      }
-
-      .panel {
-        border-radius: 16px;
-        background: #fff;
-        border: 1px solid #e7ebf0;
-        padding: 14px;
-        min-height: 300px;
-      }
-
-      .panel-title {
-        font-weight: 950;
-        margin-bottom: 12px;
-      }
-
-      .question {
-        padding: 12px;
-        border-radius: 12px;
-        background: #fff8ee;
-        border: 1px solid #ffd6ae;
-        color: #523211;
-        font-weight: 800;
-        font-size: 14px;
-        margin-bottom: 10px;
-      }
-
-      .answer {
-        line-height: 1.75;
-        color: #3f4652;
-        font-size: 14px;
-      }
-
-      .answer strong {
-        color: #111827;
-      }
-
-      .tag {
-        display: inline-flex;
-        margin: 10px 6px 0 0;
-        padding: 6px 10px;
-        border-radius: 999px;
-        color: #9a5000;
-        background: #fff3e1;
-        font-weight: 900;
-        font-size: 12px;
-      }
-
-      .voice-line {
-        padding: 10px;
-        border-radius: 12px;
-        background: #f2f6ff;
-        color: #3a4a63;
-        font-size: 13px;
-        margin-bottom: 10px;
-      }
-
-      .float-badge {
-        position: absolute;
-        right: 26px;
-        bottom: 26px;
-        padding: 12px 14px;
-        border-radius: 16px;
-        color: #14321f;
-        background: rgba(229, 255, 237, 0.92);
-        border: 1px solid #9ee8b8;
-        box-shadow: 0 16px 34px rgba(23, 106, 61, 0.16);
-        font-weight: 950;
-      }
-
-      .section {
-        padding: 78px 0;
-      }
-
-      .section-soft {
-        background: var(--cream);
-      }
-
-      .section-title {
-        max-width: 720px;
-        margin: 0 auto 34px;
-        text-align: center;
-      }
-
-      .section-title h2 {
-        margin: 0 0 12px;
-        font-size: clamp(30px, 4vw, 48px);
-        line-height: 1.16;
-      }
-
-      .section-title p {
-        margin: 0;
-        color: var(--muted);
-        font-size: 18px;
-        line-height: 1.75;
-      }
-
-      .platforms {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 16px;
-      }
-
-      .platform {
-        min-height: 116px;
-        border-radius: 22px;
-        background: #fff;
-        border: 1px solid #f0e6dc;
-        padding: 20px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        box-shadow: 0 12px 30px rgba(125, 82, 34, 0.07);
-      }
-
-      .platform b {
-        font-size: 18px;
-      }
-
-      .platform span {
-        color: var(--muted);
-        font-size: 13px;
-      }
-
-      .stealth-wrap {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 24px;
-        align-items: stretch;
-      }
-
-      .stealth-compare {
-        --split: 52%;
-        position: relative;
-        max-width: 1120px;
-        margin: 0 auto;
-        border-radius: 34px;
-        padding: 14px;
-        background: linear-gradient(135deg, #ffd15f, #ff8a2d 48%, #f05a28);
-        border: 1px solid rgba(255, 122, 0, 0.35);
-        box-shadow: 0 34px 90px rgba(180, 84, 20, 0.24);
-        overflow: hidden;
-      }
-
-      .stealth-compare::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background:
-          radial-gradient(circle at 12% 18%, rgba(80, 170, 255, 0.52), transparent 21%),
-          radial-gradient(circle at 86% 8%, rgba(64, 151, 231, 0.5), transparent 18%),
-          linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 40%);
-        pointer-events: none;
-      }
-
-      .compare-stage {
-        position: relative;
-        aspect-ratio: 16 / 8.8;
-        min-height: 430px;
-        border-radius: 26px;
-        overflow: hidden;
-        background:
-          linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 38%),
-          linear-gradient(160deg, #ffd467 0%, #ff9b31 42%, #d73b20 100%);
-        isolation: isolate;
-      }
-
-      .compare-stage::after {
-        content: "";
-        position: absolute;
-        inset: auto 0 0;
-        height: 48px;
-        background: rgba(22, 22, 22, 0.42);
-        border-top: 1px solid rgba(255, 255, 255, 0.28);
-        z-index: 2;
-      }
-
-      .compare-note {
-        margin: -12px auto 26px;
-        text-align: center;
-        color: #8a8177;
-        font-weight: 850;
-        font-size: 16px;
-      }
-
-      .compare-label {
-        position: absolute;
-        top: 34px;
-        z-index: 7;
-        padding: 12px 24px;
-        border-radius: 14px;
-        color: #fff;
-        background: #050505;
-        font-size: clamp(22px, 3vw, 40px);
-        font-weight: 950;
-        letter-spacing: 0.08em;
-        box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
-      }
-
-      .compare-label.left { left: 34px; }
-      .compare-label.right { right: 34px; }
-
-      .meeting-window {
-        position: absolute;
-        left: 12%;
-        right: 12%;
-        top: 24%;
-        bottom: 14%;
-        z-index: 3;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.94);
-        box-shadow: 0 30px 80px rgba(31, 31, 31, 0.22);
-        overflow: hidden;
-      }
-
-      .meeting-topbar {
-        height: 38px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 0 14px;
-        color: #6b7280;
-        background: #f8fafc;
-        border-bottom: 1px solid #e5e7eb;
-        font-size: 12px;
-        font-weight: 800;
-      }
-
-      .meeting-dots {
-        margin-left: auto;
-        display: flex;
-        gap: 10px;
-        color: #a1a1aa;
-        font-size: 15px;
-      }
-
-      .video-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        padding: 56px 16px 58px;
-        height: calc(100% - 38px);
-      }
-
-      .video-tile {
-        position: relative;
-        overflow: hidden;
-        border-radius: 10px;
-        background:
-          radial-gradient(circle at 42% 24%, #f5d6bd 0 8%, transparent 9%),
-          radial-gradient(circle at 50% 44%, #f2c49d 0 14%, transparent 15%),
-          linear-gradient(135deg, #eef2f7, #d6dee8);
-        border: 1px solid #d8dee8;
-      }
-
-      .video-tile::before {
-        content: "";
-        position: absolute;
-        left: 50%;
-        top: 26%;
-        width: 74px;
-        height: 98px;
-        transform: translateX(-50%);
-        border-radius: 52% 48% 42% 42%;
-        background: linear-gradient(180deg, #242424, #111827);
-        box-shadow: -14px 18px 0 -8px rgba(16, 24, 39, 0.28);
-      }
-
-      .video-tile::after {
-        content: attr(data-name);
-        position: absolute;
-        left: 18px;
-        bottom: 14px;
-        padding: 7px 18px;
-        border-radius: 8px;
-        color: #222;
-        background: rgba(255, 255, 255, 0.86);
-        border: 1px solid rgba(0, 0, 0, 0.16);
-        font-size: 18px;
-        font-weight: 950;
-        letter-spacing: 0.18em;
-      }
-
-      .meeting-controls {
-        position: absolute;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        height: 44px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        background: rgba(255, 255, 255, 0.94);
-        border-top: 1px solid #e5e7eb;
-        z-index: 4;
-      }
-
-      .control-pill {
-        width: 34px;
-        height: 26px;
-        border-radius: 8px;
-        background: #eef2f7;
-        border: 1px solid #dde3ea;
-      }
-
-      .control-pill.red { background: #ef4444; border-color: #ef4444; }
-      .control-pill.ai { width: 54px; background: #f6f1e8; }
-
-      .candidate-layer {
-        position: absolute;
-        inset: 0;
-        z-index: 5;
-        clip-path: inset(0 calc(100% - var(--split)) 0 0);
-      }
-
-      .assistant-mask {
-        position: absolute;
-        left: 30%;
-        top: 18%;
-        width: 36%;
-        min-height: 48%;
-        border-radius: 16px;
-        padding: 16px;
-        color: #3f3f46;
-        background: rgba(255, 255, 255, 0.72);
-        border: 1px solid rgba(255, 255, 255, 0.62);
-        backdrop-filter: blur(14px);
-        box-shadow: 0 26px 70px rgba(72, 55, 34, 0.22);
-      }
-
-      .mask-title {
-        color: #f97316;
-        font-weight: 950;
-        margin-bottom: 12px;
-      }
-
-      .mask-line {
-        height: 14px;
-        margin: 9px 0;
-        border-radius: 999px;
-        background: rgba(31, 41, 55, 0.16);
-      }
-
-      .mask-line.hot { width: 88%; background: rgba(255, 122, 0, 0.35); }
-      .mask-line.short { width: 58%; }
-
-      .split-handle {
-        position: absolute;
-        left: var(--split);
-        top: -2%;
-        bottom: -2%;
-        z-index: 8;
-        width: 6px;
-        transform: translateX(-50%);
-        background: #ffc400;
-        box-shadow: 0 0 0 1px rgba(121, 76, 0, 0.08), 0 0 24px rgba(255, 196, 0, 0.46);
-        pointer-events: none;
-      }
-
-      .split-handle::after {
-        content: "↔";
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 52px;
-        height: 52px;
-        transform: translate(-50%, -50%);
-        display: grid;
-        place-items: center;
-        border-radius: 999px;
-        color: #191919;
-        background: #ffc400;
-        font-size: 22px;
-        font-weight: 950;
-      }
-
-      .split-range {
-        position: absolute;
-        inset: 0;
-        z-index: 9;
-        width: 100%;
-        height: 100%;
-        opacity: 0;
-        cursor: ew-resize;
-      }
-
-      .compare-actions {
-        display: flex;
-        justify-content: center;
-        gap: 18px;
-        margin-top: 24px;
-        flex-wrap: wrap;
-      }
-
-      .stealth-card {
-        border-radius: 28px;
-        background: #15181f;
-        color: #fff;
-        padding: 24px;
-        min-height: 440px;
-        position: relative;
-        overflow: hidden;
-      }
-
-      .stealth-card.light {
-        background: #fff;
-        color: var(--ink);
-        border: 1px solid #eee4d8;
-      }
-
-      .meeting-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        margin-top: 22px;
-      }
-
-      .camera {
-        height: 124px;
-        border-radius: 18px;
-        background: linear-gradient(135deg, #303846, #1d222b);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-      }
-
-      .camera.light {
-        background: linear-gradient(135deg, #f2f3f6, #e7ebf0);
-        border-color: #dfe4ea;
-      }
-
-      .overlay-mask {
-        position: absolute;
-        right: 28px;
-        bottom: 28px;
-        width: min(330px, calc(100% - 56px));
-        border-radius: 22px;
-        padding: 18px;
-        background: rgba(255, 255, 255, 0.13);
-        border: 1px solid rgba(255, 255, 255, 0.24);
-        backdrop-filter: blur(22px);
-        box-shadow: 0 26px 70px rgba(0, 0, 0, 0.36);
-      }
-
-      .overlay-line {
-        height: 20px;
-        border-radius: 999px;
-        background: rgba(255, 122, 0, 0.75);
-        margin-top: 10px;
-      }
-
-      .overlay-line:nth-child(3) { width: 72%; }
-      .overlay-line:nth-child(4) { width: 86%; background: rgba(255, 255, 255, 0.24); }
-
-      .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-      }
-
-      .feature {
-        border-radius: 24px;
-        padding: 24px;
-        background: #fff;
-        border: 1px solid #eee4d8;
-        min-height: 220px;
-        box-shadow: 0 16px 42px rgba(126, 86, 43, 0.08);
-      }
-
-      .icon {
-        width: 46px;
-        height: 46px;
-        border-radius: 16px;
-        display: grid;
-        place-items: center;
-        color: #fff;
-        background: var(--orange);
-        font-size: 22px;
-        margin-bottom: 16px;
-      }
-
-      .feature h3,
-      .review h3 {
-        margin: 0 0 10px;
-        font-size: 20px;
-      }
-
-      .feature p,
-      .review p,
-      .faq p {
-        margin: 0;
-        color: var(--muted);
-        line-height: 1.75;
-      }
-
-      .reviews {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 18px;
-      }
-
-      .review {
-        border-radius: 22px;
-        padding: 22px;
-        background: #fff;
-        border: 1px solid #eee4d8;
-      }
-
-      .score {
-        color: var(--orange);
-        font-weight: 950;
-        margin-bottom: 10px;
-      }
-
-      .faq-list {
-        max-width: 860px;
-        margin: 0 auto;
-        display: grid;
-        gap: 12px;
-      }
-
-      .faq {
-        border-radius: 18px;
-        padding: 20px;
-        background: #fff;
-        border: 1px solid #eee4d8;
-      }
-
-      .faq h3 {
-        margin: 0 0 8px;
-        font-size: 18px;
-      }
-
-      .cta {
-        padding: 68px 0;
-        background: linear-gradient(135deg, #23170e, #4a2308);
-        color: #fff;
-      }
-
-      .cta-box {
-        display: flex;
-        align-items: center;
-        gap: 24px;
-      }
-
-      .cta-box h2 {
-        margin: 0 0 8px;
-        font-size: clamp(30px, 4vw, 46px);
-      }
-
-      .cta-box p {
-        margin: 0;
-        color: rgba(255, 255, 255, 0.72);
-      }
-
-      .footer {
-        padding: 30px 0;
-        color: #777;
-        font-size: 13px;
-        background: #fff;
-        border-top: 1px solid var(--line);
-      }
-
-      .footer-inner {
-        display: flex;
-        gap: 14px;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      @media (max-width: 920px) {
-        .nav-link {
-          display: none;
-        }
-
-        .hero-grid,
-        .stealth-wrap,
-        .cta-box {
-          grid-template-columns: 1fr;
-          display: grid;
-        }
-
-        .screen {
-          grid-template-columns: 1fr;
-        }
-
-        .platforms,
-        .feature-grid,
-        .reviews {
-          grid-template-columns: 1fr;
-        }
-
-        .hero {
-          padding-top: 48px;
-        }
-
-        .cta-box {
-          align-items: start;
+    <meta property="og:site_name" content="面试猪" />
+    <meta property="og:title" content="面试猪 - AI 时代的实时面试助手" />
+    <meta property="og:description" content="实时听懂面试官，结合你的简历与知识库生成更像你的回答。" />
+    <meta property="og:url" content="https://mianshizhu.cn/" />
+    <meta property="og:image" content="https://mianshizhu.cn/assets/hero-poster.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="stylesheet" href="./assets/site.css" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "面试猪",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, macOS",
+        "url": "https://mianshizhu.cn/",
+        "description": "AI 实时面试辅助：系统音频识别、简历上下文、STAR 回答与复盘。",
+        "offers": {
+          "@type": "Offer",
+          "price": "29",
+          "priceCurrency": "CNY"
         }
       }
-
-      @media (max-width: 560px) {
-        .container {
-          width: min(100% - 28px, 1180px);
-        }
-
-        .nav-inner {
-          height: auto;
-          padding: 12px 0;
-          flex-wrap: wrap;
-        }
-
-        .brand {
-          width: 100%;
-        }
-
-        .btn {
-          min-height: 40px;
-          padding: 0 14px;
-        }
-
-        .product-card {
-          padding: 8px;
-          border-radius: 20px;
-        }
-
-        .stealth-card {
-          min-height: 360px;
-        }
-
-        .compare-stage {
-          min-height: 360px;
-          aspect-ratio: 4 / 5;
-        }
-
-        .compare-label {
-          top: 18px;
-          padding: 8px 12px;
-          font-size: 18px;
-          border-radius: 10px;
-        }
-
-        .compare-label.left { left: 16px; }
-        .compare-label.right { right: 16px; }
-
-        .meeting-window {
-          left: 6%;
-          right: 6%;
-          top: 25%;
-          bottom: 13%;
-        }
-
-        .video-grid {
-          padding: 46px 10px 52px;
-          gap: 8px;
-        }
-
-        .assistant-mask {
-          left: 13%;
-          top: 20%;
-          width: 58%;
-          min-height: 38%;
-        }
-      }
-    </style>
+    </script>
   </head>
   <body>
-    <div class="page">
-      <nav class="nav">
-        <div class="container nav-inner">
-          <a class="brand" href="#">
-            <span class="logo">🐷</span>
-            <span>面试猪</span>
-          </a>
-          <a class="nav-link" href="#feature">面试辅助</a>
+    <nav class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="./">
+          <img src="./assets/logo.png" alt="面试猪" width="38" height="38" />
+          <span>面试猪</span>
+        </a>
+        <button class="mobile-nav-toggle" type="button" data-nav-toggle="#main-nav">菜单</button>
+        <div class="nav-links" id="main-nav">
+          <a class="nav-link" href="#feature">功能</a>
           <a class="nav-link" href="#stealth">隐身遮板</a>
+          <a class="nav-link" href="#pricing">定价</a>
           <a class="nav-link" href="#reviews">用户评价</a>
+          <a class="nav-link" href="./docs/">教程</a>
+          <a class="nav-link" href="./download.html">下载</a>
           <a class="nav-link" href="#faq">帮助</a>
-          <a class="btn btn-ghost" href="https://mianshizhu.cn/interview">登录/注册</a>
-          <a class="btn btn-primary" href="https://mianshizhu.cn/interview">使用网页版</a>
+          <a class="nav-link" href="#contact">联系</a>
+          <a class="btn btn-ghost btn-sm" href="/interview">登录/注册</a>
+          <a class="btn btn-primary btn-sm" href="/interview">使用网页版</a>
         </div>
-      </nav>
+      </div>
+    </nav>
 
-      <main>
-        <section class="hero">
-          <div class="container hero-grid">
-            <div>
-              <span class="eyebrow">春招/秋招/社招 · AI 实时面试助手</span>
-              <h1>任何人的职业生涯都不应该被<span class="hero-highlight">临场卡壳</span>定义</h1>
-              <p class="lead">
-                面试猪实时监听面试官系统音频，结合你的简历、岗位 JD、知识库和专业热词，自动生成更像你本人经历的回答。你专心沟通，它负责把思路补齐。
+    <main>
+      <!-- Hero -->
+      <section class="hero">
+        <div class="container hero-grid">
+          <div>
+            <span class="eyebrow">春招 / 秋招 / 社招 · AI 实时面试 Copilot</span>
+            <h1>
+              不靠临场硬扛<br />
+              让回答更像<span class="hero-highlight">你自己</span>
+            </h1>
+            <p class="lead">
+              面试猪实时识别面试官系统音频，结合你的简历、岗位 JD 和知识库生成回答。你专注沟通，它补齐思路、结构和关键词。
+            </p>
+            <div class="hero-actions">
+              <a class="btn btn-primary btn-lg" href="/interview">免费试用网页版</a>
+              <a class="btn btn-secondary btn-lg" href="./download.html">下载 Mac 客户端</a>
+              <a class="btn btn-ghost btn-lg" href="./docs/">查看使用教程</a>
+            </div>
+            <div class="trust-row">
+              <span class="trust-pill">15 分钟免费试用</span>
+              <span class="trust-pill">系统音频识别</span>
+              <span class="trust-pill">简历 + 知识库上下文</span>
+              <span class="trust-pill">STAR / 精简 / 详细重写</span>
+              <span class="trust-pill">面试复盘归档</span>
+            </div>
+          </div>
+
+          <div class="media-card" aria-label="面试猪产品演示">
+            <div class="media-frame">
+              <video
+                data-autoplay
+                autoplay
+                muted
+                loop
+                playsinline
+                webkit-playsinline
+                poster="/assets/hero-poster.jpg"
+                aria-label="面试猪实时面试辅助场景：学长推荐与实战辅助"
+              >
+                <source src="/assets/hero.mp4" type="video/mp4" />
+              </video>
+              <div class="media-glow"></div>
+            </div>
+            <div class="float-badge"><span class="live-dot"></span>实时识别 · 毫秒级响应</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Platforms -->
+      <section class="section section-soft">
+        <div class="container">
+          <div class="section-title">
+            <h2>支持常见线上面试场景</h2>
+            <p>腾讯会议、飞书、Zoom、微信语音、浏览器面试都可以用。网页版随时开，Mac 客户端更适合低干扰浮层。</p>
+          </div>
+          <div class="platforms">
+            <div class="platform"><b>腾讯会议</b><span>共享会议窗口 + 系统音频</span></div>
+            <div class="platform"><b>飞书会议</b><span>实时转写面试官问题</span></div>
+            <div class="platform"><b>Zoom / Meet</b><span>系统音频触发 AI 回答</span></div>
+            <div class="platform"><b>微信 / 电话外放</b><span>麦克风 + 系统音频双路</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Story ad video -->
+      <section class="section" id="demo">
+        <div class="container">
+          <div class="section-title">
+            <h2>从被八股问倒，到 Offer 拿到手软</h2>
+            <p>
+              剧情广告：男生八股卡壳 → 女生面不过找不到工作 → 学长推荐面试猪 → 实时辅助稳住回答 → Offer 拿到手软。
+              学生党、春招秋招、社招职场人都适用。
+            </p>
+          </div>
+          <div class="media-card" style="max-width: 980px; margin: 0 auto">
+            <div class="media-frame story-frame" style="aspect-ratio: 16 / 9">
+              <video
+                id="story-ad"
+                playsinline
+                webkit-playsinline
+                controls
+                controlslist="nodownload"
+                preload="auto"
+                poster="/assets/demo-poster.jpg"
+                aria-label="面试猪剧情广告：八股翻车到拿到 Offer"
+              >
+                <source src="/assets/ad-story.mp4" type="video/mp4" />
+                <source src="/assets/demo.mp4" type="video/mp4" />
+                你的浏览器不支持视频播放，请
+                <a href="/assets/ad-story.mp4">点击下载观看</a>
+              </video>
+            </div>
+            <div class="trust-row" style="justify-content: center; margin: 18px 8px 4px">
+              <span class="trust-pill">约 45 秒剧情广告</span>
+              <span class="trust-pill">男女双人 · 学长推荐</span>
+              <span class="trust-pill">学生 / 职场通用</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stealth -->
+      <section class="section section-soft" id="stealth">
+        <div class="container">
+          <div class="section-title">
+            <h2>完美隐身，对方看不到</h2>
+            <p>左侧是你看到的辅助层，右侧是面试官看到的正常画面。拖动中间滑杆，感受遮板差异。</p>
+          </div>
+          <p class="compare-note">
+            同一场腾讯会议 / 飞书会议：左边是你本机看到的「会议 + 面试猪浮层」；右边是对方屏幕共享里看到的「只有正常会议」。拖动黄条对比。
+          </p>
+          <div class="stealth-compare" data-compare data-split="50">
+            <div class="compare-stage">
+              <!-- 右：面试官 / 共享画面 = 干净会议，无辅助层 -->
+              <div class="compare-layer base" aria-hidden="true">
+                <img src="./assets/stealth-interviewer.jpg" alt="面试官视角：只有正常视频会议" />
+              </div>
+              <!-- 左：面试者本机 = 同一会议 + AI 实时辅助遮板 -->
+              <div class="compare-layer candidate" aria-hidden="true">
+                <img src="./assets/stealth-candidate.jpg" alt="面试者视角：会议画面叠加面试猪辅助" />
+                <div class="assistant-mask">
+                  <div class="mask-title">🐷 面试猪 · 仅你可见</div>
+                  <div class="mask-line hot"></div>
+                  <div class="mask-line"></div>
+                  <div class="mask-line"></div>
+                  <div class="mask-line short"></div>
+                  <div class="mask-line hot"></div>
+                  <p style="margin: 12px 0 0; font-size: 12px; color: #666; line-height: 1.55">
+                    面试官问题：讲一下项目里的乱序处理<br />
+                    提示：Watermark + 侧输出 · 结合简历指标
+                  </p>
+                </div>
+              </div>
+              <div class="compare-label left">你看到的（有辅助）</div>
+              <div class="compare-label right">对方看到的（无辅助）</div>
+              <div class="split-handle" aria-hidden="true"></div>
+            </div>
+            <div class="compare-actions">
+              <a class="btn btn-dark" href="./download.html">下载 Mac 客户端</a>
+              <a class="btn btn-primary" href="/interview">使用网页版</a>
+              <a class="btn btn-secondary" href="./docs/stealth.html">隐身原理说明</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section class="section" id="feature">
+        <div class="container">
+          <div class="section-title">
+            <h2>不是标准答案机，是你的面试 Copilot</h2>
+            <p>能力集中在面试现场：听清问题、贴合经历、快速重写、事后复盘。</p>
+          </div>
+          <div class="feature-grid">
+            <div class="feature">
+              <div class="icon">🎙</div>
+              <h3>面试官问题自动识别</h3>
+              <p>系统音频触发回答；你的麦克风用于对话记录与复盘，减少误触发。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">📄</div>
+              <h3>简历与 JD 上下文</h3>
+              <p>上传简历、岗位描述和项目材料，回答带入真实经历，避免空泛套话。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">🧠</div>
+              <h3>专家知识库增强</h3>
+              <p>挂载 QA、文档、网页与热词，适合后端、大数据、前端、Web3 等岗位。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">⚡</div>
+              <h3>实时回答 + 手动触发</h3>
+              <p>识别停顿自动生成；没触发时，也可一键用最新问题手动触发。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">✨</div>
+              <h3>多模式重新生成</h3>
+              <p>普通 / 精简 / 详细 / STAR / 清上下文 / 联网搜索，按场景切换。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">📊</div>
+              <h3>面试归档与复盘</h3>
+              <p>保存问答与表达记录，生成复盘总结，方便下一场继续优化。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">🖥️</div>
+              <h3>Mac 低干扰浮层</h3>
+              <p>桌面客户端支持透明度、内容保护与系统音频捕获，更适合正式面试。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">📸</div>
+              <h3>笔试截图辅助</h3>
+              <p>屏幕截图 / 上传题目，视觉模型识别并解答，代码题与选择题都可用。</p>
+            </div>
+            <div class="feature">
+              <div class="icon">🔒</div>
+              <h3>本地优先与可选同步</h3>
+              <p>未登录数据在本地；登录后可同步简历库、知识库与面试记录。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Pricing -->
+      <section class="section section-soft" id="pricing">
+        <div class="container">
+          <div class="section-title">
+            <h2>简单透明的定价</h2>
+            <p>新用户赠送 15 分钟试用。正式面试建议准备 30–60 分钟额度，用不完可按套餐继续加购。</p>
+          </div>
+          <div class="price-grid">
+            <article class="price-card popular">
+              <span class="badge">新用户推荐</span>
+              <h3>首面体验包</h3>
+              <div class="price"><strong>¥29</strong><s>¥59</s></div>
+              <div class="price-meta">60 分钟 · 一次性</div>
+              <p>适合临近一场面试，完整覆盖自我介绍、八股、项目深挖和复盘。</p>
+              <ul class="price-list">
+                <li>比 15 分钟试用更稳</li>
+                <li>支持简历和知识库</li>
+                <li>面试后生成复盘</li>
+              </ul>
+              <a class="btn btn-primary" href="/billing">立即购买</a>
+            </article>
+            <article class="price-card">
+              <span class="badge">高性价比</span>
+              <h3>冲刺加量包</h3>
+              <div class="price"><strong>¥69</strong><s>¥129</s></div>
+              <div class="price-meta">180 分钟 · 一次性</div>
+              <p>适合一周内多场面试，按岗位反复演练和复盘。</p>
+              <ul class="price-list">
+                <li>多场面试连续使用</li>
+                <li>适合大厂多轮流程</li>
+                <li>更适合项目深挖</li>
+              </ul>
+              <a class="btn btn-secondary" href="/billing">立即购买</a>
+            </article>
+            <article class="price-card">
+              <span class="badge">重度求职</span>
+              <h3>求职月卡</h3>
+              <div class="price"><strong>¥129</strong><span style="color:#888">/月</span></div>
+              <div class="price-meta">每月 600 分钟</div>
+              <p>适合集中求职期，简历、知识库和面试记录长期同步。</p>
+              <ul class="price-list">
+                <li>月度额度更充足</li>
+                <li>适合多岗位投递</li>
+                <li>持续复盘与资料沉淀</li>
+              </ul>
+              <a class="btn btn-secondary" href="/billing">订阅月卡</a>
+            </article>
+          </div>
+          <p style="text-align: center; margin-top: 22px; color: var(--muted); font-size: 14px">
+            详细计费与退款说明见
+            <a href="./docs/pricing.html" style="color: var(--orange-dark); font-weight: 800">定价说明文档</a>
+          </p>
+        </div>
+      </section>
+
+      <!-- Docs -->
+      <section class="section" id="docs">
+        <div class="container">
+          <div class="section-title">
+            <h2>教程与文档</h2>
+            <p>从 0 到第一次正式面试，按步骤配置音频、简历、知识库和复盘。</p>
+          </div>
+          <div class="doc-grid">
+            <a class="doc-card" href="./docs/intro.html">
+              <span class="tag">入门</span>
+              <h3>面试猪是什么</h3>
+              <p>产品定位、适用场景，以及和「背答案工具」的区别。</p>
+              <span class="more">阅读 →</span>
+            </a>
+            <a class="doc-card" href="./docs/interview-web.html">
+              <span class="tag">网页版</span>
+              <h3>5 分钟上手面试辅助</h3>
+              <p>Chrome 打开、共享系统音频、上传简历、开始第一场模拟。</p>
+              <span class="more">阅读 →</span>
+            </a>
+            <a class="doc-card" href="./docs/interview-mac.html">
+              <span class="tag">Mac</span>
+              <h3>Mac 客户端教程</h3>
+              <p>安装、权限、系统音频捕获、透明度与内容保护。</p>
+              <span class="more">阅读 →</span>
+            </a>
+            <a class="doc-card" href="./docs/exam.html">
+              <span class="tag">笔试</span>
+              <h3>笔试截图辅助</h3>
+              <p>截题、识别、代码题与选择题的推荐工作流。</p>
+              <span class="more">阅读 →</span>
+            </a>
+            <a class="doc-card" href="./docs/stealth.html">
+              <span class="tag">隐身</span>
+              <h3>隐身与内容保护</h3>
+              <p>屏幕共享不可见原理，以及适用 / 不适用的场景边界。</p>
+              <span class="more">阅读 →</span>
+            </a>
+            <a class="doc-card" href="./docs/faq.html">
+              <span class="tag">FAQ</span>
+              <h3>常见问题</h3>
+              <p>听不到声音、识别不准、额度、登录与支付相关问题。</p>
+              <span class="more">阅读 →</span>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Reviews / Offer social proof -->
+      <section class="section section-soft" id="reviews">
+        <div class="container">
+          <div class="section-title">
+            <h2>用户评价 · Offer 反馈</h2>
+            <p>
+              春招 / 秋招 / 社招同学在群里、私聊里的真实反馈整理（已脱敏）。
+              很多人用完会回来报喜：字节、阿里、腾讯、小红书、小米……
+            </p>
+          </div>
+
+          <div class="offer-marquee" aria-label="用户拿到的公司 Offer 举例">
+            <span class="offer-chip"><span class="dot"></span>字节跳动 <b>后端 Offer</b></span>
+            <span class="offer-chip"><span class="dot"></span>阿里巴巴 <b>Java Offer</b></span>
+            <span class="offer-chip"><span class="dot"></span>腾讯 <b>前端 Offer</b></span>
+            <span class="offer-chip"><span class="dot"></span>小红书 <b>算法 Offer</b></span>
+            <span class="offer-chip"><span class="dot"></span>小米 <b>SU7 相关岗 Offer</b></span>
+            <span class="offer-chip"><span class="dot"></span>美团 · 京东 · 拼多多 <b>多轮上岸</b></span>
+          </div>
+
+          <p class="chat-note">聊天截图式反馈（脱敏展示）· 内容来自用户主动报喜与评价</p>
+
+          <div class="chat-grid">
+            <!-- 字节 -->
+            <article class="chat-phone" aria-label="字节用户反馈">
+              <div class="chat-bar">
+                <div class="chat-avatar bytedance">字</div>
+                <div class="chat-meta">
+                  <strong>小赵 · 后端校招</strong>
+                  <span>微信 · 已脱敏</span>
+                </div>
+              </div>
+              <div class="chat-body">
+                <div class="chat-time">昨天 22:18</div>
+                <div class="bubble them">
+                  哥我跟你说！！三面过了！！字节后端！！
+                  <span class="offer-tag">字节跳动 · Offer</span>
+                </div>
+                <div class="bubble me">牛啊！八股呢？</div>
+                <div class="bubble them">
+                  网络 + 操作系统连环问，要不是面试猪实时提点我肯定卡死。项目深挖那段 STAR 也是它帮我顺的，面试官一直点头 😭
+                </div>
+                <div class="bubble them">真的，这东西比我刷两周面经管用……</div>
+              </div>
+            </article>
+
+            <!-- 阿里 -->
+            <article class="chat-phone" aria-label="阿里用户反馈">
+              <div class="chat-bar">
+                <div class="chat-avatar ali">阿</div>
+                <div class="chat-meta">
+                  <strong>阿畅 · Java 社招</strong>
+                  <span>微信 · 已脱敏</span>
+                </div>
+              </div>
+              <div class="chat-body">
+                <div class="chat-time">周一 14:02</div>
+                <div class="bubble them">
+                  阿里 hr 打电话了，开了 🙏
+                  <span class="offer-tag">阿里巴巴 · Offer</span>
+                </div>
+                <div class="bubble me">恭喜！哪一轮最难？</div>
+                <div class="bubble them">
+                  二面分布式事务 + 消息堆积，我简历里的项目它结合得贼准。我只负责「像人一样讲出来」，思路全是现场辅助给的。
+                </div>
+                <div class="bubble them">已经安利群里三个同学了，别让他们裸面……</div>
+              </div>
+            </article>
+
+            <!-- 腾讯 -->
+            <article class="chat-phone" aria-label="腾讯用户反馈">
+              <div class="chat-bar">
+                <div class="chat-avatar tx">腾</div>
+                <div class="chat-meta">
+                  <strong>Lin · 前端</strong>
+                  <span>QQ · 已脱敏</span>
+                </div>
+              </div>
+              <div class="chat-body">
+                <div class="chat-time">周六 20:41</div>
+                <div class="bubble them">
+                  腾讯前端 offer 收到！手在抖
+                  <span class="offer-tag">腾讯 · Offer</span>
+                </div>
+                <div class="bubble me">！！细节呢</div>
+                <div class="bubble them">
+                  手写题 + 浏览器原理，网页版截图笔试也救了一次。Mac 浮层对方完全看不到，我心理压力小很多。
+                </div>
+                <div class="bubble them">下次面字节继续用，哈哈哈</div>
+              </div>
+            </article>
+
+            <!-- 小红书 -->
+            <article class="chat-phone" aria-label="小红书用户反馈">
+              <div class="chat-bar">
+                <div class="chat-avatar xhs">红</div>
+                <div class="chat-meta">
+                  <strong>小鹿 · 算法</strong>
+                  <span>微信 · 已脱敏</span>
+                </div>
+              </div>
+              <div class="chat-body">
+                <div class="chat-time">周三 11:26</div>
+                <div class="bubble them">
+                  小红书算法挂了又救回来了……四面过了
+                  <span class="offer-tag">小红书 · Offer</span>
+                </div>
+                <div class="bubble me">怎么救的？</div>
+                <div class="bubble them">
+                  推荐系统追问太多，我把知识库挂了面经 + 自己的项目笔记，回答有结构还不空。面试官说「你讲得很清楚」。
+                </div>
+                <div class="bubble them">感谢面试猪，真不是广告 🐷</div>
+              </div>
+            </article>
+
+            <!-- 小米 SU7 -->
+            <article class="chat-phone" aria-label="小米用户反馈">
+              <div class="chat-bar">
+                <div class="chat-avatar mi">米</div>
+                <div class="chat-meta">
+                  <strong>阿凯 · 车载软件</strong>
+                  <span>微信 · 已脱敏</span>
+                </div>
+              </div>
+              <div class="chat-body">
+                <div class="chat-time">周五 18:55</div>
+                <div class="bubble them">
+                  家人们！！小米 offer 下来了！SU7 相关业务组！！
+                  <span class="offer-tag">小米 · SU7 相关岗 Offer</span>
+                </div>
+                <div class="bubble me">牛，技术面咋样</div>
+                <div class="bubble them">
+                  嵌入式 + 性能优化连环炮，系统音频识别很稳。我把 JD 和项目丢进去，回答贴岗位，不像背通用八股。
+                </div>
+                <div class="bubble them">今天请自己吃顿好的，工具费值了</div>
+              </div>
+            </article>
+
+            <!-- 美团 -->
+            <article class="chat-phone" aria-label="美团用户反馈">
+              <div class="chat-bar">
+                <div class="chat-avatar meituan">团</div>
+                <div class="chat-meta">
+                  <strong>周周 · 后端</strong>
+                  <span>微信 · 已脱敏</span>
+                </div>
+              </div>
+              <div class="chat-body">
+                <div class="chat-time">周日 09:12</div>
+                <div class="bubble them">
+                  美团三面过了，顺便京东也有意向
+                  <span class="offer-tag">美团 Offer · 京东意向</span>
+                </div>
+                <div class="bubble me">一周两场？</div>
+                <div class="bubble them">
+                  对，加量包刚够用。复盘功能也香，上一场被问穿的点，下一场知识库直接补上。
+                </div>
+                <div class="bubble them">群里说得对：别裸面，带猪上 🐷</div>
+              </div>
+            </article>
+          </div>
+
+          <div class="reviews">
+            <div class="review">
+              <div class="score">⭐ 4.9 · 大数据 / 字节方向</div>
+              <h3>「项目深挖像开了外挂」</h3>
+              <p>连续追问 Flink 乱序、一致性，回答能扣住我简历里的指标和踩坑，不是网上复制来的空话。</p>
+            </div>
+            <div class="review">
+              <div class="score">⭐ 4.8 · 前端 / 腾讯方向</div>
+              <h3>「Mac 遮板太关键」</h3>
+              <p>共享屏幕心里不慌，答案扫一眼就能接话。笔试截图也用过一次，选择题速度明显上去了。</p>
+            </div>
+            <div class="review">
+              <div class="score">⭐ 4.9 · 算法 / 小红书方向</div>
+              <h3>「知识库决定上限」</h3>
+              <p>把自己的论文笔记和面经丢进去，临场回答更像「我做过」，而不是通用模板。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FAQ -->
+      <section class="section" id="faq">
+        <div class="container">
+          <div class="section-title"><h2>常见问题</h2></div>
+          <div class="faq-list">
+            <div class="faq">
+              <h3>有没有使用教程？</h3>
+              <p>
+                有。请看
+                <a href="./docs/interview-web.html">网页版教程</a>
+                与
+                <a href="./docs/interview-mac.html">Mac 客户端教程</a>。
               </p>
-              <div class="hero-actions">
-                <a class="btn btn-primary" href="https://mianshizhu.cn/interview">使用网页版</a>
-                <span class="btn btn-disabled">Mac 客户端即将上线</span>
-              </div>
-              <div class="trust-row">
-                <span class="trust-pill">实时语音识别</span>
-                <span class="trust-pill">简历上下文</span>
-                <span class="trust-pill">知识库增强</span>
-                <span class="trust-pill">STAR 结构重写</span>
-              </div>
             </div>
-
-            <div class="product-card" aria-label="面试猪产品界面预览">
-              <div class="window">
-                <div class="window-bar">
-                  <span class="dot red"></span>
-                  <span class="dot yellow"></span>
-                  <span class="dot green"></span>
-                  <strong style="margin-left: 8px;">面试猪 · 实时面试辅助</strong>
-                </div>
-                <div class="screen">
-                  <div class="panel">
-                    <div class="panel-title">面试官问题</div>
-                    <div class="question">请先做个自我介绍。</div>
-                    <div class="question">为什么使用 Flink + StarRocks？</div>
-                    <div class="question">你怎么解决数据乱序？</div>
-                  </div>
-                  <div class="panel">
-                    <div class="panel-title">AI 回答</div>
-                    <p class="answer">
-                      <strong>面试官您好，</strong>我会从业务背景、技术选型和落地效果三个角度回答。这个项目主要解决实时指标延迟和数据一致性问题...
-                    </p>
-                    <span class="tag">详细模式</span>
-                    <span class="tag">STAR 结构</span>
-                    <span class="tag">结合简历</span>
-                  </div>
-                  <div class="panel">
-                    <div class="panel-title">双方对话记录</div>
-                    <div class="voice-line">面试官：讲一下最近项目</div>
-                    <div class="voice-line">我：这个项目主要是...</div>
-                    <div class="voice-line">面试官：延迟怎么优化？</div>
-                  </div>
-                </div>
-              </div>
-              <div class="float-badge">识别中 · 488ms</div>
+            <div class="faq">
+              <h3>免费吗？</h3>
+              <p>新用户有 15 分钟免费试用。好用再充值支持；套餐见上方定价，也可在账号内购买时长。</p>
+            </div>
+            <div class="faq">
+              <h3>怎么识别面试官声音？</h3>
+              <p>
+                网页版：Chrome 共享标签页/窗口时勾选「同时分享系统音频」。Mac 客户端：授权屏幕录制后捕获系统音频。详见
+                <a href="./docs/interview-web.html">音频配置</a>。
+              </p>
+            </div>
+            <div class="faq">
+              <h3>对方会看到辅助窗口吗？</h3>
+              <p>
+                Mac 客户端开启内容保护后，屏幕共享与系统截图中窗口对对方不可见。网页版请使用独立窗口并注意共享区域。详见
+                <a href="./docs/stealth.html">隐身说明</a>。
+              </p>
+            </div>
+            <div class="faq">
+              <h3>适合哪些岗位？</h3>
+              <p>后端、前端、大数据、算法、Web3、产品、运营等均可；知识库与热词越贴合岗位，效果越好。</p>
+            </div>
+            <div class="faq">
+              <h3>如何联系？</h3>
+              <p>
+                邮箱
+                <a href="mailto:xiaosuange@gmail.com?subject=%E9%9D%A2%E8%AF%95%E7%8C%AA%20%C2%B7%20%E4%BD%BF%E7%94%A8%E5%B8%AE%E5%8A%A9">xiaosuange@gmail.com</a>
+                ，或扫码加微信 / 加 QQ 群，见下方
+                <a href="#contact">联系官方</a>。
+              </p>
             </div>
           </div>
-        </section>
-
-        <section class="section section-soft">
-          <div class="container">
-            <div class="section-title">
-              <h2>支持所有常见线上面试场景</h2>
-              <p>腾讯会议、飞书会议、微信语音、浏览器面试、电话外放都可以用。网页端现在可用，Mac 客户端排期中。</p>
-            </div>
-            <div class="platforms">
-              <div class="platform"><b>腾讯会议</b><span>选择会议窗口并共享系统音频</span></div>
-              <div class="platform"><b>飞书会议</b><span>实时转写面试官问题</span></div>
-              <div class="platform"><b>微信语音</b><span>系统音频触发 AI 回答</span></div>
-              <div class="platform"><b>网页面试</b><span>浏览器直接进入工作台</span></div>
-            </div>
-          </div>
-        </section>
-
-        <section id="stealth" class="section">
-          <div class="container">
-            <div class="section-title">
-              <h2>完美隐身不可见</h2>
-              <p>左侧：面试者视角（AI 助手可见）｜右侧：面试官视角（会议画面正常）。拖动中间滑杆，直观看到遮板差异。</p>
-            </div>
-            <p class="compare-note">拖动黄色滑杆，看“你看到的辅助层”和“对方看到的正常画面”如何分离。</p>
-            <div class="stealth-compare" data-compare>
-              <div class="compare-stage">
-                <div class="compare-label left">面试者视角</div>
-                <div class="compare-label right">面试官视角</div>
-                <div class="meeting-window" aria-hidden="true">
-                  <div class="meeting-topbar">
-                    <span>外部会议</span>
-                    <span>01:31</span>
-                    <span style="color: #22c55e;">▮▮▮</span>
-                    <span class="meeting-dots">□ － ×</span>
-                  </div>
-                  <div class="video-grid">
-                    <div class="video-tile" data-name="面试官"></div>
-                    <div class="video-tile" data-name="面试者"></div>
-                  </div>
-                  <div class="meeting-controls">
-                    <span class="control-pill"></span>
-                    <span class="control-pill"></span>
-                    <span class="control-pill"></span>
-                    <span class="control-pill ai"></span>
-                    <span class="control-pill red"></span>
-                  </div>
-                </div>
-                <div class="candidate-layer" aria-hidden="true">
-                  <div class="assistant-mask">
-                    <div class="mask-title">面试猪 · 实时辅助</div>
-                    <div class="mask-line hot"></div>
-                    <div class="mask-line"></div>
-                    <div class="mask-line"></div>
-                    <div class="mask-line short"></div>
-                    <div class="mask-line hot"></div>
-                  </div>
-                </div>
-                <div class="split-handle"></div>
-                <input class="split-range" type="range" min="18" max="82" value="52" aria-label="拖动查看面试者和面试官视角差异" />
-              </div>
-              <div class="compare-actions">
-                <span class="btn btn-disabled">Mac 下载 · 即将上线</span>
-                <a class="btn btn-primary" href="https://mianshizhu.cn/interview">使用网页版</a>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="feature" class="section section-soft">
-          <div class="container">
-            <div class="section-title">
-              <h2>不是标准答案机器，是你的面试 Copilot</h2>
-              <p>面试猪专注实时面试问答、个人经历匹配、知识库增强和复盘，把产品能力集中在面试现场。</p>
-            </div>
-            <div class="feature-grid">
-              <div class="feature">
-                <div class="icon">🎙</div>
-                <h3>面试官问题自动识别</h3>
-                <p>面试官系统音频触发 AI 回答；你的麦克风只做转写记录和复盘上下文，不乱触发答案。</p>
-              </div>
-              <div class="feature">
-                <div class="icon">📄</div>
-                <h3>简历与 JD 上下文</h3>
-                <p>上传简历、岗位描述和项目材料，回答会带入你的实际经历，避免空泛套话。</p>
-              </div>
-              <div class="feature">
-                <div class="icon">🧠</div>
-                <h3>专家知识库增强</h3>
-                <p>可以挂载多份知识库，支持 QA、文档、网页内容和自定义热词，适合大数据、Web3、后端等岗位。</p>
-              </div>
-              <div class="feature">
-                <div class="icon">⚡</div>
-                <h3>实时回答与手动触发</h3>
-                <p>自动识别停顿生成回答；如果没触发，也可以一键用最新问题手动触发。</p>
-              </div>
-              <div class="feature">
-                <div class="icon">✨</div>
-                <h3>多模式重新生成</h3>
-                <p>普通、精简、详细、STAR 结构、清除上下文、联网搜索补充都可以按需重写。</p>
-              </div>
-              <div class="feature">
-                <div class="icon">📊</div>
-                <h3>面试归档与复盘</h3>
-                <p>结束后保存问题、回答和你的表达记录，生成复盘总结，方便下一场继续优化。</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="reviews" class="section">
-          <div class="container">
-            <div class="section-title">
-              <h2>真实场景里更有用</h2>
-              <p>下面是根据典型使用场景整理的匿名反馈示例，重点是回答更贴合简历和岗位。</p>
-            </div>
-            <div class="reviews">
-              <div class="review">
-                <div class="score">4.8/5 · 大数据开发</div>
-                <h3>项目深挖不再慌</h3>
-                <p>面试官连续追问 Flink、StarRocks 和数据乱序，答案能结合我简历里的项目，不是单纯背八股。</p>
-              </div>
-              <div class="review">
-                <div class="score">4.7/5 · 后端工程师</div>
-                <h3>上下文关联很好</h3>
-                <p>面试官问“那怎么优化呢”，系统能结合上一轮问题继续回答，减少我临场组织语言的压力。</p>
-              </div>
-              <div class="review">
-                <div class="score">4.9/5 · Web3 岗位</div>
-                <h3>知识库很关键</h3>
-                <p>把自己准备的项目材料和专家 QA 挂上后，回答明显更像我自己的经历。</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="faq" class="section section-soft">
-          <div class="container">
-            <div class="section-title">
-              <h2>常见问题</h2>
-            </div>
-            <div class="faq-list">
-              <div class="faq">
-                <h3>现在能用什么版本？</h3>
-                <p>网页版已经可用。Mac 客户端显示“即将上线”，后续会单独做更完整的低干扰浮层体验。</p>
-              </div>
-              <div class="faq">
-                <h3>怎么识别面试官声音？</h3>
-                <p>进入网页版后选择会议窗口，并在 Chrome 弹窗底部打开“同时分享系统音频”，这样系统音频会作为面试官问题进入识别。</p>
-              </div>
-              <div class="faq">
-                <h3>能不能先免费试？</h3>
-                <p>新用户有免费试用时长。正式面试通常建议准备 30-60 分钟额度。</p>
-              </div>
-              <div class="faq">
-                <h3>适合哪些岗位？</h3>
-                <p>大数据开发、后端、前端、Web3、算法、产品、运营等都可以用；知识库和热词越贴合岗位，效果越好。</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="cta">
-          <div class="container cta-box">
-            <div style="flex: 1;">
-              <h2>下一场面试，别再孤军奋战</h2>
-              <p>先打开网页版创建项目，上传简历和 JD，再测试系统音频共享。</p>
-            </div>
-            <a class="btn btn-primary" href="https://mianshizhu.cn/interview">免费注册</a>
-            <a class="btn btn-secondary" href="https://mianshizhu.cn/billing">查看套餐</a>
-          </div>
-        </section>
-      </main>
-
-      <footer class="footer">
-        <div class="container footer-inner">
-          <span>面试猪 · AI 实时面试辅助工具</span>
-          <span>联系邮箱：xiaosuange@gmail.com</span>
         </div>
-      </footer>
-    </div>
-    <script>
-      document.querySelectorAll('[data-compare]').forEach((compare) => {
-        const range = compare.querySelector('.split-range');
-        const setSplit = () => {
-          compare.style.setProperty('--split', `${range.value}%`);
-        };
-        range.addEventListener('input', setSplit);
-        setSplit();
-      });
-    </script>
+      </section>
+
+      <!-- Contact -->
+      <section class="section section-soft" id="contact">
+        <div class="container">
+          <div class="section-title">
+            <h2>联系官方</h2>
+            <p>使用问题、支付额度、合作咨询，欢迎邮件或扫码加群 / 加微信。</p>
+          </div>
+          <div class="contact-grid">
+            <article class="contact-card">
+              <h3>📧 邮箱</h3>
+              <p>点击即可打开邮件客户端，直接发送给我们。</p>
+              <div class="contact-email-row">
+                <a class="email-link" href="mailto:xiaosuange@gmail.com?subject=%E9%9D%A2%E8%AF%95%E7%8C%AA%20%C2%B7%20%E4%BD%BF%E7%94%A8%E5%B8%AE%E5%8A%A9&body=%E4%BD%A0%E5%A5%BD%EF%BC%8C%E6%88%91%E5%9C%A8%E4%BD%BF%E7%94%A8%E9%9D%A2%E8%AF%95%E7%8C%AA%E6%97%B6%E9%81%87%E5%88%B0%EF%BC%9A%0A%0A%E8%B4%A6%E5%8F%B7%EF%BC%9A%0A%E9%97%AE%E9%A2%98%E6%8F%8F%E8%BF%B0%EF%BC%9A%0A">xiaosuange@gmail.com</a>
+                <a class="btn btn-primary btn-sm" href="mailto:xiaosuange@gmail.com?subject=%E9%9D%A2%E8%AF%95%E7%8C%AA%20%C2%B7%20%E4%BD%BF%E7%94%A8%E5%B8%AE%E5%8A%A9">写邮件</a>
+              </div>
+              <p style="margin-top: 8px">建议附上账号、设备（网页 / Mac）与问题截图，回复更快。</p>
+            </article>
+            <article class="contact-card">
+              <h3>🐧 官方 QQ 群</h3>
+              <p class="contact-meta">面试猪官方交流群</p>
+              <p>群号 <strong>592906421</strong> · 扫码加入群聊</p>
+              <img class="qr" src="./assets/qr-qq-group.jpg" alt="面试猪官方 QQ 群二维码 592906421" width="280" height="400" loading="lazy" />
+            </article>
+            <article class="contact-card">
+              <h3>💬 微信</h3>
+              <p class="contact-meta">郑逸晗</p>
+              <p>扫二维码，添加为朋友</p>
+              <img class="qr" src="./assets/qr-wechat.jpg" alt="郑逸晗微信二维码" width="280" height="360" loading="lazy" />
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="cta">
+        <div class="container cta-box">
+          <div style="flex: 1; min-width: 260px">
+            <h2>下一场面试，别再孤军奋战</h2>
+            <p>先开网页版创建项目，上传简历和 JD，再测一次系统音频共享。</p>
+          </div>
+          <div class="cta-actions">
+            <a class="btn btn-primary btn-lg" href="/interview">免费注册试用</a>
+            <a class="btn btn-secondary btn-lg" href="/billing">查看套餐</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div>
+            <a class="brand" href="./" style="margin-bottom: 12px">
+              <img src="./assets/logo.png" alt="" width="32" height="32" />
+              <span>面试猪</span>
+            </a>
+            <p style="margin: 0; line-height: 1.7; max-width: 320px">
+              AI 实时面试助手：听懂面试官，结合你的经历给出回答，并在面试后帮你复盘。
+            </p>
+          </div>
+          <div>
+            <h4>产品</h4>
+            <a href="#feature">功能介绍</a>
+            <a href="#pricing">定价</a>
+            <a href="./download.html">下载中心</a>
+            <a href="/interview">网页版工作台</a>
+          </div>
+          <div>
+            <h4>教程</h4>
+            <a href="./docs/">文档首页</a>
+            <a href="./docs/interview-web.html">网页版上手</a>
+            <a href="./docs/interview-mac.html">Mac 教程</a>
+            <a href="./docs/faq.html">常见问题</a>
+          </div>
+          <div>
+            <h4>支持</h4>
+            <a href="mailto:xiaosuange@gmail.com?subject=%E9%9D%A2%E8%AF%95%E7%8C%AA%20%C2%B7%20%E4%BD%BF%E7%94%A8%E5%B8%AE%E5%8A%A9">xiaosuange@gmail.com</a>
+            <a href="#contact">微信 / QQ 群</a>
+            <a href="./docs/pricing.html">计费说明</a>
+            <a href="./docs/stealth.html">隐私与隐身</a>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <span>© 2026 面试猪 · AI 实时面试辅助工具</span>
+          <span>仅供学习与技术研究，请遵守法律法规与面试平台规则</span>
+        </div>
+      </div>
+    </footer>
+
+    <script src="./assets/site.js"></script>
   </body>
 </html>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mac 客户端教程 - 面试猪</title>
+    <meta name="description" content="面试猪 Mac 客户端：安装、麦克风与屏幕录制权限、系统音频捕获、透明度与内容保护。" />
+    <link rel="icon" type="image/png" href="../assets/favicon-48x48.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="../"><img src="../assets/logo.png" alt="面试猪" width="38" height="38" /><span>面试猪</span></a>
+        <div class="nav-links">
+          <a class="nav-link" href="../">官网</a>
+          <a class="nav-link active" href="./">教程</a>
+          <a class="btn btn-primary btn-sm" href="/interview">打开工作台</a>
+        </div>
+      </div>
+    </nav>
+    <div class="container docs-layout">
+      <aside class="docs-side">
+        <div class="group">开始</div>
+        <a href="./">文档首页</a>
+        <a href="./intro.html">面试猪简介</a>
+        <div class="group">面试辅助</div>
+        <a href="./interview-web.html">网页版教程</a>
+        <a class="active" href="./interview-mac.html">Mac 客户端教程</a>
+        <a href="./stealth.html">隐身与内容保护</a>
+        <div class="group">笔试</div>
+        <a href="./exam.html">笔试截图辅助</a>
+        <div class="group">账户</div>
+        <a href="./pricing.html">定价说明</a>
+        <a href="./faq.html">常见问题</a>
+      </aside>
+      <article class="docs-main">
+        <div class="breadcrumbs"><a href="./">教程</a> / Mac</div>
+        <h1>🖥 Mac 客户端教程</h1>
+        <p>
+          MianshiZhu Pro 面向 macOS（Apple Silicon）。相比网页版，更适合需要<strong>系统音频直采、浮层透明度、屏幕共享内容保护</strong>的正式面试。
+        </p>
+
+        <h2>1. 安装</h2>
+        <ol>
+          <li>从 <a href="../download.html">下载中心</a> 或账号内渠道获取 <code>.dmg</code> 安装包。</li>
+          <li>打开 DMG，将「MianshiZhu Pro」拖入「应用程序」。</li>
+          <li>首次打开若提示未验证开发者：系统设置 → 隐私与安全性 → 仍要打开。</li>
+        </ol>
+        <div class="callout">系统要求：macOS 13+，Apple Silicon（arm64）。</div>
+
+        <h2>2. 权限（必须）</h2>
+        <p>首次启动会请求权限，也可在「系统设置 → 隐私与安全性」中手动开启：</p>
+        <ul>
+          <li><strong>麦克风</strong>：记录你的表达，用于对话上下文与复盘。</li>
+          <li><strong>屏幕录制</strong>：用于捕获系统音频（面试官声音）以及会议窗口相关能力。</li>
+        </ul>
+        <div class="callout warn">
+          没有「屏幕录制」权限时，系统音频通常无法工作，面试官问题会识别失败。改完权限后请完全退出 App 再重开。
+        </div>
+
+        <h2>3. 登录与资料同步</h2>
+        <ol>
+          <li>使用与网页版相同的账号登录。</li>
+          <li>确认简历库、知识库、额度已同步。</li>
+          <li>在设置中确认 ASR / 模型相关配置可用（商业版一般已预置网关）。</li>
+        </ol>
+
+        <h2>4. 开始一场面试</h2>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div>打开腾讯会议 / 飞书 / Zoom，进入会议室（可先静音自测）</div></div>
+          <div class="step"><div class="step-num">2</div><div>打开面试猪，进入面试工作台，开启识别</div></div>
+          <div class="step"><div class="step-num">3</div><div>播放一段会议声音，确认「面试官问题」区域出现转写</div></div>
+          <div class="step"><div class="step-num">4</div><div>观察 AI 回答是否结合简历；必要时切换 STAR / 精简模式</div></div>
+        </div>
+
+        <h2>5. 窗口体验</h2>
+        <ul>
+          <li><strong>拖拽</strong>：无边框窗口可从顶栏 / 侧栏空白处拖动。</li>
+          <li><strong>透明度</strong>：设置中可调，最低约 35%，避免完全看不见。</li>
+          <li><strong>内容保护</strong>：开启后，屏幕共享与系统截图中本窗口对对方不可见。详见
+            <a href="./stealth.html">隐身说明</a>。</li>
+        </ul>
+
+        <h2>6. 常见故障</h2>
+        <ul>
+          <li><strong>听不到面试官</strong>：检查屏幕录制权限；重启 App；确认会议有声音输出。</li>
+          <li><strong>延迟高</strong>：检查网络；关闭多余 VPN；尽量有线或稳定 Wi-Fi。</li>
+          <li><strong>窗口被共享露出来</strong>：确认内容保护已开；不要用会绕过系统共享限制的特殊采集工具。</li>
+        </ul>
+
+        <p style="margin-top: 28px">
+          下一步：
+          <a href="./stealth.html">隐身与内容保护 →</a>
+        </p>
+      </article>
+    </div>
+    <script src="../assets/site.js"></script>
+  </body>
+</html>

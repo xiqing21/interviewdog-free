@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>隐身与内容保护 - 面试猪</title>
+    <meta name="description" content="面试猪 Mac 内容保护说明：屏幕共享与截图时窗口对对方不可见的原理、适用边界与注意事项。" />
+    <link rel="icon" type="image/png" href="../assets/favicon-48x48.png" />
+    <link rel="stylesheet" href="../assets/site.css" />
+  </head>
+  <body>
+    <nav class="nav">
+      <div class="container nav-inner">
+        <a class="brand" href="../"><img src="../assets/logo.png" alt="面试猪" width="38" height="38" /><span>面试猪</span></a>
+        <div class="nav-links">
+          <a class="nav-link" href="../">官网</a>
+          <a class="nav-link active" href="./">教程</a>
+          <a class="btn btn-primary btn-sm" href="/interview">打开工作台</a>
+        </div>
+      </div>
+    </nav>
+    <div class="container docs-layout">
+      <aside class="docs-side">
+        <div class="group">开始</div>
+        <a href="./">文档首页</a>
+        <a href="./intro.html">面试猪简介</a>
+        <div class="group">面试辅助</div>
+        <a href="./interview-web.html">网页版教程</a>
+        <a href="./interview-mac.html">Mac 客户端教程</a>
+        <a class="active" href="./stealth.html">隐身与内容保护</a>
+        <div class="group">笔试</div>
+        <a href="./exam.html">笔试截图辅助</a>
+        <div class="group">账户</div>
+        <a href="./pricing.html">定价说明</a>
+        <a href="./faq.html">常见问题</a>
+      </aside>
+      <article class="docs-main">
+        <div class="breadcrumbs"><a href="./">教程</a> / 隐身</div>
+        <h1>🛡 隐身与内容保护</h1>
+        <p>
+          Mac 客户端通过系统级 <strong>Content Protection（内容保护）</strong>，让本应用窗口在屏幕共享、系统截图与部分录屏场景中对对方不可见，而你本机屏幕上仍可正常阅读。
+        </p>
+
+        <h2>工作原理（简述）</h2>
+        <p>
+          在 macOS 上，Electron 的 <code>setContentProtection(true)</code> 会将窗口共享类型设为不可被其他应用捕获。
+          腾讯会议、飞书、Zoom、Google Meet 等基于系统采集桌面画面时，受保护窗口通常呈现为黑块或直接不出现。
+        </p>
+
+        <h2>你看到 vs 对方看到</h2>
+        <ul>
+          <li><strong>你本机</strong>：浮层、答案、转写全部正常显示，可调透明度。</li>
+          <li><strong>对方共享画面</strong>：不应看到面试猪窗口内容。</li>
+        </ul>
+        <p>官网首页的「拖动对比滑杆」演示的就是这一视觉差异。</p>
+
+        <h2>适用场景</h2>
+        <ul>
+          <li>线上面试中对方要求你共享整个桌面 / 屏幕</li>
+          <li>你担心辅助窗口被截进共享画面</li>
+          <li>需要低干扰浮层，而不是浏览器全屏标签</li>
+        </ul>
+
+        <h2>边界与注意</h2>
+        <div class="callout warn">
+          内容保护不是「魔法隐身」。外接摄像头拍到屏幕、手机第二机位、对方要求你共享浏览器标签页内部、以及部分企业定制监控软件，都可能绕过或不受此机制约束。请按合规与诚实原则使用。
+        </div>
+        <ul>
+          <li>网页版没有与 Mac 客户端同等的系统内容保护，请谨慎选择共享区域。</li>
+          <li>正式面试前，用小号会议做一次「自己共享给自己」验证。</li>
+          <li>不要依赖任何工具去违反面试平台或用人单位规则。</li>
+        </ul>
+
+        <h2>建议布局</h2>
+        <ol>
+          <li>会议窗口占主屏大部分区域，镜头与面试官画面保持自然。</li>
+          <li>面试猪浮在侧边，透明度调到仍可读但不抢眼。</li>
+          <li>答案扫读后用自己的话输出，眼神回到镜头。</li>
+        </ol>
+
+        <p style="margin-top: 28px"><a href="./interview-mac.html">← 返回 Mac 教程</a> · <a href="./exam.html">笔试辅助 →</a></p>
+      </article>
+    </div>
+    <script src="../assets/site.js"></script>
+  </body>
+</html>

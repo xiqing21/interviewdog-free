@@ -82,7 +82,7 @@ export function Sidebar() {
     >
       {/* Logo / Title */}
       <Box sx={{ p: 1.5, pt: 3.5, display: 'flex', alignItems: 'center', gap: 1, WebkitAppRegion: 'drag', userSelect: 'none' }}>
-        <Box component="img" src={publicAssetUrl('logo.svg')} alt="面试猪" sx={{ width: 30, height: 30, flexShrink: 0, WebkitAppRegion: 'no-drag' }} />
+        <Box component="img" src={publicAssetUrl('logo.png')} alt="面试猪" sx={{ width: 30, height: 30, flexShrink: 0, borderRadius: '8px', WebkitAppRegion: 'no-drag' }} />
         {!collapsed && (
           <>
             <Typography variant="h6" fontWeight={700}>

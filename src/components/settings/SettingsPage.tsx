@@ -17,6 +17,7 @@ import { CloudASRConfig } from './CloudASRConfig';
 import { ResumeJDSettings } from './ResumeJDSettings';
 import { ThemeSettings } from './ThemeSettings';
 import { DesktopWindowSettings } from './DesktopWindowSettings';
+import { ContactSupport } from '../common/ContactSupport';
 import { COMMERCIAL_MODE } from '../../config/commercial';
 
 export function SettingsPage() {
@@ -26,9 +27,6 @@ export function SettingsPage() {
         <Typography variant="h5" fontWeight={700}>设置</Typography>
         <Alert severity="info">
           商业版由平台统一提供实时理解和 AI 回答能力。你只需要维护简历、知识库、岗位方向和专业热词，不需要配置任何模型或语音服务。
-        </Alert>
-        <Alert severity="success">
-          使用、支付、额度或识别异常可以联系：xiaosuange@gmail.com。
         </Alert>
         <ThemeSettings />
         <DesktopWindowSettings />
@@ -42,6 +40,11 @@ export function SettingsPage() {
 
         <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>简历与岗位</Typography>
         <ResumeJDSettings />
+
+        <Divider />
+
+        <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>联系官方</Typography>
+        <ContactSupport />
       </Box>
     );
   }
@@ -81,6 +84,11 @@ export function SettingsPage() {
       <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>⚙️ 高级</Typography>
       <PromptConfig />
       <ConnectionTest />
+
+      <Divider />
+
+      <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>联系官方</Typography>
+      <ContactSupport />
     </Box>
   );
 }
