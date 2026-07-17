@@ -5,6 +5,28 @@
   "outputDirectory": "dist",
   "installCommand": "pnpm install",
   "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/index.html",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/assets/site.(css|js)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/assets/(.*)\\.mp4",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" },
+        { "key": "Content-Type", "value": "video/mp4" },
+        { "key": "Accept-Ranges", "value": "bytes" }
+      ]
+    }
+  ],
   "rewrites": [
     { "source": "/interview", "destination": "/app" },
     { "source": "/interview/(.*)", "destination": "/app" },

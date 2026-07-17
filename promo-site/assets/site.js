@@ -156,38 +156,27 @@
     videos.forEach((v) => io.observe(v));
   }
 
-  // Story ad: ensure sources load; soft muted autoplay when in view
+  // Story ad: muted autoplay when scrolled into view
   const story = document.getElementById('story-ad');
   if (story) {
-    // Force reload if browser cached a broken previous blob
+    story.muted = true;
     const tryPlay = () => {
       story.muted = true;
-      const p = story.play();
-      if (p && typeof p.catch === 'function') p.catch(() => {});
+      story.play().catch(() => {});
     };
-    story.addEventListener('error', () => {
-      // fallback swap to demo.mp4 if ad-story fails
-      const src = story.querySelector('source');
-      if (src && src.src.indexOf('ad-story') !== -1) {
-        src.src = '/assets/demo.mp4';
-        story.load();
-      }
-    });
     if ('IntersectionObserver' in window) {
-      let started = false;
-      const ioStory = new IntersectionObserver(
+      const io = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
-            if (entry.isIntersecting && entry.intersectionRatio >= 0.45 && !started) {
-              started = true;
-              if (story.readyState >= 2) tryPlay();
-              else story.addEventListener('canplay', tryPlay, { once: true });
-            }
+            if (entry.isIntersecting) tryPlay();
+            else story.pause();
           });
         },
-        { threshold: [0.45] }
+        { threshold: 0.35 }
       );
-      ioStory.observe(story);
+      io.observe(story);
+    } else {
+      tryPlay();
     }
   }
 })();

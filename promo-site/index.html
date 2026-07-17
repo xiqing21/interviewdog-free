@@ -93,7 +93,7 @@
           </div>
 
           <div class="media-card" aria-label="面试猪产品演示">
-            <div class="media-frame">
+            <div class="media-frame hero-frame">
               <video
                 data-autoplay
                 autoplay
@@ -101,12 +101,12 @@
                 loop
                 playsinline
                 webkit-playsinline
-                poster="/assets/hero-poster.jpg"
+                poster="/assets/hero-poster.jpg?v=3"
                 aria-label="面试猪实时面试辅助场景：学长推荐与实战辅助"
               >
-                <source src="/assets/hero.mp4" type="video/mp4" />
+                <source src="/assets/hero.mp4?v=3" type="video/mp4" />
               </video>
-              <div class="media-glow"></div>
+              <div class="media-glow" aria-hidden="true"></div>
             </div>
             <div class="float-badge"><span class="live-dot"></span>实时识别 · 毫秒级响应</div>
           </div>
@@ -139,29 +139,25 @@
               学生党、春招秋招、社招职场人都适用。
             </p>
           </div>
-          <div class="media-card" style="max-width: 980px; margin: 0 auto">
-            <div class="media-frame story-frame" style="aspect-ratio: 16 / 9">
-              <video
-                id="story-ad"
-                playsinline
-                webkit-playsinline
-                controls
-                controlslist="nodownload"
-                preload="auto"
-                poster="/assets/demo-poster.jpg"
-                aria-label="面试猪剧情广告：八股翻车到拿到 Offer"
-              >
-                <source src="/assets/ad-story.mp4" type="video/mp4" />
-                <source src="/assets/demo.mp4" type="video/mp4" />
-                你的浏览器不支持视频播放，请
-                <a href="/assets/ad-story.mp4">点击下载观看</a>
-              </video>
-            </div>
-            <div class="trust-row" style="justify-content: center; margin: 18px 8px 4px">
-              <span class="trust-pill">约 45 秒剧情广告</span>
-              <span class="trust-pill">男女双人 · 学长推荐</span>
-              <span class="trust-pill">学生 / 职场通用</span>
-            </div>
+          <div class="ad-box" id="story-player">
+            <video
+              id="story-ad"
+              class="ad-video"
+              src="/assets/ad-story-web.mp4?v=7"
+              autoplay
+              muted
+              loop
+              playsinline
+              webkit-playsinline
+              preload="auto"
+              poster="/assets/ad-poster.jpg?v=7"
+              controls
+            ></video>
+          </div>
+          <div class="trust-row" style="justify-content: center; margin: 14px 8px 4px">
+            <span class="trust-pill">约 42 秒剧情广告</span>
+            <span class="trust-pill">男女双人 · 学长推荐</span>
+            <span class="trust-pill">学生 / 职场通用</span>
           </div>
         </div>
       </section>
@@ -178,13 +174,67 @@
           </p>
           <div class="stealth-compare" data-compare data-split="50">
             <div class="compare-stage">
-              <!-- 右：面试官 / 共享画面 = 干净会议，无辅助层 -->
+              <!-- 右：对方视角 = 腾讯会议壳，无 AI -->
               <div class="compare-layer base" aria-hidden="true">
-                <img src="./assets/stealth-interviewer.jpg" alt="面试官视角：只有正常视频会议" />
+                <div class="meeting-shell">
+                  <div class="meeting-topbar">
+                    <span class="mt-title">腾讯会议</span>
+                    <span class="mt-time">01:24:08</span>
+                    <span class="mt-live">加密中</span>
+                    <span class="mt-win"><i></i><i></i><i></i></span>
+                  </div>
+                  <div class="meeting-grid">
+                    <div class="meeting-tile interviewer">
+                      <img class="tile-photo" src="/assets/face-man.jpg" alt="面试官" width="640" height="480" />
+                      <span class="cam-badge">摄像头开</span>
+                      <span class="name-tag">面试官 · 李老师</span>
+                    </div>
+                    <div class="meeting-tile candidate">
+                      <img class="tile-photo" src="/assets/face-woman.jpg" alt="面试者" width="640" height="480" />
+                      <span class="cam-badge">摄像头开</span>
+                      <span class="name-tag">我</span>
+                    </div>
+                  </div>
+                  <div class="meeting-dock">
+                    <span class="dock-btn" title="麦克风">🎤</span>
+                    <span class="dock-btn" title="摄像头">📷</span>
+                    <span class="dock-btn" title="共享">💻</span>
+                    <span class="dock-btn" title="聊天">💬</span>
+                    <span class="dock-btn" title="成员">👥</span>
+                    <span class="dock-btn danger" title="离开">⏹</span>
+                  </div>
+                </div>
               </div>
-              <!-- 左：面试者本机 = 同一会议 + AI 实时辅助遮板 -->
+              <!-- 左：你的视角 = 同一会议壳 + 面试猪浮层 -->
               <div class="compare-layer candidate" aria-hidden="true">
-                <img src="./assets/stealth-candidate.jpg" alt="面试者视角：会议画面叠加面试猪辅助" />
+                <div class="meeting-shell">
+                  <div class="meeting-topbar">
+                    <span class="mt-title">腾讯会议</span>
+                    <span class="mt-time">01:24:08</span>
+                    <span class="mt-live">加密中</span>
+                    <span class="mt-win"><i></i><i></i><i></i></span>
+                  </div>
+                  <div class="meeting-grid">
+                    <div class="meeting-tile interviewer">
+                      <img class="tile-photo" src="/assets/face-man.jpg" alt="面试官" width="640" height="480" />
+                      <span class="cam-badge">摄像头开</span>
+                      <span class="name-tag">面试官 · 李老师</span>
+                    </div>
+                    <div class="meeting-tile candidate">
+                      <img class="tile-photo" src="/assets/face-woman.jpg" alt="面试者" width="640" height="480" />
+                      <span class="cam-badge">摄像头开</span>
+                      <span class="name-tag">我</span>
+                    </div>
+                  </div>
+                  <div class="meeting-dock">
+                    <span class="dock-btn" title="麦克风">🎤</span>
+                    <span class="dock-btn" title="摄像头">📷</span>
+                    <span class="dock-btn" title="共享">💻</span>
+                    <span class="dock-btn ai">🐷 面试猪</span>
+                    <span class="dock-btn" title="成员">👥</span>
+                    <span class="dock-btn danger" title="离开">⏹</span>
+                  </div>
+                </div>
                 <div class="assistant-mask">
                   <div class="mask-title">🐷 面试猪 · 仅你可见</div>
                   <div class="mask-line hot"></div>
@@ -192,9 +242,9 @@
                   <div class="mask-line"></div>
                   <div class="mask-line short"></div>
                   <div class="mask-line hot"></div>
-                  <p style="margin: 12px 0 0; font-size: 12px; color: #666; line-height: 1.55">
-                    面试官问题：讲一下项目里的乱序处理<br />
-                    提示：Watermark + 侧输出 · 结合简历指标
+                  <p style="margin: 10px 0 0; font-size: 12px; color: #555; line-height: 1.55">
+                    <strong>识别到：</strong>请讲一下项目乱序怎么处理？<br />
+                    <strong>提示：</strong>Watermark + 侧输出 · 结合简历 QPS
                   </p>
                 </div>
               </div>
