@@ -47,7 +47,7 @@ export function PrivacyDialog({ open, onConfirm }: PrivacyDialogProps) {
           </p>
           <p>
             <strong>4. 屏幕截图：</strong>
-            笔试辅助功能需要获取屏幕共享权限，截图数据仅用于 AI
+            笔试辅助功能需要获取屏幕共享权限；截图会先在本机识别文字，只有识别出的题干会发送给 AI
             分析，不会被保存到服务器。
           </p>
           <p>

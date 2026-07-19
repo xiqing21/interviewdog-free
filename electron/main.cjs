@@ -1,10 +1,13 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapturer } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 const { spawn } = require('node:child_process');
 
 const APP_TITLE = 'MianshiZhu Pro';
 const MIN_OPACITY = 0.35;
 const MAX_OPACITY = 1;
+// Debug build: keep the window and Dock icon visible while fixing Mac audio.
+const DEBUG_VISIBLE = true;
 
 let mainWindow;
 let audioProcess = null;
@@ -16,23 +19,57 @@ function clampOpacity(value) {
   return Math.min(MAX_OPACITY, Math.max(MIN_OPACITY, opacity));
 }
 
-function checkAndRequestPermissions() {
-  if (process.platform === 'darwin') {
-    try {
-      const screenStatus = systemPreferences.getMediaAccessStatus('screen');
-      if (screenStatus !== 'granted') {
-        desktopCapturer.getSources({ types: ['screen'] })
-          .then(sources => {
-            console.log('Screen capture permission requested, sources found:', sources.length);
-          })
-          .catch(err => {
-            console.error('Error requesting screen capture access:', err);
-          });
-      }
-    } catch (err) {
-      console.error('Error checking/requesting permissions:', err);
-    }
+function getScreenAccessStatus() {
+  if (process.platform !== 'darwin') return 'granted';
+  try {
+    return systemPreferences.getMediaAccessStatus('screen');
+  } catch {
+    return 'unknown';
   }
+}
+
+function openScreenRecordingSettings() {
+  // Works across recent macOS versions; fails silently if URL unsupported.
+  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture').catch(() => {
+    shell.openExternal('x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension').catch(() => {});
+  });
+}
+
+function checkAndRequestPermissions() {
+  if (process.platform !== 'darwin') return;
+  try {
+    const screenStatus = getScreenAccessStatus();
+    console.log('[main] screen access status:', screenStatus);
+    if (screenStatus !== 'granted') {
+      // Trigger TCC prompt via desktopCapturer when possible.
+      desktopCapturer.getSources({ types: ['screen'] })
+        .then((sources) => {
+          console.log('[main] Screen capture permission requested, sources:', sources.length);
+        })
+        .catch((err) => {
+          console.error('[main] Error requesting screen capture access:', err);
+        });
+    }
+    // Microphone is optional for system-audio-only mode, but ask once for future dual-path.
+    const micStatus = systemPreferences.getMediaAccessStatus('microphone');
+    if (micStatus !== 'granted') {
+      systemPreferences.askForMediaAccess('microphone').catch(() => {});
+    }
+  } catch (err) {
+    console.error('[main] Error checking/requesting permissions:', err);
+  }
+}
+
+function resolveAudioHelperPath() {
+  const candidates = [];
+  if (app.isPackaged) {
+    candidates.push(path.join(process.resourcesPath, 'build', 'mac-audio-helper'));
+  }
+  candidates.push(path.join(__dirname, '..', 'build', 'mac-audio-helper'));
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
 }
 
 function createWindow() {
@@ -51,13 +88,16 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
+      // sandbox false: more reliable IPC binary audio transfer for desktop capture
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: false,
     },
   });
 
   mainWindow.setOpacity(MAX_OPACITY);
-  mainWindow.setContentProtection(true);
+  if (!DEBUG_VISIBLE) {
+    mainWindow.setContentProtection(true);
+  }
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -72,6 +112,13 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // Forward renderer diagnostics to the packaged-app stdout while debugging
+  // the native audio path. This is intentionally low-volume and harmless in
+  // normal runs, but makes PCM/Gateway failures observable from a DMG build.
+  mainWindow.webContents.on('console-message', (_event, level, message) => {
+    console.log(`[renderer:${level}] ${message}`);
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = undefined;
   });
@@ -82,8 +129,8 @@ app.setName(APP_TITLE);
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   checkAndRequestPermissions();
-  if (process.platform === 'darwin') {
-    app.dock.hide(); // 隐藏 macOS Dock 栏图标
+  if (process.platform === 'darwin' && !DEBUG_VISIBLE) {
+    app.dock.hide();
   }
   createWindow();
 
@@ -97,7 +144,7 @@ app.on('window-all-closed', () => {
     audioProcess.kill();
     audioProcess = null;
   }
-  app.quit(); // 所有窗口关闭时直接退出应用，避免后台无图标运行常驻
+  app.quit();
 });
 
 ipcMain.handle('desktop-window:get-opacity', () => {
@@ -114,29 +161,92 @@ ipcMain.handle('desktop-window:hide', () => {
   mainWindow?.hide();
 });
 
-ipcMain.handle('desktop-audio:start', () => {
-  if (audioProcess) return;
+ipcMain.handle('desktop-audio:get-screen-status', () => getScreenAccessStatus());
 
-  let helperPath = path.join(__dirname, '..', 'build', 'mac-audio-helper');
-  if (app.isPackaged) {
-    helperPath = path.join(process.resourcesPath, 'build', 'mac-audio-helper');
+ipcMain.handle('desktop-audio:open-screen-settings', () => {
+  openScreenRecordingSettings();
+  return true;
+});
+
+ipcMain.handle('desktop-audio:start', async () => {
+  if (audioProcess) {
+    return { ok: true, alreadyRunning: true };
+  }
+
+  const screenStatus = getScreenAccessStatus();
+  if (screenStatus !== 'granted') {
+    // Best-effort prompt, then ask user to enable in Settings.
+    try {
+      await desktopCapturer.getSources({ types: ['screen'] });
+    } catch (_) {
+      // ignore
+    }
+    const after = getScreenAccessStatus();
+    if (after !== 'granted') {
+      openScreenRecordingSettings();
+      throw new Error(
+        '未获得「屏幕录制」权限。请在 系统设置 → 隐私与安全性 → 屏幕录制 中勾选「MianshiZhu Pro」，然后完全退出 App 再重新打开，再点开始听音。微信语音必须从本机扬声器/耳机播放才能被捕获。',
+      );
+    }
+  }
+
+  const helperPath = resolveAudioHelperPath();
+  if (!fs.existsSync(helperPath)) {
+    throw new Error(`找不到系统音频助手：${helperPath}`);
+  }
+  try {
+    fs.accessSync(helperPath, fs.constants.X_OK);
+  } catch {
+    try {
+      fs.chmodSync(helperPath, 0o755);
+    } catch (err) {
+      throw new Error(`系统音频助手不可执行：${helperPath}`);
+    }
   }
 
   console.log('[main] Spawning audio helper at:', helperPath);
   try {
     audioStopRequested = false;
-    audioProcess = spawn(helperPath);
+    audioProcess = spawn(helperPath, [], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
+    });
   } catch (err) {
     console.error('[main] Failed to spawn audio helper:', err);
     throw new Error('无法启动原生声音捕捉助手，请检查权限设置。');
   }
 
+  audioProcess.on('error', (err) => {
+    console.error('[main] audio helper process error:', err);
+    audioProcess = null;
+    mainWindow?.webContents.send(
+      'desktop-audio:error',
+      `系统音频助手启动失败：${err.message || err}`,
+    );
+  });
+
+  let loggedFirstChunk = false;
   audioProcess.stdout.on('data', (chunk) => {
-    mainWindow?.webContents.send('desktop-audio:data', chunk);
+    if (!loggedFirstChunk) {
+      loggedFirstChunk = true;
+      console.log('[main] first audio chunk bytes:', chunk?.length || 0);
+    }
+    // Explicit Uint8Array avoids structured-clone issues with Node Buffer in some Electron versions.
+    const payload = chunk instanceof Uint8Array
+      ? chunk
+      : new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+    // Copy to a plain ArrayBuffer-backed view for IPC reliability
+    const copy = new Uint8Array(payload.byteLength);
+    copy.set(payload);
+    mainWindow?.webContents.send('desktop-audio:data', copy);
   });
 
   audioProcess.stderr.on('data', (data) => {
-    console.warn(`[mac-audio-helper]: ${data.toString().trim()}`);
+    const text = data.toString().trim();
+    console.warn(`[mac-audio-helper]: ${text}`);
+    if (/error|denied|not authorized|fail/i.test(text) && !/SUCCESS/i.test(text)) {
+      mainWindow?.webContents.send('desktop-audio:error', text);
+    }
   });
 
   audioProcess.on('close', (code) => {
@@ -146,14 +256,26 @@ ipcMain.handle('desktop-audio:start', () => {
     audioStopRequested = false;
     if (endedUnexpectedly) {
       mainWindow?.webContents.send('desktop-audio:ended');
+      if (code && code !== 0) {
+        mainWindow?.webContents.send(
+          'desktop-audio:error',
+          `系统音频助手异常退出（code=${code}）。请检查屏幕录制权限后重试。`,
+        );
+      }
     }
   });
+
+  return { ok: true, helperPath, screenStatus: getScreenAccessStatus() };
 });
 
 ipcMain.handle('desktop-audio:stop', () => {
   if (audioProcess) {
     audioStopRequested = true;
-    audioProcess.kill();
+    try {
+      audioProcess.kill('SIGTERM');
+    } catch (_) {
+      // ignore
+    }
     audioProcess = null;
   }
 });

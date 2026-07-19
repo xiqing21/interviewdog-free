@@ -75,7 +75,8 @@ export const PROVIDER_DEFAULTS: Record<AIProvider, ProviderDefault> = {
   openai:    { baseUrl: 'https://api.openai.com/v1',            textModel: 'gpt-4o',              visionModel: 'gpt-4o',              label: 'OpenAI' },
   anthropic: { baseUrl: 'https://api.anthropic.com/v1',         textModel: 'claude-sonnet-4-20250514', visionModel: 'claude-sonnet-4-20250514', label: 'Anthropic' },
   doubao:    { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', textModel: 'doubao-pro-32k', visionModel: 'doubao-vision-pro-32k', label: '豆包 (火山引擎)' },
-  deepseek:  { baseUrl: 'https://api.deepseek.com/v1',         textModel: 'deepseek-chat',       visionModel: 'deepseek-chat',        label: 'DeepSeek' },
+  // V4 Flash is text-only. Screenshot questions are locally OCRed first.
+  deepseek:  { baseUrl: 'https://api.deepseek.com/v1',         textModel: 'deepseek-v4-flash',   visionModel: 'deepseek-v4-flash',    label: 'DeepSeek' },
   zhipu:     { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', textModel: 'glm-4-plus',        visionModel: 'glm-4v-plus',          label: '智谱 GLM' },
   moonshot:  { baseUrl: 'https://api.moonshot.cn/v1',          textModel: 'moonshot-v1-8k',      visionModel: 'moonshot-v1-8k-vision', label: 'Moonshot' },
   qwen:      { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen-vl-plus', label: '通义千问' },
@@ -228,7 +229,9 @@ export const THEME_OPTIONS: Array<{ key: ThemeMode; label: string; desc: string 
 export const MAX_EXAM_RECORDS = 50;
 export const STREAM_TIMEOUT_MS = 120_000;
 export const API_TIMEOUT_MS = 30_000;
-export const MAX_SESSIONS = 20;
+// Project history is lightweight and is also persisted remotely. Keep enough
+// room for repeated interview practice instead of silently refusing a new one.
+export const MAX_SESSIONS = 100;
 export const MERGE_TIMEOUT_DEFAULT = 2500;
 
 // ===== 左侧导航菜单项 =====

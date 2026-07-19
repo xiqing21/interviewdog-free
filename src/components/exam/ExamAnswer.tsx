@@ -8,7 +8,9 @@ import {
   Button,
   Paper,
   Alert,
+  Chip,
   CircularProgress,
+  Divider,
   Typography,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
@@ -60,9 +62,25 @@ export function ExamAnswer() {
 
       {/* Answer display */}
       {currentAnswer && (
-        <Paper sx={{ p: 2 }} variant="outlined">
-          <MarkdownRenderer content={currentAnswer} />
-          {isStreaming && <span className="cursor-blink" />}
+        <Paper className="exam-answer-card" variant="outlined">
+          <Box className="exam-answer-card__header">
+            <Box>
+              <Typography variant="subtitle1" fontWeight={800}>解答结果</Typography>
+              <Typography variant="caption" color="text.secondary">
+                已按题干生成，可直接复制代码运行
+              </Typography>
+            </Box>
+            <Chip
+              size="small"
+              color={isStreaming ? 'primary' : 'success'}
+              label={isStreaming ? '生成中' : '已完成'}
+            />
+          </Box>
+          <Divider />
+          <Box className="exam-answer-card__content">
+            <MarkdownRenderer className="exam-answer-markdown" content={currentAnswer} />
+            {isStreaming && <span className="cursor-blink" />}
+          </Box>
         </Paper>
       )}
 
@@ -73,7 +91,7 @@ export function ExamAnswer() {
           color="text.secondary"
           sx={{ textAlign: 'center', py: 2 }}
         >
-          点击"开始解答"按钮获取答案
+          点击“开始解答”进行本地文字识别后生成答案
         </Typography>
       )}
     </Box>

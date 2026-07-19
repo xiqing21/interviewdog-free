@@ -19,7 +19,7 @@ import { publicAssetUrl } from '../../lib/assets';
 
 export function AppLayout() {
   const { appSettings, acknowledgePrivacy } = useSettings();
-  const { captureScreen } = useExam();
+  const { captureAndSolve } = useExam();
   const { toggleTheme } = useTheme();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLDivElement>(null);
@@ -27,7 +27,7 @@ export function AppLayout() {
   useHotkeys({
     onScreenshot: () => {
       navigate('/exam');
-      void captureScreen();
+      void captureAndSolve();
     },
     onScrollUp: () => {
       mainRef.current?.scrollBy({ top: -300, behavior: 'smooth' });

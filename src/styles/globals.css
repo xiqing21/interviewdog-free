@@ -317,6 +317,76 @@ html[data-theme='light'] .MuiPaper-root {
   font-family: 'Fira Code', Consolas, monospace;
 }
 
+/* ===== Exam answer presentation ===== */
+.exam-answer-card {
+  overflow: hidden;
+  border-color: rgba(99, 102, 241, 0.28) !important;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08);
+}
+
+.exam-answer-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(56, 189, 248, 0.06));
+}
+
+.exam-answer-card__content {
+  padding: 12px 18px 18px;
+}
+
+.exam-answer-markdown {
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.exam-answer-markdown .code-block {
+  position: relative;
+  margin: 16px 0;
+  border: 1px solid #273244;
+  border-radius: 12px;
+  background: #101827;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+}
+
+.exam-answer-markdown .code-block::before {
+  content: 'CODE';
+  position: absolute;
+  top: 10px;
+  right: 14px;
+  color: #94a3b8;
+  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.12em;
+}
+
+.exam-answer-markdown .code-block pre {
+  padding: 42px 18px 18px !important;
+  color: #e5edf7;
+  font-size: 13px;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.exam-answer-markdown .code-block code {
+  white-space: pre;
+}
+
+@media (max-width: 600px) {
+  .exam-answer-card__header,
+  .exam-answer-card__content {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .exam-answer-markdown .code-block pre {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    font-size: 12px;
+  }
+}
+
 /* ===== Markdown Content Styling ===== */
 .markdown-body {
   font-size: 14px;

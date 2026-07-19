@@ -63,7 +63,7 @@ export function InterviewPage() {
     setInterviewerAudioSource,
     updateAppSettings,
   } = useSettings();
-  const { activeSession, sessions, sessionSummaries, switchSession } = useSession();
+  const { activeSession, sessions, sessionSummaries, switchSession, deleteSession } = useSession();
   const {
     isProcessing,
     isListening,
@@ -147,6 +147,13 @@ export function InterviewPage() {
     transcriptLines.some((line) => line.speaker === 'interviewer') ||
     /^面试官[：:]/.test(interimText.trim());
   const visibleTranscriptLines = [...transcriptLines.slice(-30)].reverse();
+  // Older commercial sessions were incorrectly archived with this placeholder
+  // before the server-managed gateway check was fixed. Treat them as missing so
+  // their review can be generated again rather than trapping the user on it.
+  const hasGeneratedReview = Boolean(
+    activeSession?.review?.summary
+      && !activeSession.review.summary.includes('本次未配置 AI Key，因此没有生成 AI 复盘。'),
+  );
 
   if (showStartPrompt && activeSession && !showSetup) {
     return (
@@ -169,6 +176,7 @@ export function InterviewPage() {
           const targetSession = sessions.find((session) => session.id === id);
           setShowAudioPrep(!targetSession?.archivedAt && !isDesktop);
         }}
+        onDeleteSession={deleteSession}
       />
     );
   }
@@ -326,19 +334,19 @@ export function InterviewPage() {
           >
             结束归档
           </Button>
-          {activeSession.archivedAt && activeSession.review?.summary && (
+          {activeSession.archivedAt && hasGeneratedReview && (
             <Button size="small" variant="outlined" onClick={() => setReviewOpen(true)}>
               查看复盘
             </Button>
           )}
-          {activeSession.archivedAt && !activeSession.review?.summary && (
+          {activeSession.archivedAt && !hasGeneratedReview && (
             <Button
               size="small"
               variant="outlined"
               onClick={() => { void generateReview(); }}
-              disabled={isProcessing || !aiSettings.apiKey}
+              disabled={isProcessing || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
             >
-              生成复盘
+              {activeSession.review?.summary ? '重新生成复盘' : '生成复盘'}
             </Button>
           )}
           {!isDesktop && (
@@ -700,12 +708,12 @@ export function InterviewPage() {
       <DialogContent dividers>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           <Alert severity="warning">
-            重点：在 Chrome 分享弹窗底部，一定要打开“同时分享系统音频”。否则页面能看到你选了窗口，但识别不到会议声音。
+            在 Chrome 分享弹窗中选择正在播放面试官声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕，并打开“同时分享音频”。
           </Alert>
           <GuideStep
             index={1}
-            title="选择会议软件或整个屏幕"
-            desc="推荐选择腾讯会议、微信、飞书会议等正在播放面试官声音的窗口；如果找不到，就选整个屏幕。"
+            title="选择会议窗口、标签页或整个屏幕"
+            desc="选择正在播放面试官声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕。"
           />
           <GuideStep
             index={2}
@@ -722,7 +730,7 @@ export function InterviewPage() {
       </DialogContent>
       <DialogActions>
         <Button onClick={closeAudioGuide}>我知道了</Button>
-        <Button variant="contained" onClick={handleGuideShare}>现在选择窗口</Button>
+        <Button variant="contained" onClick={handleGuideShare}>现在选择会议窗口</Button>
       </DialogActions>
     </Dialog>
     </>
@@ -811,7 +819,7 @@ function AudioPreparationStep({
 
         {needsSystemAudio && !systemAudioReady && (
           <Alert severity="warning" sx={{ mb: 2 }}>
-            重点：Chrome 弹出的共享窗口里必须打开“同时分享系统音频”。只选窗口但不开这个开关，会看起来共享成功，但听不到面试官声音。
+            在 Chrome 弹出的共享窗口中，选择正在播放会议声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕，并打开“同时分享音频”。
           </Alert>
         )}
         {error && (
@@ -829,8 +837,8 @@ function AudioPreparationStep({
           />
           <GuideStep
             index={2}
-            title={COMMERCIAL_MODE ? '选择面试窗口' : '共享系统音频'}
-            desc="选择腾讯会议、微信、飞书会议等正在播放面试官声音的窗口；找不到时可以选整个屏幕。"
+            title={COMMERCIAL_MODE ? '选择会议窗口' : '共享系统音频'}
+            desc="选择正在播放面试官声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕，并勾选“同时分享音频”。"
             tone={needsSystemAudio && !systemAudioReady ? 'warning' : 'default'}
             action={
               <Button
@@ -840,7 +848,7 @@ function AudioPreparationStep({
                 disabled={isListening}
                 startIcon={<ComputerIcon />}
               >
-                {systemAudioReady ? '重新选择窗口' : '选择面试窗口'}
+                {systemAudioReady ? '重新选择会议窗口' : '选择会议窗口'}
               </Button>
             }
           />
@@ -894,6 +902,7 @@ interface ProjectStartPromptProps {
   onCreate: () => void;
   sessions: InterviewSession[];
   onOpenSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
 }
 
 function ProjectStartPrompt({
@@ -903,7 +912,9 @@ function ProjectStartPrompt({
   onCreate,
   sessions,
   onOpenSession,
+  onDeleteSession,
 }: ProjectStartPromptProps) {
+  const [pendingDelete, setPendingDelete] = useState<InterviewSession | null>(null);
   const recentSessions = [...sessions]
     .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
     .slice(0, 8);
@@ -962,6 +973,17 @@ function ProjectStartPrompt({
                   <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
                     {formatTimeOrDate(session.updatedAt ?? session.createdAt)}
                   </Typography>
+                  <IconButton
+                    aria-label={`删除项目 ${session.name}`}
+                    size="small"
+                    color="error"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPendingDelete(session);
+                    }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
                 </Box>
                 <Typography variant="body2" color="text.secondary" noWrap title={sessionBrief(session)}>
                   {sessionBrief(session)}
@@ -971,6 +993,28 @@ function ProjectStartPrompt({
           </Box>
         </Paper>
       )}
+
+      <Dialog open={Boolean(pendingDelete)} onClose={() => setPendingDelete(null)}>
+        <DialogTitle>删除面试项目？</DialogTitle>
+        <DialogContent>
+          <Typography>
+            将删除「{pendingDelete?.name}」及其问答、转写和复盘记录，此操作无法撤销。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDelete(null)}>取消</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              if (pendingDelete) onDeleteSession(pendingDelete.id);
+              setPendingDelete(null);
+            }}
+          >
+            删除
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -70,7 +70,7 @@ on public.admin_audit_logs (created_at desc);
 
 insert into public.admin_app_config (key, value, is_secret)
 values
-  ('ai', '{"baseUrl":"https://api.deepseek.com/v1","textModel":"deepseek-chat","visionModel":"deepseek-chat","apiKey":""}'::jsonb, true),
+  ('ai', '{"baseUrl":"https://api.deepseek.com/v1","textModel":"deepseek-v4-flash","visionModel":"deepseek-v4-flash","apiKey":""}'::jsonb, true),
   ('asr', '{"provider":"gateway-doubao","doubaoAppId":"","doubaoAccessToken":"","doubaoResourceId":"volc.bigasr.sauc.duration","iflytekAppId":"","iflytekApiKey":"","iflytekApiSecret":"","alibabaAppKey":"","alibabaToken":"","alibabaEndpoint":"wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1"}'::jsonb, true),
   ('plans', '{"starterMinutes":60,"proMinutes":180,"monthlyMinutes":600,"freeTrialMinutes":15}'::jsonb, false)
 on conflict (key) do nothing;

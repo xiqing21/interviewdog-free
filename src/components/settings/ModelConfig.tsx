@@ -41,7 +41,7 @@ export function ModelConfig() {
         value={aiSettings.visionModel}
         onChange={(e) => updateAISettings({ visionModel: e.target.value })}
         sx={{ mb: 2 }}
-        helperText="用于笔试截图识别的视觉模型"
+        helperText="仅用于兼容旧版视觉调用；笔试截图默认在本机 OCR 后使用文本模型解答"
       />
 
       {/* Streaming toggle */}

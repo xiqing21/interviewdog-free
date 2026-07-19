@@ -1339,7 +1339,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   async function generateInterviewReview(): Promise<InterviewReview | undefined> {
     const sess = sessionRef.current;
     if (!sess) return undefined;
-    if (!aiRef.current.apiKey) {
+    // Commercial builds route chat through the server-managed AI gateway. A
+    // personal provider key is only required by the free/self-hosted build.
+    if (!COMMERCIAL_MODE && !aiRef.current.apiKey) {
       return {
         summary: '已结束并归档。本次未配置 AI Key，因此没有生成 AI 复盘。',
         strengths: [],

@@ -21,6 +21,7 @@ import { deobfuscate } from './cryptoService';
 import { API_TIMEOUT_MS, STREAM_TIMEOUT_MS } from '../constants';
 import { COMMERCIAL_MODE } from '../config/commercial';
 import { getApiUrl } from './apiHelper';
+import { extractTextFromImage } from './ocrService';
 
 /**
  * 从设置中解混淆 API Key
@@ -209,17 +210,17 @@ export async function visionChat(
     if (!examConfig) {
       throw new Error(`未知的题型：${examType}`);
     }
-    const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}`;
-    const dataUrl = `data:image/png;base64,${imageBase64}`;
+    const recognizedText = await extractTextFromImage(imageBase64);
+    if (!recognizedText) {
+      throw new Error('未能从截图中识别出文字。请框选完整题干、放大后再试。');
+    }
+    const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}\n\n以下是从截图识别出的题目文字：\n${recognizedText}`;
     return serverManagedChat([
       {
         role: 'user',
-        content: [
-          { type: 'text', text: userPrompt },
-          { type: 'image_url', image_url: { url: dataUrl } },
-        ] as ChatMessageContentPart[],
+        content: userPrompt,
       },
-    ], settings.streaming, 'vision', onChunk);
+    ], settings.streaming, 'text', onChunk);
   }
 
   const apiKey = getApiKey(settings);
