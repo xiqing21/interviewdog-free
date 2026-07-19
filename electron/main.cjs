@@ -35,31 +35,6 @@ function openScreenRecordingSettings() {
   });
 }
 
-function checkAndRequestPermissions() {
-  if (process.platform !== 'darwin') return;
-  try {
-    const screenStatus = getScreenAccessStatus();
-    console.log('[main] screen access status:', screenStatus);
-    if (screenStatus !== 'granted') {
-      // Trigger TCC prompt via desktopCapturer when possible.
-      desktopCapturer.getSources({ types: ['screen'] })
-        .then((sources) => {
-          console.log('[main] Screen capture permission requested, sources:', sources.length);
-        })
-        .catch((err) => {
-          console.error('[main] Error requesting screen capture access:', err);
-        });
-    }
-    // Microphone is optional for system-audio-only mode, but ask once for future dual-path.
-    const micStatus = systemPreferences.getMediaAccessStatus('microphone');
-    if (micStatus !== 'granted') {
-      systemPreferences.askForMediaAccess('microphone').catch(() => {});
-    }
-  } catch (err) {
-    console.error('[main] Error checking/requesting permissions:', err);
-  }
-}
-
 function resolveAudioHelperPath() {
   const candidates = [];
   if (app.isPackaged) {
@@ -128,7 +103,8 @@ app.setName(APP_TITLE);
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
-  checkAndRequestPermissions();
+  // The desktop app is system-audio-only. Permissions are requested only when
+  // the user clicks “开始听音”, preventing two startup authorization prompts.
   if (process.platform === 'darwin' && !DEBUG_VISIBLE) {
     app.dock.hide();
   }

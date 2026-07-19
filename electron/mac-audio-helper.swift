@@ -6,6 +6,10 @@ class AudioRecorder: NSObject, SCStreamOutput {
     var stream: SCStream?
     let targetSampleRate: Double = 16000.0
     let targetChannels: UInt32 = 1
+    private var carrySamples: [Float] = []
+    private var resamplePosition: Double = 0
+    private var activeInputSampleRate: Double = 0
+    private var loggedFormat = false
     
     func start() {
         Task {
@@ -49,37 +53,116 @@ class AudioRecorder: NSObject, SCStreamOutput {
             return
         }
         
-        // Extract raw audio data
+        // ScreenCaptureKit may ignore the requested 16 kHz / mono format and
+        // deliver 48 kHz stereo (often as non-interleaved float buffers).
+        // The ASR Gateway always expects 16 kHz, mono, signed PCM; forwarding
+        // the raw first buffer changes playback speed and loses part of a
+        // sentence. Downmix and resample every buffer explicitly instead.
         try? sampleBuffer.withAudioBufferList { audioBufferList, blockBuffer in
             guard audioBufferList.count > 0 else { return }
-            let audioBuffer = audioBufferList[0]
-            let bytesCount = Int(audioBuffer.mDataByteSize)
-            guard bytesCount > 0, let mData = audioBuffer.mData else { return }
-            
-            // Check the format of ScreenCaptureKit audio
+            let inputSampleRate = audioDescription.mSampleRate
+            guard inputSampleRate > 0 else { return }
             let isFloat = (audioDescription.mFormatFlags & kLinearPCMFormatFlagIsFloat) != 0
-            
-            if isFloat {
-                let floatCount = bytesCount / 4
-                let floatPointer = mData.assumingMemoryBound(to: Float32.self)
-                var int16Data = [Int16](repeating: 0, count: floatCount)
-                for i in 0..<floatCount {
-                    let floatVal = floatPointer[i]
-                    let clamped = max(-1.0, min(1.0, floatVal))
-                    int16Data[i] = Int16(clamped < 0 ? clamped * 32768.0 : clamped * 32767.0)
-                }
-                
-                int16Data.withUnsafeBytes { rawBytes in
-                    if let baseAddress = rawBytes.baseAddress {
-                        let data = Data(bytes: baseAddress, count: floatCount * 2)
-                        FileHandle.standardOutput.write(data)
+            let bytesPerSample = max(1, Int(audioDescription.mBitsPerChannel) / 8)
+            guard bytesPerSample == 2 || bytesPerSample == 4 else { return }
+
+            if !loggedFormat {
+                loggedFormat = true
+                let channels = max(1, Int(audioDescription.mChannelsPerFrame))
+                fputs("FORMAT: rate=\(inputSampleRate), channels=\(channels), buffers=\(audioBufferList.count), float=\(isFloat)\n", stderr)
+            }
+
+            var frameCount = Int.max
+            for index in 0..<audioBufferList.count {
+                let buffer = audioBufferList[index]
+                let channelsInBuffer = max(1, Int(buffer.mNumberChannels))
+                let sampleCount = Int(buffer.mDataByteSize) / bytesPerSample
+                frameCount = min(frameCount, sampleCount / channelsInBuffer)
+            }
+            guard frameCount > 0 && frameCount != Int.max else { return }
+
+            var mono = [Float](repeating: 0, count: frameCount)
+            for frame in 0..<frameCount {
+                var sum: Float = 0
+                var channelCount = 0
+                for index in 0..<audioBufferList.count {
+                    let buffer = audioBufferList[index]
+                    guard let mData = buffer.mData else { continue }
+                    let channelsInBuffer = max(1, Int(buffer.mNumberChannels))
+                    for channel in 0..<channelsInBuffer {
+                        let sampleIndex = frame * channelsInBuffer + channel
+                        sum += decodeSample(
+                            mData,
+                            index: sampleIndex,
+                            isFloat: isFloat,
+                            bytesPerSample: bytesPerSample
+                        )
+                        channelCount += 1
                     }
                 }
-            } else {
-                // If it is already Int16 PCM, write directly
-                let data = Data(bytes: mData, count: bytesCount)
-                FileHandle.standardOutput.write(data)
+                mono[frame] = channelCount > 0 ? sum / Float(channelCount) : 0
             }
+
+            writePcm(resampleToTarget(mono, inputSampleRate: inputSampleRate))
+        }
+    }
+
+    private func decodeSample(
+        _ data: UnsafeMutableRawPointer,
+        index: Int,
+        isFloat: Bool,
+        bytesPerSample: Int
+    ) -> Float {
+        if isFloat {
+            return data.assumingMemoryBound(to: Float32.self)[index]
+        }
+        if bytesPerSample == 2 {
+            return Float(data.assumingMemoryBound(to: Int16.self)[index]) / 32768.0
+        }
+        return Float(data.assumingMemoryBound(to: Int32.self)[index]) / Float(Int32.max)
+    }
+
+    private func resampleToTarget(_ samples: [Float], inputSampleRate: Double) -> [Int16] {
+        if activeInputSampleRate != inputSampleRate {
+            activeInputSampleRate = inputSampleRate
+            carrySamples.removeAll(keepingCapacity: true)
+            resamplePosition = 0
+        }
+
+        if inputSampleRate == targetSampleRate {
+            return samples.map(floatToInt16)
+        }
+
+        let ratio = inputSampleRate / targetSampleRate
+        let combined = carrySamples + samples
+        var position = resamplePosition
+        var output: [Int16] = []
+        output.reserveCapacity(Int(Double(samples.count) / ratio) + 2)
+
+        while position + 1 < Double(combined.count) {
+            let left = Int(position)
+            let fraction = Float(position - Double(left))
+            let value = combined[left] + (combined[left + 1] - combined[left]) * fraction
+            output.append(floatToInt16(value))
+            position += ratio
+        }
+
+        let consumed = Int(position)
+        carrySamples = consumed < combined.count ? Array(combined[consumed...]) : []
+        resamplePosition = position - Double(consumed)
+        return output
+    }
+
+    private func floatToInt16(_ value: Float) -> Int16 {
+        let clamped = max(-1.0, min(1.0, value))
+        return Int16(clamped < 0 ? clamped * 32768.0 : clamped * 32767.0)
+    }
+
+    private func writePcm(_ samples: [Int16]) {
+        guard !samples.isEmpty else { return }
+        samples.withUnsafeBytes { rawBytes in
+            guard let baseAddress = rawBytes.baseAddress else { return }
+            FileHandle.standardOutput.write(Data(bytes: baseAddress, count: rawBytes.count))
         }
     }
 }

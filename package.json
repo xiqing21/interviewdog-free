@@ -2,7 +2,7 @@
   "name": "interviewdog-free",
   "productName": "MianshiZhu Pro",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -61,6 +61,7 @@
     "directories": {
       "output": "release"
     },
+    "afterPack": "scripts/after-pack.mjs",
     "extraResources": [
       {
         "from": "build/mac-audio-helper",
