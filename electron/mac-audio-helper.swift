@@ -10,6 +10,13 @@ class AudioRecorder: NSObject, SCStreamOutput {
     private var resamplePosition: Double = 0
     private var activeInputSampleRate: Double = 0
     private var loggedFormat = false
+    // ScreenCaptureKit invokes the audio callback very frequently (often every
+    // 10–20 ms). Sending every callback through stdout → Electron IPC → JSON
+    // WebSocket creates unnecessary scheduling pressure and makes the desktop
+    // path lag behind the browser. 100 ms keeps latency low while reducing the
+    // number of cross-process packets by roughly five to ten times.
+    private let outputBatchSampleCount = 1600 // 100 ms at 16 kHz mono
+    private var pendingPcm: [Int16] = []
     
     func start() {
         Task {
@@ -103,7 +110,7 @@ class AudioRecorder: NSObject, SCStreamOutput {
                 mono[frame] = channelCount > 0 ? sum / Float(channelCount) : 0
             }
 
-            writePcm(resampleToTarget(mono, inputSampleRate: inputSampleRate))
+            enqueuePcm(resampleToTarget(mono, inputSampleRate: inputSampleRate))
         }
     }
 
@@ -158,8 +165,16 @@ class AudioRecorder: NSObject, SCStreamOutput {
         return Int16(clamped < 0 ? clamped * 32768.0 : clamped * 32767.0)
     }
 
-    private func writePcm(_ samples: [Int16]) {
+    private func enqueuePcm(_ samples: [Int16]) {
         guard !samples.isEmpty else { return }
+        pendingPcm.append(contentsOf: samples)
+        while pendingPcm.count >= outputBatchSampleCount {
+            writePcm(Array(pendingPcm.prefix(outputBatchSampleCount)))
+            pendingPcm.removeFirst(outputBatchSampleCount)
+        }
+    }
+
+    private func writePcm(_ samples: [Int16]) {
         samples.withUnsafeBytes { rawBytes in
             guard let baseAddress = rawBytes.baseAddress else { return }
             FileHandle.standardOutput.write(Data(bytes: baseAddress, count: rawBytes.count))

@@ -7,7 +7,7 @@ const APP_TITLE = 'MianshiZhu Pro';
 const MIN_OPACITY = 0.35;
 const MAX_OPACITY = 1;
 // Debug build: keep the window and Dock icon visible while fixing Mac audio.
-const DEBUG_VISIBLE = true;
+const DEBUG_VISIBLE = false;
 
 let mainWindow;
 let audioProcess = null;
