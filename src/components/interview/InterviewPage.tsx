@@ -400,6 +400,12 @@ export function InterviewPage() {
             icon={isDesktop || systemAudioReady ? <CheckCircleIcon /> : <ComputerIcon />}
             label={isDesktop ? (isListening ? '系统音频已连接' : '系统音频待启动') : (systemAudioReady ? '面试窗口已选择' : '未选择面试窗口')}
           />
+          {activeSession.targetRole && (
+            <Chip size="small" variant="outlined" label={`岗位：${activeSession.targetRole}`} />
+          )}
+          {activeSession.jd?.trim() && (
+            <Chip size="small" color="success" variant="outlined" label={`岗位目标已挂载（${activeSession.jd.trim().length} 字）`} />
+          )}
           <AnswerModeToggle />
           <FormControlLabel
             control={
@@ -1079,7 +1085,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
   const [jdText, setJdText] = useState(
     editing
       ? (activeSession?.jd ?? jd) || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd
-      : currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd,
+      : jd || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd,
   );
   const [expertKnowledgeText, setExpertKnowledgeText] = useState(
     editing ? activeSession?.expertKnowledge ?? '' : '',
@@ -1096,7 +1102,12 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     setSelectedRole(nextRole as typeof selectedRole);
     if (preset) {
       setProjectName((current) => current || preset.label);
-      setJdText(preset.jd);
+      setJdText((current) => {
+        // A role preset may update its own sample JD, but must never erase a
+        // pasted company JD / interview goal.
+        const isPresetText = INTERVIEW_ROLE_PRESETS.some((item) => item.jd.trim() === current.trim());
+        return !current.trim() || isPresetText ? preset.jd : current;
+      });
       if (preset.key === 'web3') setFocusAreas(['Web3', '系统设计', '项目深挖']);
       if (preset.key === 'bigdata') setFocusAreas(['SQL', '大数据', '项目深挖']);
     }
@@ -1141,6 +1152,14 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         ? current.filter((item) => item !== focus)
         : [...current, focus],
     );
+  };
+
+  const handleJdChange = (value: string) => {
+    setJdText(value);
+    // When editing an existing project, persist the company JD / interview
+    // goal as it is pasted. This makes leaving the setup page safe and avoids
+    // relying on a second save click.
+    if (editing && activeSession) updateSessionProfile({ jd: value });
   };
 
   const startProject = () => {
@@ -1336,7 +1355,8 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         maxRows={10}
         label="岗位描述 / 面试目标"
         value={jdText}
-        onChange={(event) => setJdText(event.target.value)}
+        onChange={(event) => handleJdChange(event.target.value)}
+        helperText={editing ? '已自动保存到当前面试项目，并会进入后续每道题的回答上下文。' : '创建项目后会保存到该项目，并进入后续每道题的回答上下文。'}
         sx={{ mt: 2 }}
       />
 
