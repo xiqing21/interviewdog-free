@@ -135,6 +135,12 @@ export interface RegenerateAnswerOptions {
   mode?: AnswerGenerationMode;
 }
 
+type AnswerGenerationJob = {
+  id: string;
+  question: string;
+  mode: AnswerGenerationMode;
+};
+
 export const InterviewContext = createContext<InterviewContextValue | null>(null);
 
 // ===== Provider =====
@@ -164,7 +170,6 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const resumeRef = useRef(resume); resumeRef.current = resume;
   const jdRef = useRef(jd); jdRef.current = jd;
   const knowledgeRef = useRef(knowledgeProfile); knowledgeRef.current = knowledgeProfile;
-  const isProcessingRef = useRef(false); isProcessingRef.current = state.isProcessing;
   const transcriptRef = useRef<TranscriptLine[]>([]);
   transcriptRef.current = state.transcriptLines;
   const lastSessionId = useRef<string | null>(null);
@@ -176,12 +181,11 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const pendingInterimQuestion = useRef('');
   const pendingInterimNormalized = useRef('');
   const committedInterviewerQuestions = useRef<string[]>([]);
-  const queuedQuestions = useRef<string[]>([]);
   const qwenMicrophoneSession = useRef<LocalQwenSession | null>(null);
   const qwenSystemAudioSession = useRef<LocalQwenSession | null>(null);
   const billingTickStartedAt = useRef<number | null>(null);
-  const generationAbortController = useRef<AbortController | null>(null);
-  const generationRunId = useRef(0);
+  const generationControllers = useRef(new Map<string, AbortController>());
+  const generationRunIds = useRef(new Map<string, number>());
 
   // 持久化当前 session 的 qaList
   const qaList = activeSession?.qaList ?? [];
@@ -208,7 +212,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     mergeBuffer.current = [];
     pendingInterimQuestion.current = '';
     pendingInterimNormalized.current = '';
-    queuedQuestions.current = [];
+    stopAllGenerations();
     lastSessionId.current = activeSession?.id ?? null;
     const lines = activeSession?.transcriptLines ?? [];
     committedInterviewerQuestions.current = lines
@@ -260,7 +264,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   // ===== 构建系统提示词 =====
   function buildSystemPrompt(modeOverride?: 'concise' | 'detailed', options: { includeProfileContext?: boolean } = {}): string {
     const includeProfileContext = options.includeProfileContext ?? true;
-    const mode = modeOverride ?? activeSession?.answerMode ?? 'concise';
+    const mode = modeOverride
+      ?? activeSession?.answerMode
+      ?? appRef.current.defaultAnswerMode
+      ?? 'detailed';
     const modePrompt = ANSWER_MODES.find((m) => m.key === mode)?.prompt ?? '';
     let prompt = modePrompt;
     prompt += mode === 'detailed'
@@ -437,18 +444,18 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     return error instanceof DOMException && error.name === 'AbortError';
   }
 
-  function stopActiveGeneration(): void {
-    generationAbortController.current?.abort();
-    generationAbortController.current = null;
-    generationRunId.current += 1;
+  function stopGenerationFor(id: string): void {
+    generationControllers.current.get(id)?.abort();
+    generationControllers.current.delete(id);
+    generationRunIds.current.set(id, (generationRunIds.current.get(id) ?? 0) + 1);
   }
 
-  function interruptStreamingAnswers(message = '已被新的问题打断。'): void {
-    const sess = sessionRef.current;
-    if (!sess) return;
-    updateSessionQAList(sess.qaList.map((qa) => (
-      qa.isStreaming ? { ...qa, isStreaming: false, error: qa.answer ? undefined : message } : qa
-    )));
+  function stopAllGenerations(): void {
+    for (const [id, controller] of generationControllers.current) {
+      controller.abort();
+      generationRunIds.current.set(id, (generationRunIds.current.get(id) ?? 0) + 1);
+    }
+    generationControllers.current.clear();
   }
 
   function updateQA(id: string, patch: Partial<QAItem>): void {
@@ -599,11 +606,6 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   const sendQuestion = useCallback(async (question: string) => {
     const trimmed = question.trim();
     if (!trimmed) return;
-    if (isProcessingRef.current) {
-      stopActiveGeneration();
-      interruptStreamingAnswers();
-      dispatch({ type: 'SET_PROCESSING', payload: false });
-    }
 
     const id = generateId();
     const qaItem: QAItem = { id, question: trimmed, answer: '', timestamp: Date.now(), isStreaming: true, generationMode: 'normal' };
@@ -615,31 +617,34 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       updateSessionQAList(newQaList);
     }
 
-    await runAnswerGeneration(id, trimmed, 'normal', { queueNext: true });
+    // Each question owns an independent request. A fast follow-up question must
+    // start immediately without aborting an earlier answer that is still streaming.
+    await runAnswerGeneration({ id, question: trimmed, mode: 'normal' });
   }, [updateSessionQAList]);
 
   // ===== 重新生成答案 =====
   const regenerateAnswer = useCallback(async (id: string, options: RegenerateAnswerOptions = {}) => {
-    stopActiveGeneration();
     const sess = sessionRef.current;
     if (!sess) return;
     const qaItem = sess.qaList.find((q) => q.id === id);
     if (!qaItem) return;
 
     const question = options.question ?? qaItem.question;
-    await runAnswerGeneration(id, question, options.mode ?? 'normal');
+    // Regeneration intentionally replaces only this card's request; other
+    // questions continue streaming independently.
+    stopGenerationFor(id);
+    await runAnswerGeneration({ id, question, mode: options.mode ?? 'normal' });
   }, [updateSessionQAList]);
 
   async function runAnswerGeneration(
-    id: string,
-    question: string,
-    mode: AnswerGenerationMode,
-    options: { queueNext?: boolean } = {},
+    job: AnswerGenerationJob,
   ): Promise<void> {
-    stopActiveGeneration();
+    const { id, question, mode } = job;
     const controller = new AbortController();
-    generationAbortController.current = controller;
-    const runId = generationRunId.current;
+    const runId = (generationRunIds.current.get(id) ?? 0) + 1;
+    generationRunIds.current.set(id, runId);
+    generationControllers.current.set(id, controller);
+    const isCurrentRun = () => generationRunIds.current.get(id) === runId;
     dispatch({ type: 'SET_PROCESSING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
     updateQA(id, {
@@ -670,7 +675,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (policy.includeSearch) {
       try {
         searchResults = await webSearch(question, controller.signal);
-        if (runId === generationRunId.current && searchResults.length) {
+        if (isCurrentRun() && searchResults.length) {
           updateQA(id, { searchResults });
         }
       } catch (searchError) {
@@ -703,16 +708,16 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }, 75_000);
     try {
       await chat(messages, settings, (chunk: string) => {
-        if (runId !== generationRunId.current) return;
+        if (!isCurrentRun()) return;
         accumulated += chunk;
         updateQA(id, { answer: accumulated, isStreaming: true, error: undefined });
       }, controller.signal);
-      if (runId === generationRunId.current) {
+      if (isCurrentRun()) {
         updateQA(id, { answer: accumulated, isStreaming: false, error: undefined });
       }
     } catch (error) {
       if (isAbortError(error)) {
-        if (runId === generationRunId.current) {
+        if (isCurrentRun()) {
           updateQA(id, { isStreaming: false, error: accumulated ? undefined : '生成超时或已被打断，请点“重新生成/简洁/详细”再试。' });
         }
         return;
@@ -722,17 +727,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_ERROR', payload: errMsg });
     } finally {
       window.clearTimeout(generationTimeout);
-      if (runId === generationRunId.current) {
-        generationAbortController.current = null;
-        dispatch({ type: 'SET_PROCESSING', payload: false });
-        if (options.queueNext) {
-          const nextQuestion = queuedQuestions.current.shift();
-          if (nextQuestion) {
-            window.setTimeout(() => {
-              void sendQuestion(nextQuestion);
-            }, 0);
-          }
-        }
+      if (isCurrentRun()) {
+        generationControllers.current.delete(id);
+        dispatch({ type: 'SET_PROCESSING', payload: generationControllers.current.size > 0 });
       }
     }
   }
@@ -1463,7 +1460,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   }, [updateSessionQAList, updateSessionTranscriptLines]);
 
   const stopGeneration = useCallback(() => {
-    stopActiveGeneration();
+    stopAllGenerations();
     dispatch({ type: 'SET_PROCESSING', payload: false });
     const sess = sessionRef.current;
     if (sess) {

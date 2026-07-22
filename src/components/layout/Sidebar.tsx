@@ -156,7 +156,7 @@ export function Sidebar() {
       >
         {!collapsed && (
           <Typography variant="caption" color="text.secondary">
-            v1.0.3
+            v1.0.4
           </Typography>
         )}
         <IconButton onClick={toggleTheme} size="small">
