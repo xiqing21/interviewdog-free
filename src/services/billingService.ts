@@ -28,9 +28,19 @@ type BillingServerPayload = {
   entitlement: BillingEntitlement;
   remainingSeconds: number;
   hasAccess: boolean;
+  redeemedCard?: {
+    code: string;
+    minutes: number;
+    batchNo: string;
+    plan: string;
+  };
+  message?: string;
 };
 
-async function billingRequest(action: 'ensure' | 'consume', seconds?: number): Promise<BillingServerPayload | null> {
+async function billingRequest(
+  action: 'ensure' | 'consume' | 'redeemCardKey',
+  payloadData?: { seconds?: number; code?: string },
+): Promise<BillingServerPayload | null> {
   if (!supabase) return null;
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -41,13 +51,24 @@ async function billingRequest(action: 'ensure' | 'consume', seconds?: number): P
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ action, seconds }),
+    body: JSON.stringify({ action, ...payloadData }),
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload?.error ?? '同步账户额度失败。');
+    throw new Error(payload?.error ?? '计费服务请求失败。');
   }
   return payload as BillingServerPayload;
+}
+
+export async function redeemCardKey(code: string): Promise<{ entitlement: BillingEntitlement; message: string; minutes: number }> {
+  if (!supabase) throw new Error('请先登录账号后再兑换卡密。');
+  const server = await billingRequest('redeemCardKey', { code: code.trim().toUpperCase() });
+  if (!server) throw new Error('兑换请求未获得响应。');
+  return {
+    entitlement: server.entitlement,
+    message: server.message || `恭喜！已成功兑换 ${server.redeemedCard?.minutes ?? 30} 分钟时长。`,
+    minutes: server.redeemedCard?.minutes ?? 30,
+  };
 }
 
 export async function loadEntitlement(): Promise<BillingEntitlement | null> {
@@ -62,7 +83,7 @@ export async function loadEntitlement(): Promise<BillingEntitlement | null> {
 
 export async function consumeSeconds(seconds: number): Promise<BillingEntitlement | null> {
   if (!supabase || seconds <= 0) return null;
-  const server = await billingRequest('consume', seconds);
+  const server = await billingRequest('consume', { seconds });
   return server?.entitlement ?? null;
 }
 

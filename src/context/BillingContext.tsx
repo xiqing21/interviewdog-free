@@ -20,6 +20,7 @@ export interface BillingContextValue {
   refreshBilling: () => Promise<BillingEntitlement | null>;
   consumeSeconds: (seconds: number) => Promise<void>;
   startCheckout: (planId: CommercialPlanId) => Promise<void>;
+  redeemCardKey: (code: string) => Promise<{ message: string; minutes: number }>;
 }
 
 export const BillingContext = createContext<BillingContextValue | null>(null);
@@ -76,6 +77,22 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const redeemCardKey = useCallback(async (code: string): Promise<{ message: string; minutes: number }> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await billingService.redeemCardKey(code);
+      setEntitlement(result.entitlement);
+      return { message: result.message, minutes: result.minutes };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '卡密兑换失败';
+      setError(msg);
+      throw new Error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const remainingSeconds = billingService.remainingSeconds(entitlement);
   const hasAccess = !COMMERCIAL_MODE || Boolean(user && remainingSeconds > 0);
 
@@ -88,7 +105,8 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     refreshBilling,
     consumeSeconds,
     startCheckout,
-  }), [consumeSeconds, entitlement, error, hasAccess, loading, refreshBilling, remainingSeconds, startCheckout, user]);
+    redeemCardKey,
+  }), [consumeSeconds, entitlement, error, hasAccess, loading, redeemCardKey, refreshBilling, remainingSeconds, startCheckout, user]);
 
   return <BillingContext.Provider value={value}>{children}</BillingContext.Provider>;
 }

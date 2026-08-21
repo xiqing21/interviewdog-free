@@ -32,7 +32,16 @@ type AdminAction =
   | 'getSeoInsights'
   | 'submitIndexNow'
   | 'submitBingUrls'
-  | 'submitGoogleSitemap';
+  | 'submitGoogleSitemap'
+  | 'listCardKeys'
+  | 'generateCardKeys'
+  | 'createSingleCardKey'
+  | 'revokeCardKey'
+  | 'deleteCardKey'
+  | 'batchRevokeByBatch'
+  | 'batchDeleteUnusedByBatch'
+  | 'adminRedeemCardKey'
+  | 'updateCardKeyNote';
 
 type AdminUser = {
   id: string;
@@ -108,6 +117,12 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     actionValue?: string;
     days?: number;
     urls?: string[];
+    batchNo?: string;
+    count?: number;
+    expiresAt?: string;
+    search?: string;
+    limit?: number;
+    plan?: string;
   };
 
   try {
@@ -189,6 +204,47 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     if (body.action === 'submitGoogleSitemap') {
       response.status(200).json(await submitGoogleSitemap(supabase, actor, body.value ?? {}));
+      return;
+    }
+    if (body.action === 'listCardKeys') {
+      response.status(200).json(await listCardKeys(supabase, {
+        status: body.status,
+        batchNo: body.batchNo,
+        search: body.search,
+        limit: body.limit,
+      }));
+      return;
+    }
+    if (body.action === 'generateCardKeys') {
+      response.status(200).json(await generateCardKeys(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'createSingleCardKey') {
+      response.status(200).json(await createSingleCardKey(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'revokeCardKey') {
+      response.status(200).json(await revokeCardKey(supabase, actor, body.id, body.status));
+      return;
+    }
+    if (body.action === 'deleteCardKey') {
+      response.status(200).json(await deleteCardKey(supabase, actor, body.id));
+      return;
+    }
+    if (body.action === 'batchRevokeByBatch') {
+      response.status(200).json(await batchRevokeByBatch(supabase, actor, body.batchNo, body.status));
+      return;
+    }
+    if (body.action === 'batchDeleteUnusedByBatch') {
+      response.status(200).json(await batchDeleteUnusedByBatch(supabase, actor, body.batchNo));
+      return;
+    }
+    if (body.action === 'adminRedeemCardKey') {
+      response.status(200).json(await adminRedeemCardKey(supabase, actor, body));
+      return;
+    }
+    if (body.action === 'updateCardKeyNote') {
+      response.status(200).json(await updateCardKeyNote(supabase, actor, body.id, body.note));
       return;
     }
     response.status(400).json({ error: '未知后台操作。' });
@@ -917,6 +973,332 @@ function buildGeoChecklist(config: Record<string, unknown>) {
 
 function toDateString(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+async function listCardKeys(
+  supabase: AdminSupabaseClient,
+  params: { status?: string; batchNo?: string; search?: string; limit?: number } = {},
+) {
+  let query = supabase
+    .from('license_card_keys')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (params.status && params.status !== 'all') {
+    query = query.eq('status', params.status);
+  }
+  if (params.batchNo && params.batchNo !== 'all') {
+    query = query.eq('batch_no', params.batchNo);
+  }
+  if (params.search) {
+    const search = params.search.trim();
+    query = query.or(`code.ilike.%${search}%,redeemed_by_email.ilike.%${search}%,note.ilike.%${search}%,batch_no.ilike.%${search}%`);
+  }
+  const limit = Math.min(500, Math.max(1, params.limit ?? 200));
+  query = query.limit(limit);
+
+  const { data: cardKeys, error } = await query;
+  if (error) throw error;
+
+  // 全量汇总指标
+  const { data: allKeys, error: statsError } = await supabase
+    .from('license_card_keys')
+    .select('id, batch_no, status, minutes, redeemed_at');
+  if (statsError) throw statsError;
+
+  const list = allKeys ?? [];
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
+  const batchCountMap = new Map<string, number>();
+  for (const k of list) {
+    const b = k.batch_no || 'DEFAULT';
+    batchCountMap.set(b, (batchCountMap.get(b) ?? 0) + 1);
+  }
+
+  const summary = {
+    total: list.length,
+    unused: list.filter((k: any) => k.status === 'unused').length,
+    redeemed: list.filter((k: any) => k.status === 'redeemed').length,
+    revoked: list.filter((k: any) => k.status === 'revoked').length,
+    expired: list.filter((k: any) => k.status === 'expired').length,
+    totalMinutesRedeemed: list
+      .filter((k: any) => k.status === 'redeemed')
+      .reduce((sum: number, k: any) => sum + Number(k.minutes ?? 0), 0),
+    todayRedeemedCount: list.filter(
+      (k: any) => k.status === 'redeemed' && k.redeemed_at && new Date(k.redeemed_at) >= startOfToday,
+    ).length,
+    batches: Array.from(batchCountMap.entries()).map(([batchNo, count]) => ({ batchNo, count })),
+  };
+
+  return {
+    cardKeys: cardKeys ?? [],
+    summary,
+  };
+}
+
+async function generateCardKeys(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  body: {
+    minutes?: number;
+    count?: number;
+    batchNo?: string;
+    plan?: string;
+    note?: string;
+    expiresAt?: string;
+  },
+) {
+  const minutes = Math.max(1, int(body.minutes, 30));
+  const count = Math.min(500, Math.max(1, int(body.count, 20)));
+  const now = new Date();
+  const dateTag = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const batchNo = str(body.batchNo) || `FAKA-${dateTag}-${minutes}M`;
+  const plan = str(body.plan) || 'pro';
+  const note = str(body.note) || `批量生成 ${minutes} 分钟卡密 (${count} 笔)`;
+  const expiresAt = body.expiresAt ? new Date(body.expiresAt).toISOString() : null;
+
+  const generatedCodes = new Set<string>();
+  const rows: Array<{
+    code: string;
+    batch_no: string;
+    minutes: number;
+    plan: string;
+    status: string;
+    note: string;
+    created_by: string;
+    expires_at: string | null;
+  }> = [];
+
+  while (rows.length < count) {
+    const part1 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const part2 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const part3 = crypto.randomBytes(2).toString('hex').toUpperCase();
+    const code = `MSZ-${minutes}M-${part1}-${part2}-${part3}`;
+    if (!generatedCodes.has(code)) {
+      generatedCodes.add(code);
+      rows.push({
+        code,
+        batch_no: batchNo,
+        minutes,
+        plan,
+        status: 'unused',
+        note,
+        created_by: actor.id,
+        expires_at: expiresAt,
+      });
+    }
+  }
+
+  const { data, error } = await supabase.from('license_card_keys').insert(rows).select('*');
+  if (error) throw error;
+
+  await audit(supabase, actor.id, 'generate_card_keys', undefined, {
+    batchNo,
+    minutes,
+    count,
+    note,
+  });
+
+  return {
+    ok: true,
+    count: data.length,
+    batchNo,
+    minutes,
+    cardKeys: data,
+    plainTextList: data.map((item: any) => item.code).join('\n'),
+  };
+}
+
+async function createSingleCardKey(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  body: {
+    code?: string;
+    minutes?: number;
+    batchNo?: string;
+    plan?: string;
+    note?: string;
+    expiresAt?: string;
+  },
+) {
+  const code = str(body.code).toUpperCase();
+  if (!code) throw new Error('请输入卡密编码。');
+  const minutes = Math.max(1, int(body.minutes, 30));
+  const batchNo = str(body.batchNo) || 'CUSTOM_SINGLE';
+  const plan = str(body.plan) || 'pro';
+  const note = str(body.note) || '手动单张创建卡密';
+  const expiresAt = body.expiresAt ? new Date(body.expiresAt).toISOString() : null;
+
+  const { data, error } = await supabase
+    .from('license_card_keys')
+    .insert({
+      code,
+      batch_no: batchNo,
+      minutes,
+      plan,
+      status: 'unused',
+      note,
+      created_by: actor.id,
+      expires_at: expiresAt,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  await audit(supabase, actor.id, 'create_single_card_key', undefined, { code, minutes, batchNo });
+  return { ok: true, cardKey: data };
+}
+
+async function revokeCardKey(supabase: AdminSupabaseClient, actor: AdminUser, id?: string, status = 'revoked') {
+  if (!id) throw new Error('缺少卡密 ID。');
+  const targetStatus = status === 'unused' ? 'unused' : 'revoked';
+  const { data, error } = await supabase
+    .from('license_card_keys')
+    .update({ status: targetStatus, updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'revoke_card_key', undefined, { id, status: targetStatus });
+  return { ok: true, cardKey: data };
+}
+
+async function deleteCardKey(supabase: AdminSupabaseClient, actor: AdminUser, id?: string) {
+  if (!id) throw new Error('缺少卡密 ID。');
+  const { error } = await supabase
+    .from('license_card_keys')
+    .delete()
+    .eq('id', id)
+    .eq('status', 'unused');
+  if (error) throw error;
+  await audit(supabase, actor.id, 'delete_card_key', undefined, { id });
+  return { ok: true };
+}
+
+async function batchRevokeByBatch(supabase: AdminSupabaseClient, actor: AdminUser, batchNo?: string, status = 'revoked') {
+  if (!batchNo || batchNo === 'all') throw new Error('请指定要批量操作的批次号。');
+  const targetStatus = status === 'unused' ? 'unused' : 'revoked';
+  const { data, error } = await supabase
+    .from('license_card_keys')
+    .update({ status: targetStatus, updated_at: new Date().toISOString() })
+    .eq('batch_no', batchNo)
+    .eq('status', status === 'unused' ? 'revoked' : 'unused')
+    .select('id, code');
+
+  if (error) throw error;
+  await audit(supabase, actor.id, 'batch_revoke_card_keys', undefined, { batchNo, targetStatus, count: data.length });
+  return { ok: true, count: data.length, batchNo };
+}
+
+async function batchDeleteUnusedByBatch(supabase: AdminSupabaseClient, actor: AdminUser, batchNo?: string) {
+  if (!batchNo || batchNo === 'all') throw new Error('请指定要批量删除的批次号。');
+  const { data, error } = await supabase
+    .from('license_card_keys')
+    .delete()
+    .eq('batch_no', batchNo)
+    .eq('status', 'unused')
+    .select('id');
+
+  if (error) throw error;
+  await audit(supabase, actor.id, 'batch_delete_card_keys', undefined, { batchNo, count: data?.length ?? 0 });
+  return { ok: true, count: data?.length ?? 0, batchNo };
+}
+
+async function adminRedeemCardKey(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  body: { id?: string; code?: string; userId?: string; email?: string },
+) {
+  const code = str(body.code).toUpperCase();
+  const userId = str(body.userId);
+  const email = str(body.email);
+
+  if (!code && !body.id) throw new Error('请提供卡密编码或 ID。');
+  if (!userId && !email) throw new Error('请提供目标用户的 ID 或邮箱。');
+
+  let targetUserId = userId;
+  let targetEmail = email;
+
+  if (!targetUserId && targetEmail) {
+    const { data: userData } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    const match = (userData?.users ?? []).find((u: any) => u.email?.toLowerCase() === targetEmail.toLowerCase());
+    if (!match) throw new Error(`未找到邮箱为 ${targetEmail} 的用户。`);
+    targetUserId = match.id;
+    targetEmail = match.email;
+  }
+
+  const query = supabase.from('license_card_keys').select('*');
+  if (body.id) query.eq('id', body.id);
+  else query.eq('code', code);
+  const { data: card, error: cardError } = await query.maybeSingle();
+
+  if (cardError) throw cardError;
+  if (!card) throw new Error('卡密不存在。');
+  if (card.status !== 'unused') throw new Error(`卡密状态为 ${card.status}，无法核销。`);
+
+  // 原子锁定
+  const { data: updatedCard, error: updateError } = await supabase
+    .from('license_card_keys')
+    .update({
+      status: 'redeemed',
+      redeemed_by: targetUserId,
+      redeemed_by_email: targetEmail,
+      redeemed_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', card.id)
+    .eq('status', 'unused')
+    .select('*')
+    .single();
+
+  if (updateError || !updatedCard) throw new Error('卡密核销并发冲突。');
+
+  // 累加用户权益
+  const minutesToAdd = Number(card.minutes ?? 30);
+  const { data: currentEntitlement } = await supabase
+    .from('user_entitlements')
+    .select('*')
+    .eq('user_id', targetUserId)
+    .maybeSingle();
+
+  const nextPurchased = Number(currentEntitlement?.purchased_minutes ?? 0) + minutesToAdd;
+  await supabase
+    .from('user_entitlements')
+    .upsert({
+      user_id: targetUserId,
+      free_trial_minutes: Number(currentEntitlement?.free_trial_minutes ?? 15),
+      purchased_minutes: nextPurchased,
+      used_seconds: Number(currentEntitlement?.used_seconds ?? 0),
+      plan: card.plan || 'pro',
+      subscription_status: currentEntitlement?.subscription_status ?? 'none',
+      updated_at: new Date().toISOString(),
+    });
+
+  // 写入流水
+  await supabase.from('billing_transactions').insert({
+    user_id: targetUserId,
+    actor_user_id: actor.id,
+    type: 'card_key_redemption',
+    minutes: minutesToAdd,
+    note: `后台手动代充核销: ${card.code} (${card.batch_no})`,
+  });
+
+  await audit(supabase, actor.id, 'admin_redeem_card_key', targetUserId, { code: card.code, minutes: minutesToAdd });
+  return { ok: true, cardKey: updatedCard, message: `已成功为 ${targetEmail || targetUserId} 充值 ${minutesToAdd} 分钟！` };
+}
+
+async function updateCardKeyNote(supabase: AdminSupabaseClient, actor: AdminUser, id?: string, note?: string) {
+  if (!id) throw new Error('缺少卡密 ID。');
+  const { data, error } = await supabase
+    .from('license_card_keys')
+    .update({ note: str(note), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  await audit(supabase, actor.id, 'update_card_key_note', undefined, { id, note });
+  return { ok: true, cardKey: data };
 }
 
 async function totalUsedSeconds(supabase: AdminSupabaseClient): Promise<number> {

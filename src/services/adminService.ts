@@ -122,6 +122,50 @@ export type RiskRuleRow = {
   updated_at: string;
 };
 
+export type CardKeyStatus = 'unused' | 'redeemed' | 'revoked' | 'expired';
+
+export type CardKeyRow = {
+  id: string;
+  code: string;
+  batch_no: string;
+  minutes: number;
+  plan: string;
+  status: CardKeyStatus;
+  note: string | null;
+  created_by?: string | null;
+  redeemed_by?: string | null;
+  redeemed_by_email?: string | null;
+  redeemed_at?: string | null;
+  expires_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CardKeySummary = {
+  total: number;
+  unused: number;
+  redeemed: number;
+  revoked: number;
+  expired: number;
+  totalMinutesRedeemed: number;
+  todayRedeemedCount: number;
+  batches: Array<{ batchNo: string; count: number }>;
+};
+
+export type CardKeysPayload = {
+  cardKeys: CardKeyRow[];
+  summary: CardKeySummary;
+};
+
+export type GenerateCardKeysResponse = {
+  ok: boolean;
+  count: number;
+  batchNo: string;
+  minutes: number;
+  cardKeys: CardKeyRow[];
+  plainTextList: string;
+};
+
 export type CommercialOpsPayload = {
   coupons: CouponCodeRow[];
   tickets: SupportTicketRow[];
