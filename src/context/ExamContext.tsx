@@ -12,10 +12,11 @@ import {
   type ReactNode,
 } from 'react';
 import type { ExamRecord, ExamType } from '../types';
-import { STORAGE_KEYS, MAX_EXAM_RECORDS } from '../constants';
+import { STORAGE_KEYS, MAX_EXAM_RECORDS, EXAM_TYPES } from '../constants';
 import * as storageService from '../services/storageService';
 import * as captureService from '../services/captureService';
-import { visionChat } from '../services/aiService';
+import { chat } from '../services/aiService';
+import { extractTextFromImage } from '../services/ocrService';
 import { useSettings } from '../hooks/useSettings';
 
 // ===== State Type =====
@@ -144,7 +145,8 @@ function examReducer(state: ExamState, action: ExamAction): ExamState {
 
 // ===== Context Type =====
 export interface ExamContextValue extends ExamState {
-  captureScreen: () => Promise<void>;
+  captureScreen: () => Promise<string | null>;
+  captureAndSolve: () => Promise<void>;
   setImageFromUpload: (base64: string) => void;
   setExamType: (type: ExamType) => void;
   solve: () => Promise<void>;
@@ -180,15 +182,17 @@ export function ExamProvider({ children }: ExamProviderProps) {
   }, [state.records]);
 
   // ===== captureScreen =====
-  const captureScreen = useCallback(async () => {
+  const captureScreen = useCallback(async (): Promise<string | null> => {
     dispatch({ type: 'SET_ERROR', payload: null });
     try {
       const base64 = await captureService.capture();
       dispatch({ type: 'SET_CURRENT_IMAGE', payload: base64 });
+      return base64;
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : '截图失败，请重试。';
       dispatch({ type: 'SET_ERROR', payload: errorMsg });
+      return null;
     }
   }, []);
 
@@ -202,46 +206,61 @@ export function ExamProvider({ children }: ExamProviderProps) {
     dispatch({ type: 'SET_EXAM_TYPE', payload: type });
   }, []);
 
-  // ===== solve =====
-  const solve = useCallback(async () => {
-    if (!stateRef.current.currentImage || isProcessingRef.current) return;
+  const solveImage = useCallback(async (image: string, examType: ExamType, recordId?: string) => {
+    if (isProcessingRef.current) return;
 
     dispatch({ type: 'SET_PROCESSING', payload: true });
     dispatch({ type: 'SET_STREAMING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({ type: 'SET_CURRENT_ANSWER', payload: '' });
 
-    const settings = aiSettingsRef.current;
-    const image = stateRef.current.currentImage;
-    const examType = stateRef.current.currentExamType;
-
     let accumulated = '';
     try {
-      await visionChat(image, examType, settings, (chunk: string) => {
+      const recognizedText = await extractTextFromImage(image);
+      if (!recognizedText) {
+        throw new Error('未能从截图中识别出文字。请框选完整题干、放大后再试。');
+      }
+      const examConfig = EXAM_TYPES.find((item) => item.key === examType);
+      if (!examConfig) throw new Error(`未知的题型：${examType}`);
+      const settings = aiSettingsRef.current;
+      const prompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}\n\n以下是从截图识别出的题目文字：\n${recognizedText}`;
+      await chat([{ role: 'user', content: prompt }], settings, (chunk: string) => {
         accumulated += chunk;
         dispatch({ type: 'SET_CURRENT_ANSWER', payload: accumulated });
+        if (recordId) {
+          dispatch({ type: 'UPDATE_RECORD', payload: { id: recordId, answer: accumulated, isStreaming: true } });
+        }
       });
 
       dispatch({ type: 'SET_STREAMING', payload: false });
 
-      const record: ExamRecord = {
-        id: generateId(),
-        imageBase64: image,
-        examType,
-        answer: accumulated,
-        timestamp: Date.now(),
-        isStreaming: false,
-      };
-      dispatch({ type: 'ADD_RECORD', payload: record });
+      if (recordId) {
+        dispatch({ type: 'UPDATE_RECORD', payload: { id: recordId, answer: accumulated, isStreaming: false } });
+      } else {
+        const record: ExamRecord = { id: generateId(), imageBase64: image, examType, answer: accumulated, timestamp: Date.now(), isStreaming: false };
+        dispatch({ type: 'ADD_RECORD', payload: record });
+      }
     } catch (error) {
       const errorMsg =
         error instanceof Error ? error.message : '解答生成失败，请重试。';
       dispatch({ type: 'SET_STREAMING', payload: false });
       dispatch({ type: 'SET_ERROR', payload: errorMsg });
+      if (recordId) dispatch({ type: 'SET_RECORD_ERROR', payload: { id: recordId, error: errorMsg } });
     } finally {
       dispatch({ type: 'SET_PROCESSING', payload: false });
     }
   }, []);
+
+  // ===== solve =====
+  const solve = useCallback(async () => {
+    const { currentImage, currentExamType } = stateRef.current;
+    if (currentImage) await solveImage(currentImage, currentExamType);
+  }, [solveImage]);
+
+  const captureAndSolve = useCallback(async () => {
+    const image = await captureScreen();
+    if (image) await solveImage(image, stateRef.current.currentExamType);
+  }, [captureScreen, solveImage]);
 
   // ===== regenerate =====
   const regenerate = useCallback(async (id: string) => {
@@ -250,42 +269,14 @@ export function ExamProvider({ children }: ExamProviderProps) {
     const record = stateRef.current.records.find((r) => r.id === id);
     if (!record) return;
 
-    dispatch({ type: 'SET_PROCESSING', payload: true });
     dispatch({ type: 'SET_ERROR', payload: null });
     dispatch({
       type: 'UPDATE_RECORD',
       payload: { id, answer: '', isStreaming: true },
     });
 
-    const settings = aiSettingsRef.current;
-
-    let accumulated = '';
-    try {
-      await visionChat(
-        record.imageBase64,
-        record.examType,
-        settings,
-        (chunk: string) => {
-          accumulated += chunk;
-          dispatch({
-            type: 'UPDATE_RECORD',
-            payload: { id, answer: accumulated, isStreaming: true },
-          });
-        },
-      );
-      dispatch({
-        type: 'UPDATE_RECORD',
-        payload: { id, answer: accumulated, isStreaming: false },
-      });
-    } catch (error) {
-      const errorMsg =
-        error instanceof Error ? error.message : '解答生成失败，请重试。';
-      dispatch({ type: 'SET_RECORD_ERROR', payload: { id, error: errorMsg } });
-      dispatch({ type: 'SET_ERROR', payload: errorMsg });
-    } finally {
-      dispatch({ type: 'SET_PROCESSING', payload: false });
-    }
-  }, []);
+    await solveImage(record.imageBase64, record.examType, id);
+  }, [solveImage]);
 
   // ===== clearHistory =====
   const clearHistory = useCallback(() => {
@@ -296,6 +287,7 @@ export function ExamProvider({ children }: ExamProviderProps) {
   const value: ExamContextValue = {
     ...state,
     captureScreen,
+    captureAndSolve,
     setImageFromUpload,
     setExamType,
     solve,

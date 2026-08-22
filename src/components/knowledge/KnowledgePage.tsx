@@ -27,6 +27,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useKnowledge } from '../../hooks/useKnowledge';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
 import type { KnowledgeLibraryItem, KnowledgeQAPair, KnowledgeSourceType } from '../../types';
+import { getApiUrl } from '../../services/apiHelper';
 
 const KNOWLEDGE_TYPE_OPTIONS: Array<{ key: KnowledgeSourceType; label: string; desc: string }> = [
   { key: 'qa', label: 'QA 模式', desc: '适合常见问答、项目追问，命中问题时优先引用。' },
@@ -94,7 +95,7 @@ export function KnowledgePage() {
     setError(null);
     setReadingUrl(true);
     try {
-      const response = await fetch('/api/read-url', {
+      const response = await fetch(getApiUrl('/api/read-url'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: sourceUrl }),

@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import WebSocket, { WebSocketServer } from 'ws';
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import { createClient } from '@supabase/supabase-js';
 
 type GatewayProvider = 'gateway-doubao' | 'gateway-iflytek' | 'gateway-alibaba';
 
@@ -33,25 +34,72 @@ const MESSAGE_TYPE = {
 const MESSAGE_FLAGS = { NONE: 0x00, HAS_SEQUENCE: 0x01, LAST_PACKET: 0x02 } as const;
 const SERIALIZATION = { NONE: 0x00, JSON: 0x01 } as const;
 const COMPRESSION = { NONE: 0x00, GZIP: 0x01 } as const;
+const HEARTBEAT_INTERVAL_MS = 20_000;
+const MAX_CLIENTS = Math.max(1, Number(process.env.ASR_GATEWAY_MAX_CLIENTS) || 20);
+const ALLOWED_ORIGINS = new Set(
+  (process.env.ASR_GATEWAY_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
 
-const server = createServer((_, response) => {
+const server = createServer(async (request, response) => {
+  const requestUrl = new URL(request.url ?? '/', 'http://localhost');
+  if (request.method === 'GET' && requestUrl.searchParams.get('config') === '1') {
+    const expectedSecret = process.env.ASR_GATEWAY_SYNC_SECRET?.trim();
+    const receivedHeader = request.headers['x-asr-gateway-secret'];
+    const receivedSecret = (Array.isArray(receivedHeader) ? receivedHeader[0] : receivedHeader ?? '').trim();
+    if (!expectedSecret || receivedSecret !== expectedSecret) {
+      response.writeHead(401, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+    const config = await loadAdminConfig<Record<string, string>>('asr');
+    response.writeHead(200, {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'application/json',
+    });
+    response.end(JSON.stringify({ config }));
+    return;
+  }
   response.writeHead(426, { 'Content-Type': 'text/plain; charset=utf-8' });
   response.end('WebSocket upgrade required');
 });
 
 const wss = new WebSocketServer({ server });
+const activeClients = new Set<WebSocket>();
 
-wss.on('connection', (client) => {
+wss.on('connection', (client, request) => {
+  const origin = request.headers.origin;
+  if (origin && ALLOWED_ORIGINS.size > 0 && !ALLOWED_ORIGINS.has(origin)) {
+    client.close(1008, 'origin not allowed');
+    return;
+  }
+  if (activeClients.size >= MAX_CLIENTS) {
+    client.close(1013, 'gateway at capacity');
+    return;
+  }
+  activeClients.add(client);
   let provider: GatewayProvider | null = null;
   let speaker: 'interviewer' | 'me' = 'interviewer';
   let upstream: WebSocket | null = null;
   let started = false;
   let iflytekFirstFrame = true;
   let config: Record<string, string | number | string[]> = {};
+  let clientAlive = true;
+  client.on('pong', () => { clientAlive = true; });
+  const clientHeartbeat = setInterval(() => {
+    if (!clientAlive) {
+      client.terminate();
+      return;
+    }
+    clientAlive = false;
+    if (client.readyState === WebSocket.OPEN) client.ping();
+  }, HEARTBEAT_INTERVAL_MS);
 
   const closeUpstream = () => {
-    if (upstream && (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING)) {
-      upstream.close();
+    if (upstream) {
+      closeSocket(upstream, 'gateway cleanup');
     }
     upstream = null;
   };
@@ -72,13 +120,26 @@ wss.on('connection', (client) => {
     }
 
     if (message.type === 'start') {
+      if (started || upstream) {
+        closeUpstream();
+      }
       provider = message.provider;
       speaker = message.speaker ?? 'interviewer';
-      config = { ...(message.config ?? {}), asrEndWindowSize: message.asrEndWindowSize ?? 1500 };
-      started = true;
-      if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
-      if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
-      if (provider === 'gateway-alibaba') startAlibaba(config, send, (ws) => { upstream = ws; }, speaker);
+      void (async () => {
+        config = {
+          ...mergeNonEmpty(await serverProviderConfig(message.provider), message.config ?? {}),
+          asrEndWindowSize: message.asrEndWindowSize ?? 1500,
+        };
+        started = true;
+        if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
+        if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
+        if (provider === 'gateway-alibaba') startAlibaba(config, send, (ws) => { upstream = ws; }, speaker);
+      })();
+      return;
+    }
+
+    if ((message as { type?: string }).type === 'keepalive') {
+      send({ type: 'pong' });
       return;
     }
 
@@ -126,12 +187,19 @@ wss.on('connection', (client) => {
       }
       if (provider === 'gateway-alibaba' && upstream?.readyState === WebSocket.OPEN) upstream.send(JSON.stringify(buildAlibabaControl('StopTranscription', config)));
       closeUpstream();
+      started = false;
+      provider = null;
       send({ type: 'end' });
     }
   });
 
-  client.on('close', closeUpstream);
-  client.on('error', closeUpstream);
+  const cleanup = () => {
+    clearInterval(clientHeartbeat);
+    closeUpstream();
+    activeClients.delete(client);
+  };
+  client.on('close', cleanup);
+  client.on('error', cleanup);
 });
 
 function startDoubao(
@@ -158,6 +226,9 @@ function startDoubao(
       'X-Api-Sequence': '-1',
     },
   });
+  const upstreamHeartbeat = setInterval(() => {
+    if (upstream.readyState === WebSocket.OPEN) upstream.ping();
+  }, HEARTBEAT_INTERVAL_MS);
   setUpstream(upstream);
   upstream.on('open', () => {
     upstream.send(buildDoubaoFullRequest(config));
@@ -168,6 +239,7 @@ function startDoubao(
       const frame = parseDoubaoFrame(toArrayBuffer(data));
       if (frame.type === 'error') {
         send({ type: 'error', message: `豆包 ${frame.code}: ${frame.message}` });
+        closeSocket(upstream, 'doubao error');
         return;
       }
       const text = extractDoubaoText(frame.payload);
@@ -176,8 +248,102 @@ function startDoubao(
       send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao response parse failed' });
     }
   });
-  upstream.on('error', (error) => send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao upstream error' }));
-  upstream.on('close', () => send({ type: 'end' }));
+  upstream.on('error', (error) => {
+    send({ type: 'error', message: error instanceof Error ? error.message : 'Doubao upstream error' });
+    closeSocket(upstream, 'doubao upstream error');
+  });
+  upstream.on('close', () => {
+    clearInterval(upstreamHeartbeat);
+    send({ type: 'end' });
+  });
+  upstream.on('error', () => clearInterval(upstreamHeartbeat));
+}
+
+function closeSocket(socket: WebSocket, reason: string): void {
+  if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
+    socket.close(1000, reason);
+  }
+}
+
+async function serverProviderConfig(provider: GatewayProvider): Promise<Record<string, string | number | string[]>> {
+  const localConfig = await loadAdminConfig<Record<string, string>>('asr');
+  const remoteConfig = await loadRemoteAdminConfig();
+  const adminConfig = { ...remoteConfig, ...localConfig };
+  if (provider === 'gateway-doubao') {
+    return {
+      appId: firstNonEmpty(adminConfig.doubaoAppId, process.env.DOUBAO_ASR_APP_ID),
+      accessToken: firstNonEmpty(adminConfig.doubaoAccessToken, process.env.DOUBAO_ASR_ACCESS_TOKEN),
+      resourceId: firstNonEmpty(adminConfig.doubaoResourceId, process.env.DOUBAO_ASR_RESOURCE_ID, 'volc.bigasr.sauc.duration'),
+    };
+  }
+  if (provider === 'gateway-iflytek') {
+    return {
+      iflytekAppId: firstNonEmpty(adminConfig.iflytekAppId, process.env.IFLYTEK_APP_ID),
+      iflytekApiKey: firstNonEmpty(adminConfig.iflytekApiKey, process.env.IFLYTEK_API_KEY),
+      iflytekApiSecret: firstNonEmpty(adminConfig.iflytekApiSecret, process.env.IFLYTEK_API_SECRET),
+    };
+  }
+  return {
+    alibabaAppKey: firstNonEmpty(adminConfig.alibabaAppKey, process.env.ALIBABA_NLS_APP_KEY),
+    alibabaToken: firstNonEmpty(adminConfig.alibabaToken, process.env.ALIBABA_NLS_TOKEN),
+    alibabaEndpoint: firstNonEmpty(adminConfig.alibabaEndpoint, process.env.ALIBABA_NLS_ENDPOINT, 'wss://nls-gateway-cn-shanghai.aliyuncs.com/ws/v1'),
+  };
+}
+
+async function loadRemoteAdminConfig(): Promise<Partial<Record<string, string>>> {
+  const endpoint = process.env.ASR_GATEWAY_CONFIG_URL?.trim();
+  const secret = process.env.ASR_GATEWAY_SYNC_SECRET?.trim();
+  if (!endpoint || !secret) return {};
+  try {
+    const response = await fetch(endpoint, {
+      headers: { 'x-asr-gateway-secret': secret },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return {};
+    const body = await response.json() as { config?: Record<string, string> };
+    return body.config ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function loadAdminConfig<T extends Record<string, unknown>>(key: string): Promise<Partial<T>> {
+  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return {};
+  try {
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data } = await supabase
+      .from('admin_app_config')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle();
+    return (data?.value ?? {}) as Partial<T>;
+  } catch {
+    return {};
+  }
+}
+
+function firstNonEmpty(...values: Array<unknown>): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() && value.trim() !== '********') return value.trim();
+  }
+  return '';
+}
+
+function mergeNonEmpty(
+  base: Record<string, string | number | string[]>,
+  override: Record<string, string | number | string[]>,
+): Record<string, string | number | string[]> {
+  const next = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    if (typeof value === 'string' && (!value.trim() || value.trim() === '********')) continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    next[key] = value;
+  }
+  return next;
 }
 
 function startIflytek(
@@ -389,3 +555,10 @@ function parseHotwords(value: unknown): string[] {
 }
 
 export default server;
+
+if (process.env.GATEWAY_STANDALONE === 'true') {
+  const port = Number(process.env.PORT) || 8080;
+  server.listen(port, '127.0.0.1', () => {
+    console.info(`[ASR Gateway] listening on 127.0.0.1:${port}`);
+  });
+}

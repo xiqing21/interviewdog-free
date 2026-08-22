@@ -19,6 +19,9 @@ import type {
 import { EXAM_TYPES } from '../constants';
 import { deobfuscate } from './cryptoService';
 import { API_TIMEOUT_MS, STREAM_TIMEOUT_MS } from '../constants';
+import { COMMERCIAL_MODE } from '../config/commercial';
+import { getApiUrl } from './apiHelper';
+import { extractTextFromImage } from './ocrService';
 
 /**
  * 从设置中解混淆 API Key
@@ -107,6 +110,10 @@ export async function chat(
   onChunk?: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
+  if (COMMERCIAL_MODE) {
+    return serverManagedChat(messages, settings.streaming, 'text', onChunk, signal);
+  }
+
   const apiKey = getApiKey(settings);
   if (!apiKey) {
     throw new Error('请先在设置中配置 API Key。');
@@ -198,6 +205,24 @@ export async function visionChat(
   settings: AISettings,
   onChunk?: (text: string) => void,
 ): Promise<string> {
+  if (COMMERCIAL_MODE) {
+    const examConfig = EXAM_TYPES.find((e) => e.key === examType);
+    if (!examConfig) {
+      throw new Error(`未知的题型：${examType}`);
+    }
+    const recognizedText = await extractTextFromImage(imageBase64);
+    if (!recognizedText) {
+      throw new Error('未能从截图中识别出文字。请框选完整题干、放大后再试。');
+    }
+    const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}\n\n以下是从截图识别出的题目文字：\n${recognizedText}`;
+    return serverManagedChat([
+      {
+        role: 'user',
+        content: userPrompt,
+      },
+    ], settings.streaming, 'text', onChunk);
+  }
+
   const apiKey = getApiKey(settings);
   if (!apiKey) {
     throw new Error('请先在设置中配置 API Key。');
@@ -289,6 +314,44 @@ export async function visionChat(
   if (onChunk) {
     onChunk(content);
   }
+  return content;
+}
+
+async function serverManagedChat(
+  messages: ChatMessage[],
+  stream: boolean,
+  modelType: 'text' | 'vision',
+  onChunk?: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<string> {
+  const useStreaming = stream && typeof onChunk === 'function';
+  const response = await fetch(getApiUrl('/api/chat'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messages, stream: useStreaming, modelType }),
+    signal: signal ?? AbortSignal.timeout(useStreaming ? STREAM_TIMEOUT_MS : API_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error ?? `AI 服务暂时不可用 (${response.status})`);
+  }
+
+  if (useStreaming && response.body) {
+    let fullText = '';
+    await parseSSEStream(response.body, (chunk) => {
+      fullText += chunk;
+      onChunk?.(chunk);
+    });
+    return fullText;
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') {
+    throw new Error('AI 服务返回了无效响应。');
+  }
+  onChunk?.(content);
   return content;
 }
 

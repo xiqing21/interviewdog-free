@@ -59,6 +59,7 @@ export const RESUME_JD_PROMPT_TEMPLATE = `
 {jd}
 
 请根据以上求职者的简历背景和岗位要求，结合面试官的问题，给出有针对性的回答。
+若面试官询问“为什么选择我们公司”“对公司/团队有什么期待”“职业规划”“能否接受工作安排”等问题，必须优先依据 JD 中的业务方向、技术栈、岗位职责和候选人经历组织回答；表达真实、具体的匹配和期待，不要输出脱离岗位的通用套话，也不要编造 JD 中没有出现的公司信息。
 `.trim();
 
 // ===== 题型配置 =====
@@ -75,7 +76,8 @@ export const PROVIDER_DEFAULTS: Record<AIProvider, ProviderDefault> = {
   openai:    { baseUrl: 'https://api.openai.com/v1',            textModel: 'gpt-4o',              visionModel: 'gpt-4o',              label: 'OpenAI' },
   anthropic: { baseUrl: 'https://api.anthropic.com/v1',         textModel: 'claude-sonnet-4-20250514', visionModel: 'claude-sonnet-4-20250514', label: 'Anthropic' },
   doubao:    { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', textModel: 'doubao-pro-32k', visionModel: 'doubao-vision-pro-32k', label: '豆包 (火山引擎)' },
-  deepseek:  { baseUrl: 'https://api.deepseek.com/v1',         textModel: 'deepseek-chat',       visionModel: 'deepseek-chat',        label: 'DeepSeek' },
+  // V4 Flash is text-only. Screenshot questions are locally OCRed first.
+  deepseek:  { baseUrl: 'https://api.deepseek.com/v1',         textModel: 'deepseek-v4-flash',   visionModel: 'deepseek-v4-flash',    label: 'DeepSeek' },
   zhipu:     { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', textModel: 'glm-4-plus',        visionModel: 'glm-4v-plus',          label: '智谱 GLM' },
   moonshot:  { baseUrl: 'https://api.moonshot.cn/v1',          textModel: 'moonshot-v1-8k',      visionModel: 'moonshot-v1-8k-vision', label: 'Moonshot' },
   qwen:      { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen-vl-plus', label: '通义千问' },
@@ -198,10 +200,10 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
 
 // ===== 默认应用设置 =====
 export const DEFAULT_APP_SETTINGS: AppSettings = {
-  theme: 'dark',
+  theme: 'light',
   language: 'zh',
   privacyAcknowledged: false,
-  asrProvider: 'browser',
+  asrProvider: 'gateway-doubao',
   audioSource: 'both',
   myAudioSource: 'microphone',
   interviewerAudioSource: 'system',
@@ -228,7 +230,9 @@ export const THEME_OPTIONS: Array<{ key: ThemeMode; label: string; desc: string 
 export const MAX_EXAM_RECORDS = 50;
 export const STREAM_TIMEOUT_MS = 120_000;
 export const API_TIMEOUT_MS = 30_000;
-export const MAX_SESSIONS = 20;
+// Project history is lightweight and is also persisted remotely. Keep enough
+// room for repeated interview practice instead of silently refusing a new one.
+export const MAX_SESSIONS = 100;
 export const MERGE_TIMEOUT_DEFAULT = 2500;
 
 // ===== 左侧导航菜单项 =====
@@ -236,5 +240,7 @@ export const NAV_ITEMS = [
   { path: '/interview', label: '面试辅助', icon: 'RecordVoiceOver' },
   { path: '/knowledge', label: '简历与知识库', icon: 'LibraryBooks' },
   { path: '/exam', label: '笔试辅助', icon: 'EditNote' },
+  { path: '/billing', label: '套餐与时长', icon: 'WorkspacePremium' },
   { path: '/settings', label: '设置', icon: 'Settings' },
+  { path: '/admin', label: '运营后台', icon: 'AdminPanelSettings', adminOnly: true },
 ] as const;

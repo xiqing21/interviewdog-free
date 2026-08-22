@@ -101,6 +101,70 @@ export interface AppSettings {
   asrHotwords: string;
 }
 
+export type CommercialPlanId = 'trial' | 'starter' | 'pro' | 'monthly';
+
+export interface BillingEntitlement {
+  userId: string;
+  freeTrialMinutes: number;
+  purchasedMinutes: number;
+  usedSeconds: number;
+  plan: CommercialPlanId | 'none';
+  stripeCustomerId?: string;
+  subscriptionStatus?: 'active' | 'trialing' | 'past_due' | 'canceled' | 'none';
+  updatedAt?: number;
+}
+
+export interface CommercialPlan {
+  id: CommercialPlanId;
+  name: string;
+  badge?: string;
+  priceLabel: string;
+  originalPriceLabel?: string;
+  minutesLabel: string;
+  description: string;
+  highlights: string[];
+  checkoutMode: 'payment' | 'subscription';
+  popular?: boolean;
+}
+
+// ===== 卡密与发卡网对接类型 =====
+export type CardKeyStatus = 'unused' | 'redeemed' | 'revoked' | 'expired';
+
+export interface CardKeyRow {
+  id: string;
+  code: string;
+  batch_no: string;
+  minutes: number;
+  plan: string;
+  status: CardKeyStatus;
+  note: string | null;
+  created_by?: string | null;
+  redeemed_by?: string | null;
+  redeemed_by_email?: string | null;
+  redeemed_at?: string | null;
+  expires_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CardKeySummary {
+  total: number;
+  unused: number;
+  redeemed: number;
+  revoked: number;
+  expired: number;
+  totalMinutesRedeemed: number;
+  todayRedeemedCount: number;
+  batches: Array<{ batchNo: string; count: number }>;
+}
+
+export interface CardKeyRedeemResult {
+  code: string;
+  minutes: number;
+  batchNo: string;
+  plan: string;
+}
+
 // ===== 简历与JD数据 =====
 export interface ResumeJDData {
   resume: string;

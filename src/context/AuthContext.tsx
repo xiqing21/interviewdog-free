@@ -25,6 +25,22 @@ export interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
+function getAuthErrorMessage(error: unknown, fallback: string): string {
+  const message = error instanceof Error ? error.message : '';
+  const name = error instanceof Error ? error.name : '';
+
+  // Supabase wraps DNS failures, connection resets and CORS/network failures
+  // as AuthRetryableFetchError. The raw message is not actionable for users.
+  if (
+    name === 'AuthRetryableFetchError' ||
+    /failed to fetch|network request failed|connection closed|load failed/i.test(message)
+  ) {
+    return '登录服务暂时无法连接。请检查 VITE_SUPABASE_URL 是否仍是有效的 Supabase 项目地址，并确认该项目未暂停。';
+  }
+
+  return message || fallback;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
@@ -61,6 +77,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!supabase || !user) return;
+    let mounted = true;
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('user_roles')
+          .select('banned_at,ban_reason')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        if (!mounted || !data?.banned_at) return;
+        setError(data.ban_reason ? `账号已被封禁：${data.ban_reason}` : '账号已被封禁。');
+        void supabase?.auth.signOut();
+        setUser(null);
+      } catch {
+        // Ignore role lookup failures; protected APIs still enforce access server-side.
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
   const rememberEmail = useCallback((email: string) => {
     setLastEmail(email);
     storageService.set(STORAGE_KEYS.LAST_AUTH_EMAIL, email);
@@ -78,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (signInError) throw signInError;
       rememberEmail(email);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '登录失败');
+      setError(getAuthErrorMessage(err, '登录失败'));
       throw err;
     } finally {
       setLoading(false);
@@ -100,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setError('注册成功，但 Supabase 当前要求邮箱确认。请在 Auth 设置里关闭 Confirm email 后再登录。');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '注册失败');
+      setError(getAuthErrorMessage(err, '注册失败'));
       throw err;
     } finally {
       setLoading(false);

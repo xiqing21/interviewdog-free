@@ -3,7 +3,7 @@
  * 集成 Session 管理、回答模式切换、语音控制、手动触发
  */
 
-import { useState, useCallback, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, type ChangeEvent, type ReactNode } from 'react';
 import {
   Alert,
   Box,
@@ -27,13 +27,20 @@ import {
   Typography,
   type SelectChangeEvent,
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
 import QuestionAnswerIcon from '@mui/icons-material/QuestionAnswer';
 import TuneIcon from '@mui/icons-material/Tune';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import MicIcon from '@mui/icons-material/Mic';
+import StopIcon from '@mui/icons-material/Stop';
+import ComputerIcon from '@mui/icons-material/Computer';
+import GraphicEqIcon from '@mui/icons-material/GraphicEq';
+import SendIcon from '@mui/icons-material/Send';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import { MessageScroller } from '@shadcn/react/message-scroller';
 import { Link } from 'react-router-dom';
-import { VoiceControl } from './VoiceControl';
 import { QACard } from './QACard';
 import { AnswerModeToggle } from './AnswerModeToggle';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
@@ -43,9 +50,11 @@ import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
-import type { ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
+import type { AppSettings, ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 
 export function InterviewPage() {
+  const isDesktop = Boolean(window.desktopWindow?.isDesktop);
   const {
     aiSettings,
     appSettings,
@@ -54,7 +63,7 @@ export function InterviewPage() {
     setInterviewerAudioSource,
     updateAppSettings,
   } = useSettings();
-  const { activeSession, sessions, sessionSummaries, switchSession } = useSession();
+  const { activeSession, sessions, sessionSummaries, switchSession, deleteSession } = useSession();
   const {
     isProcessing,
     isListening,
@@ -62,6 +71,9 @@ export function InterviewPage() {
     systemAudioReady,
     transcriptLines,
     qaList,
+    error,
+    startListening,
+    stopListening,
     addManualQuestion,
     triggerLatestTranscriptQuestion,
     prepareSystemAudioShare,
@@ -71,10 +83,12 @@ export function InterviewPage() {
   } = useInterview();
   const [manualInput, setManualInput] = useState('');
   const [showSetup, setShowSetup] = useState(!activeSession);
+  const [showAudioPrep, setShowAudioPrep] = useState(false);
   const [showStartPrompt, setShowStartPrompt] = useState(Boolean(activeSession));
   const [setupMode, setSetupMode] = useState<'new' | 'edit'>('new');
   const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [audioGuideOpen, setAudioGuideOpen] = useState(false);
   const lastQaCountRef = useRef(qaList.length);
 
   useEffect(() => {
@@ -104,7 +118,7 @@ export function InterviewPage() {
   }, [manualInput, activeSession, addManualQuestion]);
 
   const handleTranscriptQuestion = useCallback((question: string) => {
-    if (!question.trim() || !aiSettings.apiKey) return;
+    if (!question.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)) return;
     void addManualQuestion(question.trim());
   }, [addManualQuestion, aiSettings.apiKey]);
 
@@ -115,6 +129,16 @@ export function InterviewPage() {
     }
   }, [prepareSystemAudioShare, setInterviewerAudioSource]);
 
+  const closeAudioGuide = useCallback(() => {
+    localStorage.setItem('interviewpig_audio_share_guide_seen_v1', '1');
+    setAudioGuideOpen(false);
+  }, []);
+
+  const handleGuideShare = useCallback(() => {
+    closeAudioGuide();
+    void prepareSystemAudioShare();
+  }, [closeAudioGuide, prepareSystemAudioShare]);
+
   const selectedQa = selectedQaId
     ? qaList.find((qa) => qa.id === selectedQaId) ?? null
     : qaList[qaList.length - 1] ?? null;
@@ -123,13 +147,23 @@ export function InterviewPage() {
     transcriptLines.some((line) => line.speaker === 'interviewer') ||
     /^面试官[：:]/.test(interimText.trim());
   const visibleTranscriptLines = [...transcriptLines.slice(-30)].reverse();
+  // Older commercial sessions were incorrectly archived with this placeholder
+  // before the server-managed gateway check was fixed. Treat them as missing so
+  // their review can be generated again rather than trapping the user on it.
+  const hasGeneratedReview = Boolean(
+    activeSession?.review?.summary
+      && !activeSession.review.summary.includes('本次未配置 AI Key，因此没有生成 AI 复盘。'),
+  );
 
   if (showStartPrompt && activeSession && !showSetup) {
     return (
       <ProjectStartPrompt
         activeName={activeSession.name}
         sessionCount={sessionSummaries.length}
-        onContinue={() => setShowStartPrompt(false)}
+        onContinue={() => {
+          setShowStartPrompt(false);
+          setShowAudioPrep(!activeSession.archivedAt && !isDesktop);
+        }}
         onCreate={() => {
           setSetupMode('new');
           setShowSetup(true);
@@ -139,7 +173,10 @@ export function InterviewPage() {
         onOpenSession={(id) => {
           switchSession(id);
           setShowStartPrompt(false);
+          const targetSession = sessions.find((session) => session.id === id);
+          setShowAudioPrep(!targetSession?.archivedAt && !isDesktop);
         }}
+        onDeleteSession={deleteSession}
       />
     );
   }
@@ -147,13 +184,40 @@ export function InterviewPage() {
   if (showSetup || !activeSession) {
     return (
       <Box sx={{ maxWidth: 980, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {!aiSettings.apiKey && (
+        {!COMMERCIAL_MODE && !aiSettings.apiKey && (
           <Alert severity="warning" action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
             可以先准备项目和简历；正式生成答案前仍需配置 API Key。
           </Alert>
         )}
-        <InterviewSetup mode={setupMode} onDone={() => setShowSetup(false)} />
+        <InterviewSetup
+          mode={setupMode}
+          onDone={() => {
+            setShowSetup(false);
+            setShowAudioPrep(!isDesktop);
+          }}
+        />
       </Box>
+    );
+  }
+
+  if (showAudioPrep && activeSession && !activeSession.archivedAt) {
+    return (
+      <AudioPreparationStep
+        isListening={isListening}
+        systemAudioReady={systemAudioReady}
+        error={error}
+        appSettings={appSettings}
+        onPrepareSystemAudioShare={prepareSystemAudioShare}
+        onStartListening={startListening}
+        onStopListening={stopListening}
+        onOpenGuide={() => setAudioGuideOpen(true)}
+        onBack={() => {
+          setSetupMode('edit');
+          setShowSetup(true);
+          setShowAudioPrep(false);
+        }}
+        onEnter={() => setShowAudioPrep(false)}
+      />
     );
   }
 
@@ -164,8 +228,8 @@ export function InterviewPage() {
         display: 'grid',
         gridTemplateColumns: {
           xs: '1fr',
-          md: '180px minmax(0, 1fr) 220px',
-          xl: '260px minmax(0, 1fr) 300px',
+          md: '160px minmax(0, 1fr) 200px',
+          xl: '220px minmax(0, 1.2fr) 260px',
         },
         gap: 2,
         alignItems: 'start',
@@ -238,52 +302,275 @@ export function InterviewPage() {
         </Box>
       </Paper>
 
-      <Paper sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
-        {!aiSettings.apiKey && (
-          <Alert severity="warning" sx={{ mb: 2 }} action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
+      <Paper
+        sx={{
+          p: 1.5,
+          height: { md: 'calc(100vh - 116px)' },
+          minHeight: { xs: 'auto', md: 'calc(100vh - 116px)' },
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1,
+          overflow: 'hidden',
+        }}
+      >
+        {!COMMERCIAL_MODE && !aiSettings.apiKey && (
+          <Alert severity="warning" action={<Button color="inherit" size="small" component={Link} to="/settings">前往设置</Button>}>
             需要配置 API Key 后才能生成答案。
           </Alert>
         )}
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="h6" fontWeight={800}>AI 回答</Typography>
           {isProcessing && <Chip size="small" color="primary" label="生成中" />}
           {isListening && <Chip size="small" color="success" label="识别中" />}
           {activeSession.archivedAt && <Chip size="small" color="default" label="已归档" />}
-          {activeSession.archivedAt && activeSession.review?.summary && (
-            <Button size="small" variant="outlined" sx={{ ml: 'auto' }} onClick={() => setReviewOpen(true)}>
+          <Button
+            size="small"
+            color="error"
+            variant="outlined"
+            sx={{ ml: 'auto' }}
+            onClick={() => { void endInterview(); }}
+            disabled={isProcessing || Boolean(activeSession.archivedAt)}
+          >
+            结束归档
+          </Button>
+          {activeSession.archivedAt && hasGeneratedReview && (
+            <Button size="small" variant="outlined" onClick={() => setReviewOpen(true)}>
               查看复盘
             </Button>
           )}
-          {activeSession.archivedAt && !activeSession.review?.summary && (
+          {activeSession.archivedAt && !hasGeneratedReview && (
             <Button
               size="small"
               variant="outlined"
-              sx={{ ml: 'auto' }}
               onClick={() => { void generateReview(); }}
-              disabled={isProcessing || !aiSettings.apiKey}
+              disabled={isProcessing || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
             >
-              生成复盘
+              {activeSession.review?.summary ? '重新生成复盘' : '生成复盘'}
             </Button>
           )}
+          {!isDesktop && (
+            <Button
+              size="small"
+              variant="text"
+              sx={{ ml: 'auto' }}
+              onClick={() => {
+                stopListening();
+                setShowAudioPrep(true);
+                void prepareSystemAudioShare();
+              }}
+              disabled={Boolean(activeSession.archivedAt)}
+            >
+              重新准备听音
+            </Button>
+          )}
+          <Button
+            size="small"
+            variant="outlined"
+            color={isListening ? 'error' : 'primary'}
+            startIcon={isListening ? <StopIcon /> : <MicIcon />}
+            onClick={isListening ? stopListening : startListening}
+            disabled={Boolean(activeSession.archivedAt)}
+          >
+            {isListening ? '停止听音' : '开始听音'}
+          </Button>
         </Box>
 
-        {!selectedQa ? (
-          <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
-            <Box
-              component="img"
-              src="/logo.svg"
-              alt="面试猪"
-              sx={{ width: 72, height: 72, mb: 1, opacity: 0.72 }}
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 0.85,
+            display: 'flex',
+            gap: 0.75,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            bgcolor: 'background.default',
+          }}
+        >
+          <Chip
+            size="small"
+            color={isListening ? 'success' : 'warning'}
+            icon={isListening ? <GraphicEqIcon /> : <MicIcon />}
+            label={isListening ? '正在听音' : '听音未开始'}
+            sx={{ fontWeight: 800 }}
+          />
+          <Chip
+            size="small"
+            color={isDesktop || systemAudioReady ? 'success' : 'default'}
+            icon={isDesktop || systemAudioReady ? <CheckCircleIcon /> : <ComputerIcon />}
+            label={isDesktop ? (isListening ? '系统音频已连接' : '系统音频待启动') : (systemAudioReady ? '面试窗口已选择' : '未选择面试窗口')}
+          />
+          {activeSession.targetRole && (
+            <Chip size="small" variant="outlined" label={`岗位：${activeSession.targetRole}`} />
+          )}
+          {activeSession.jd?.trim() && (
+            <Chip size="small" color="success" variant="outlined" label={`岗位目标已挂载（${activeSession.jd.trim().length} 字）`} />
+          )}
+          <AnswerModeToggle />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={appSettings.webSearchEnabled}
+                onChange={(event) => updateAppSettings({ webSearchEnabled: event.target.checked })}
+              />
+            }
+            label="联网搜索补充"
+            sx={{ m: 0 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <InputLabel>停顿容忍</InputLabel>
+            <Select
+              label="停顿容忍"
+              value={String(appSettings.mergeTimeoutMs)}
+              onChange={(event: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(event.target.value) })}
+            >
+              <MenuItem value="1000">1.0 秒</MenuItem>
+              <MenuItem value="1500">1.5 秒</MenuItem>
+              <MenuItem value="2000">2.0 秒</MenuItem>
+              <MenuItem value="2500">2.5 秒</MenuItem>
+              <MenuItem value="5000">5.0 秒</MenuItem>
+              <MenuItem value="8000">8.0 秒</MenuItem>
+              <MenuItem value="12000">12.0 秒</MenuItem>
+            </Select>
+          </FormControl>
+          {!COMMERCIAL_MODE && (
+            <Box component="details" sx={{ width: '100%' }}>
+              <Box component="summary" sx={{ cursor: 'pointer', color: 'text.secondary', fontSize: 13, fontWeight: 700 }}>
+                音频与识别设置
+              </Box>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr 1fr' }, gap: 1, mt: 1.25 }}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>我的声音</InputLabel>
+                  <Select
+                    label="我的声音"
+                    value={appSettings.myAudioSource}
+                    onChange={(event: SelectChangeEvent) => setMyAudioSource(event.target.value as SpeakerAudioSource)}
+                    disabled={isListening}
+                  >
+                    {SPEAKER_AUDIO_SOURCES.map((source) => (
+                      <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth size="small">
+                  <InputLabel>面试官声音</InputLabel>
+                  <Select
+                    label="面试官声音"
+                    value={appSettings.interviewerAudioSource}
+                    onChange={(event: SelectChangeEvent) => handleInterviewerAudioSourceChange(event.target.value as SpeakerAudioSource)}
+                    disabled={isListening}
+                  >
+                    {SPEAKER_AUDIO_SOURCES.map((source) => (
+                      <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth size="small">
+                  <InputLabel>识别引擎</InputLabel>
+                  <Select
+                    label="识别引擎"
+                    value={appSettings.asrProvider}
+                    onChange={(event: SelectChangeEvent) => setASRProvider(event.target.value as ASRProvider)}
+                    disabled={isListening}
+                  >
+                    <MenuItem value="gateway-doubao">Gateway 豆包实时</MenuItem>
+                    <MenuItem value="gateway-iflytek">Gateway 讯飞实时</MenuItem>
+                    <MenuItem value="gateway-alibaba">Gateway 阿里云</MenuItem>
+                    <MenuItem value="doubao">豆包 ASR</MenuItem>
+                    <MenuItem value="local-qwen">本地 Qwen3-ASR</MenuItem>
+                    <MenuItem value="mimo">MiMo-V2.5-ASR</MenuItem>
+                    <MenuItem value="baidu">百度 ASR</MenuItem>
+                    <MenuItem value="google">Google ASR</MenuItem>
+                    <MenuItem value="alibaba">阿里云 ASR</MenuItem>
+                    <MenuItem value="iflytek">讯飞 ASR</MenuItem>
+                    <MenuItem value="glm">GLM ASR</MenuItem>
+                    <MenuItem value="openai">OpenAI Whisper</MenuItem>
+                    <MenuItem value="browser">浏览器 ASR</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            </Box>
+          )}
+        </Paper>
+
+        <MessageScroller.Provider
+          key={`answer-scroller-${selectedQa?.id ?? 'empty'}`}
+          autoScroll
+          defaultScrollPosition="start"
+          scrollEdgeThreshold={32}
+          scrollPreviousItemPeek={72}
+        >
+          <MessageScroller.Root
+            className="relative flex flex-col overflow-hidden rounded-xl border border-border/70 bg-background/55"
+            style={{ minHeight: 0, flex: 1 }}
+          >
+            <MessageScroller.Viewport
+              className="flex min-h-0 flex-1 flex-col overflow-y-auto scroll-smooth p-1"
+              aria-label="AI 回答"
+            >
+              <MessageScroller.Content className="flex flex-col gap-3">
+                {!selectedQa ? (
+                  <MessageScroller.Item messageId="empty-answer" scrollAnchor>
+                    <Box sx={{ py: 8, textAlign: 'center', color: 'text.secondary' }}>
+                      <Typography variant="subtitle1">等待第一道面试问题</Typography>
+                      <Typography variant="body2" sx={{ mt: 0.5 }}>
+                        开始语音识别，或在右侧手动输入问题。
+                      </Typography>
+                    </Box>
+                  </MessageScroller.Item>
+                ) : (
+                  <MessageScroller.Item messageId={`qa-${selectedQa.id}`} scrollAnchor>
+                    <QACard qa={selectedQa} />
+                  </MessageScroller.Item>
+                )}
+              </MessageScroller.Content>
+            </MessageScroller.Viewport>
+            <MessageScroller.Button
+              direction="end"
+              behavior="smooth"
+              className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full border border-border bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg transition-opacity data-[active=false]:pointer-events-none data-[active=false]:opacity-0"
+            >
+              <KeyboardArrowDownIcon fontSize="inherit" />
+              最新回答
+            </MessageScroller.Button>
+          </MessageScroller.Root>
+        </MessageScroller.Provider>
+
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 0.9,
+            bgcolor: 'background.default',
+            position: { md: 'sticky' },
+            bottom: 0,
+            zIndex: 1,
+            mt: 'auto',
+            flexShrink: 0,
+          }}
+        >
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="手动输入或修正面试官问题，Shift + Enter 换行"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
+              multiline
+              maxRows={3}
             />
-            <Typography variant="subtitle1">等待第一道面试问题</Typography>
-            <Typography variant="body2" sx={{ mt: 0.5 }}>
-              开始语音识别，或在右侧手动输入问题。
-            </Typography>
+            <Button
+              variant="contained"
+              onClick={handleManualSend}
+              disabled={!manualInput.trim() || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
+              sx={{ minWidth: 48, width: 48, px: 0, flexShrink: 0, minHeight: 40 }}
+              aria-label="发送问题"
+            >
+              <SendIcon fontSize="small" />
+            </Button>
           </Box>
-        ) : (
-          <QACard qa={selectedQa} />
-        )}
+        </Paper>
 
       </Paper>
 
@@ -291,284 +578,120 @@ export function InterviewPage() {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
           <TuneIcon color="primary" fontSize="small" />
           <Typography variant="subtitle1" fontWeight={700}>双方对话记录</Typography>
-        </Box>
-
-        <Box
-          sx={{
-            p: 1.5,
-            borderRadius: 1,
-            border: '1px solid',
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-            mb: 2,
-            height: { xs: 260, md: '34vh' },
-            minHeight: 240,
-            overflowY: 'auto',
-          }}
-        >
-          {interimText && (
-            <Box
-              sx={{
-                mb: 1,
-                p: 1,
-                borderRadius: 1,
-                bgcolor: 'action.hover',
-                border: '1px dashed',
-                borderColor: 'divider',
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
-                <Chip size="small" label="识别中" />
-                <Button
-                  size="small"
-                  variant="text"
-                  onClick={() => { void triggerLatestTranscriptQuestion(); }}
-                  disabled={!aiSettings.apiKey || !/^面试官[：:]/.test(interimText.trim())}
-                  sx={{ minWidth: 0, px: 0.75 }}
-                >
-                  触发
-                </Button>
-              </Box>
-              <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                {interimText}
-              </Typography>
-            </Box>
-          )}
-          {transcriptLines.length === 0 && !interimText ? (
-            <Typography variant="body2" color="text.secondary">
-              双路转写会记录在这里：我说的话只留档，面试官问题会触发 AI。
-            </Typography>
-          ) : (
-            visibleTranscriptLines.map((line) => (
-              <Box
-                key={line.id}
-                sx={{
-                  mb: 1,
-                  p: 1,
-                  borderRadius: 1,
-                  bgcolor: line.speaker === 'interviewer' ? 'rgba(98, 179, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid',
-                  borderColor: line.speaker === 'interviewer' ? 'primary.dark' : 'divider',
-                }}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.35 }}>
-                  <Chip
-                    size="small"
-                    color={line.speaker === 'interviewer' ? 'primary' : 'default'}
-                    label={line.speaker === 'interviewer' ? '面试官' : '我'}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {formatTime(line.timestamp)}
-                  </Typography>
-                  {line.speaker === 'interviewer' && (
-                    <Button
-                      size="small"
-                      variant="text"
-                      onClick={() => handleTranscriptQuestion(line.text)}
-                      disabled={!aiSettings.apiKey}
-                      sx={{ minWidth: 0, px: 0.75 }}
-                    >
-                      触发
-                    </Button>
-                  )}
-                </Box>
-                <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                  {line.text}
-                </Typography>
-              </Box>
-            ))
-          )}
-        </Box>
-
-        <Button
-          fullWidth
-          variant="outlined"
-          sx={{ mb: 1.5 }}
-          onClick={() => { void triggerLatestTranscriptQuestion(); }}
-          disabled={!aiSettings.apiKey || !hasTriggerableInterviewerText}
-        >
-          用当前/最近面试官问题触发
-        </Button>
-
-        <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-          <TextField
-            fullWidth
-            size="small"
-            placeholder="手动输入或修正面试官问题..."
-            value={manualInput}
-            onChange={(e) => setManualInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleManualSend(); }}}
-            multiline
-            maxRows={4}
-          />
-          <IconButton
-            color="primary"
-            onClick={handleManualSend}
-            disabled={!manualInput.trim() || !aiSettings.apiKey}
-            sx={{ alignSelf: 'flex-end' }}
-          >
-            <SendIcon />
-          </IconButton>
-        </Box>
-
-        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 2 }}>
-          <Chip size="small" label={asrProviderLabel(appSettings.asrProvider)} />
-          <Chip size="small" label={`我：${sourceLabel(appSettings.myAudioSource)}`} />
-          <Chip size="small" label={`面试官：${sourceLabel(appSettings.interviewerAudioSource)}`} />
-          {appSettings.interviewerAudioSource === 'system' && (
-            <Chip
-              size="small"
-              color={systemAudioReady ? 'success' : 'warning'}
-              label={systemAudioReady ? '系统音频已共享' : '系统音频未共享'}
-            />
-          )}
-        </Box>
-
-        <Alert severity="info" sx={{ mb: 2 }}>
-          面试官选择“系统音频”时，点击开始会弹出 Chrome 的共享窗口/屏幕/标签页选择器；请选择腾讯会议或整个屏幕，并勾选共享音频。
-        </Alert>
-
-        {appSettings.interviewerAudioSource === 'system' && (
           <Button
-            fullWidth
-            variant={systemAudioReady ? 'outlined' : 'contained'}
-            sx={{ mb: 2 }}
-            onClick={() => { void prepareSystemAudioShare(); }}
-            disabled={isListening}
+            size="small"
+            variant="outlined"
+            sx={{ ml: 'auto' }}
+            onClick={() => { void triggerLatestTranscriptQuestion(); }}
+            disabled={!COMMERCIAL_MODE && (!aiSettings.apiKey || !hasTriggerableInterviewerText)}
           >
-            {systemAudioReady ? '重新共享系统音频' : '先共享系统音频'}
+            触发最新问题
           </Button>
-        )}
+        </Box>
 
-        {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'browser' && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            浏览器 ASR 只能识别麦克风，不能识别共享出来的系统音频。要识别微信/腾讯会议播放的面试官声音，请优先切到 Gateway 豆包/讯飞，或使用豆包 ASR、OpenAI 分片识别。
-          </Alert>
-        )}
-
-        {appSettings.interviewerAudioSource === 'system' && appSettings.asrProvider === 'openai' && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            OpenAI 分片识别会使用已共享的系统音频，识别结果固定按“面试官”记录并自动触发答案，延迟约 4-6 秒。
-          </Alert>
-        )}
-
-        {appSettings.asrProvider === 'local-qwen' && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            本地 Qwen3-ASR 会连接你电脑上的 MLX 服务；先在设置里测试连通，再开始面试。
-          </Alert>
-        )}
-
-        <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
-          <InputLabel>我的声音</InputLabel>
-          <Select
-            label="我的声音"
-            value={appSettings.myAudioSource}
-            onChange={(event: SelectChangeEvent) => setMyAudioSource(event.target.value as SpeakerAudioSource)}
-            disabled={isListening}
-          >
-            {SPEAKER_AUDIO_SOURCES.map((source) => (
-              <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
-            ))}
-          </Select>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-            {SPEAKER_AUDIO_SOURCES.find((source) => source.key === appSettings.myAudioSource)?.desc}
-          </Typography>
-        </FormControl>
-
-        <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
-          <InputLabel>面试官声音</InputLabel>
-          <Select
-            label="面试官声音"
-            value={appSettings.interviewerAudioSource}
-            onChange={(event: SelectChangeEvent) => handleInterviewerAudioSourceChange(event.target.value as SpeakerAudioSource)}
-            disabled={isListening}
-          >
-            {SPEAKER_AUDIO_SOURCES.map((source) => (
-              <MenuItem key={source.key} value={source.key}>{source.label}</MenuItem>
-            ))}
-          </Select>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-            {SPEAKER_AUDIO_SOURCES.find((source) => source.key === appSettings.interviewerAudioSource)?.desc}
-          </Typography>
-        </FormControl>
-
-        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-          <InputLabel>识别引擎</InputLabel>
-          <Select
-            label="识别引擎"
-            value={appSettings.asrProvider}
-            onChange={(event: SelectChangeEvent) => setASRProvider(event.target.value as ASRProvider)}
-            disabled={isListening}
-          >
-            <MenuItem value="gateway-doubao">Gateway 豆包实时（服务端 WS）</MenuItem>
-            <MenuItem value="gateway-iflytek">Gateway 讯飞实时（服务端 WS）</MenuItem>
-            <MenuItem value="gateway-alibaba">Gateway 阿里云（服务端兜底）</MenuItem>
-            <MenuItem value="doubao">豆包 ASR（推荐识别面试官系统音频）</MenuItem>
-            <MenuItem value="local-qwen">本地 Qwen3-ASR（MLX）</MenuItem>
-            <MenuItem value="mimo">MiMo-V2.5-ASR（分片测试）</MenuItem>
-            <MenuItem value="baidu">百度 ASR（分片测试）</MenuItem>
-            <MenuItem value="google">Google ASR（分片测试）</MenuItem>
-            <MenuItem value="alibaba">阿里云 ASR（分片测试）</MenuItem>
-            <MenuItem value="iflytek">讯飞 ASR（分片测试）</MenuItem>
-            <MenuItem value="glm">GLM ASR（分片测试）</MenuItem>
-            <MenuItem value="openai">OpenAI Whisper（系统音频备用）</MenuItem>
-            <MenuItem value="browser">浏览器 ASR（适合麦克风）</MenuItem>
-          </Select>
-        </FormControl>
-
-        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-          <InputLabel>句内停顿容忍</InputLabel>
-          <Select
-            label="句内停顿容忍"
-            value={String(appSettings.mergeTimeoutMs)}
-            onChange={(event: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(event.target.value) })}
-          >
-            <MenuItem value="1000">1.0 秒</MenuItem>
-            <MenuItem value="1500">1.5 秒</MenuItem>
-            <MenuItem value="2000">2.0 秒</MenuItem>
-            <MenuItem value="2500">2.5 秒</MenuItem>
-            <MenuItem value="5000">5.0 秒</MenuItem>
-            <MenuItem value="8000">8.0 秒</MenuItem>
-            <MenuItem value="12000">12.0 秒</MenuItem>
-          </Select>
-          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
-            面试中可随时调整，新的识别片段会按当前值合并触发。
-          </Typography>
-        </FormControl>
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={appSettings.webSearchEnabled}
-              onChange={(event) => updateAppSettings({ webSearchEnabled: event.target.checked })}
-            />
-          }
-          label="回答失败时联网搜索补充"
-          sx={{ mb: 1 }}
-        />
-        {appSettings.webSearchEnabled && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            正常先用简历和知识库回答；如果模型生成失败，会自动搜索网页摘要后重试一次。
-          </Alert>
-        )}
-
-        <AnswerModeToggle />
-        <VoiceControl />
-
-        <Button
-          fullWidth
-          color="error"
-          variant="contained"
-          sx={{ mt: 1.5 }}
-          onClick={() => { void endInterview(); }}
-          disabled={isProcessing || Boolean(activeSession.archivedAt)}
+        <MessageScroller.Provider
+          autoScroll
+          defaultScrollPosition="start"
+          scrollEdgeThreshold={24}
+          scrollMargin={8}
         >
-          结束面试并归档
-        </Button>
-
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-          自动没触发时，可用最近面试官转写触发；也可手动修正问题后 Enter 发送。
-        </Typography>
+          <MessageScroller.Root className="relative mb-4 flex min-h-60 flex-col overflow-hidden rounded-xl border border-border bg-background/65">
+            <MessageScroller.Viewport
+              className="h-[260px] flex-1 overflow-y-auto scroll-smooth p-3 md:h-[34vh]"
+              aria-label="双方对话记录"
+            >
+              <MessageScroller.Content className="flex flex-col gap-2">
+                {interimText && (
+                  <MessageScroller.Item messageId="interim" scrollAnchor>
+                    <Box
+                      sx={{
+                        p: 1,
+                        borderRadius: 1,
+                        bgcolor: 'action.hover',
+                        border: '1px dashed',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.5 }}>
+                        <Chip size="small" label="识别中" />
+                        <Button
+                          size="small"
+                          variant="text"
+                          onClick={() => { void triggerLatestTranscriptQuestion(); }}
+                          disabled={(!COMMERCIAL_MODE && !aiSettings.apiKey) || !/^面试官[：:]/.test(interimText.trim())}
+                          sx={{ minWidth: 0, px: 0.75 }}
+                        >
+                          触发
+                        </Button>
+                      </Box>
+                      <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {interimText}
+                      </Typography>
+                    </Box>
+                  </MessageScroller.Item>
+                )}
+                {transcriptLines.length === 0 && !interimText ? (
+                  <MessageScroller.Item messageId="empty-transcript" scrollAnchor>
+                    <Typography variant="body2" color="text.secondary">
+                      双路转写会记录在这里：我说的话只留档，面试官问题会触发 AI。
+                    </Typography>
+                  </MessageScroller.Item>
+                ) : (
+                  visibleTranscriptLines.map((line, index) => (
+                    <MessageScroller.Item
+                      key={line.id}
+                      messageId={`transcript-${line.id}`}
+                      scrollAnchor={index === 0}
+                    >
+                      <Box
+                        sx={{
+                          p: 1,
+                          borderRadius: 1,
+                          bgcolor: line.speaker === 'interviewer' ? 'rgba(98, 179, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid',
+                          borderColor: line.speaker === 'interviewer' ? 'primary.dark' : 'divider',
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.35 }}>
+                          <Chip
+                            size="small"
+                            color={line.speaker === 'interviewer' ? 'primary' : 'default'}
+                            label={line.speaker === 'interviewer' ? '面试官' : '我'}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {formatTime(line.timestamp)}
+                          </Typography>
+                          {line.speaker === 'interviewer' && (
+                            <Button
+                              size="small"
+                              variant="text"
+                              onClick={() => handleTranscriptQuestion(line.text)}
+                              disabled={!COMMERCIAL_MODE && !aiSettings.apiKey}
+                              sx={{ minWidth: 0, px: 0.75 }}
+                            >
+                              触发
+                            </Button>
+                          )}
+                        </Box>
+                        <Typography variant="body2" sx={{ lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                          {line.text}
+                        </Typography>
+                      </Box>
+                    </MessageScroller.Item>
+                  ))
+                )}
+              </MessageScroller.Content>
+            </MessageScroller.Viewport>
+            <MessageScroller.Button
+              direction="start"
+              behavior="smooth"
+              className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-border bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg transition-opacity data-[active=false]:pointer-events-none data-[active=false]:opacity-0"
+            >
+              <KeyboardArrowUpIcon fontSize="inherit" />
+              最新
+            </MessageScroller.Button>
+          </MessageScroller.Root>
+        </MessageScroller.Provider>
       </Paper>
     </Box>
     <Dialog open={reviewOpen} onClose={() => setReviewOpen(false)} maxWidth="md" fullWidth>
@@ -579,37 +702,194 @@ export function InterviewPage() {
       <DialogActions>
         <Button
           onClick={() => { void generateReview(); }}
-          disabled={isProcessing || !aiSettings.apiKey}
+          disabled={isProcessing || (!COMMERCIAL_MODE && !aiSettings.apiKey)}
         >
           重新生成
         </Button>
         <Button variant="contained" onClick={() => setReviewOpen(false)}>关闭</Button>
       </DialogActions>
     </Dialog>
+    <Dialog open={audioGuideOpen} onClose={closeAudioGuide} maxWidth="sm" fullWidth>
+      <DialogTitle>开启系统音频共享</DialogTitle>
+      <DialogContent dividers>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Alert severity="warning">
+            在 Chrome 分享弹窗中选择正在播放面试官声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕，并打开“同时分享音频”。
+          </Alert>
+          <GuideStep
+            index={1}
+            title="选择会议窗口、标签页或整个屏幕"
+            desc="选择正在播放面试官声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕。"
+          />
+          <GuideStep
+            index={2}
+            title="打开同时分享系统音频"
+            desc="窗口模式和整个屏幕模式都要检查底部开关。开关打开后再点“分享”。"
+            tone="warning"
+          />
+          <GuideStep
+            index={3}
+            title="回到页面点击开始听音"
+            desc="共享成功后，再点“开始听音”。你的麦克风只记录你的回答，面试官系统音频会触发 AI 回答。"
+          />
+        </Box>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={closeAudioGuide}>我知道了</Button>
+        <Button variant="contained" onClick={handleGuideShare}>现在选择会议窗口</Button>
+      </DialogActions>
+    </Dialog>
     </>
   );
 }
 
-function sourceLabel(source: SpeakerAudioSource): string {
-  if (source === 'system') return '系统音频';
-  if (source === 'microphone') return '麦克风';
-  return '静音';
+function GuideStep({
+  index,
+  title,
+  desc,
+  action,
+  tone = 'default',
+}: {
+  index: number;
+  title: string;
+  desc: string;
+  action?: ReactNode;
+  tone?: 'default' | 'warning';
+}) {
+  return (
+    <Box
+      sx={{
+        p: 1.25,
+        borderRadius: 1.5,
+        border: '1px solid',
+        borderColor: tone === 'warning' ? 'warning.main' : 'divider',
+        bgcolor: tone === 'warning' ? 'rgba(245, 124, 0, 0.08)' : 'background.paper',
+        minHeight: 92,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0.75,
+      }}
+    >
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <Chip size="small" color={tone === 'warning' ? 'warning' : 'primary'} label={index} />
+        <Typography variant="subtitle2" fontWeight={900}>{title}</Typography>
+      </Box>
+      <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.55 }}>
+        {desc}
+      </Typography>
+      {action && <Box sx={{ mt: 'auto' }}>{action}</Box>}
+    </Box>
+  );
 }
 
-function asrProviderLabel(provider: ASRProvider): string {
-  if (provider === 'gateway-doubao') return 'Gateway 豆包';
-  if (provider === 'gateway-iflytek') return 'Gateway 讯飞';
-  if (provider === 'gateway-alibaba') return 'Gateway 阿里';
-  if (provider === 'doubao') return '豆包 ASR';
-  if (provider === 'local-qwen') return '本地 Qwen3-ASR';
-  if (provider === 'mimo') return 'MiMo-V2.5-ASR';
-  if (provider === 'baidu') return '百度 ASR';
-  if (provider === 'google') return 'Google ASR';
-  if (provider === 'alibaba') return '阿里云 ASR';
-  if (provider === 'iflytek') return '讯飞 ASR';
-  if (provider === 'glm') return 'GLM ASR';
-  if (provider === 'openai') return 'OpenAI 分片 ASR';
-  return '浏览器 ASR';
+function AudioPreparationStep({
+  isListening,
+  systemAudioReady,
+  error,
+  appSettings,
+  onPrepareSystemAudioShare,
+  onStartListening,
+  onStopListening,
+  onOpenGuide,
+  onBack,
+  onEnter,
+}: {
+  isListening: boolean;
+  systemAudioReady: boolean;
+  error: string | null;
+  appSettings: AppSettings;
+  onPrepareSystemAudioShare: () => unknown | Promise<unknown>;
+  onStartListening: () => unknown | Promise<unknown>;
+  onStopListening: () => unknown | Promise<unknown>;
+  onOpenGuide: () => void;
+  onBack: () => void;
+  onEnter: () => void;
+}) {
+  const needsSystemAudio = appSettings.interviewerAudioSource === 'system';
+  const canEnter = isListening && (!needsSystemAudio || systemAudioReady);
+
+  return (
+    <Box sx={{ maxWidth: 980, mx: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Paper sx={{ p: { xs: 2, md: 3 } }}>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
+          <ComputerIcon color={systemAudioReady ? 'success' : 'primary'} />
+          <Typography variant="h5" fontWeight={900}>
+            开始前，先完成实时听音准备
+          </Typography>
+          {systemAudioReady && <Chip size="small" color="success" label="窗口已选择" />}
+          {isListening && <Chip size="small" color="success" label="听音中" />}
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ lineHeight: 1.8, mb: 2 }}>
+          这一步专门处理会议窗口共享和系统音频权限。完成后进入面试页，回答窗口里就不再展示这些准备说明，只保留识别问题和 AI 回答。
+        </Typography>
+
+        {needsSystemAudio && !systemAudioReady && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            在 Chrome 弹出的共享窗口中，选择正在播放会议声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕，并打开“同时分享音频”。
+          </Alert>
+        )}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' }, gap: 1.5 }}>
+          <GuideStep
+            index={1}
+            title="确认项目、简历和岗位"
+            desc="刚才已经完成项目准备。这里再确认一下：简历、JD 和知识库会进入后续 AI 回答上下文。"
+            action={<Button size="small" variant="outlined" onClick={onBack}>返回调整项目</Button>}
+          />
+          <GuideStep
+            index={2}
+            title={COMMERCIAL_MODE ? '选择会议窗口' : '共享系统音频'}
+            desc="选择正在播放面试官声音的微信、腾讯会议、飞书窗口、标签页或整个屏幕，并勾选“同时分享音频”。"
+            tone={needsSystemAudio && !systemAudioReady ? 'warning' : 'default'}
+            action={
+              <Button
+                size="small"
+                variant={systemAudioReady ? 'outlined' : 'contained'}
+                onClick={() => { void onPrepareSystemAudioShare(); }}
+                disabled={isListening}
+                startIcon={<ComputerIcon />}
+              >
+                {systemAudioReady ? '重新选择会议窗口' : '选择会议窗口'}
+              </Button>
+            }
+          />
+          <GuideStep
+            index={3}
+            title="开始实时听音"
+            desc="听音开始后再进入面试页。你的麦克风用于记录你的回答，面试官系统音频用于触发 AI 回答。"
+            action={
+              <Button
+                size="small"
+                variant="contained"
+                color={isListening ? 'error' : 'primary'}
+                onClick={isListening ? onStopListening : () => { void onStartListening(); }}
+                startIcon={isListening ? <StopIcon /> : <MicIcon />}
+              >
+                {isListening ? '停止听音' : '开始听音'}
+              </Button>
+            }
+          />
+        </Box>
+
+        <Box sx={{ mt: 2.5, display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <Button variant="text" onClick={onOpenGuide}>
+            查看共享教程
+          </Button>
+          <Button variant="outlined" onClick={onBack}>
+            返回项目准备
+          </Button>
+          <Button variant="contained" size="large" disabled={!canEnter} onClick={onEnter}>
+            进入面试页
+          </Button>
+        </Box>
+      </Paper>
+    </Box>
+  );
 }
 
 function formatTime(timestamp: number): string {
@@ -628,6 +908,7 @@ interface ProjectStartPromptProps {
   onCreate: () => void;
   sessions: InterviewSession[];
   onOpenSession: (id: string) => void;
+  onDeleteSession: (id: string) => void;
 }
 
 function ProjectStartPrompt({
@@ -637,7 +918,9 @@ function ProjectStartPrompt({
   onCreate,
   sessions,
   onOpenSession,
+  onDeleteSession,
 }: ProjectStartPromptProps) {
+  const [pendingDelete, setPendingDelete] = useState<InterviewSession | null>(null);
   const recentSessions = [...sessions]
     .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt))
     .slice(0, 8);
@@ -696,6 +979,17 @@ function ProjectStartPrompt({
                   <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
                     {formatTimeOrDate(session.updatedAt ?? session.createdAt)}
                   </Typography>
+                  <IconButton
+                    aria-label={`删除项目 ${session.name}`}
+                    size="small"
+                    color="error"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setPendingDelete(session);
+                    }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
                 </Box>
                 <Typography variant="body2" color="text.secondary" noWrap title={sessionBrief(session)}>
                   {sessionBrief(session)}
@@ -705,6 +999,28 @@ function ProjectStartPrompt({
           </Box>
         </Paper>
       )}
+
+      <Dialog open={Boolean(pendingDelete)} onClose={() => setPendingDelete(null)}>
+        <DialogTitle>删除面试项目？</DialogTitle>
+        <DialogContent>
+          <Typography>
+            将删除「{pendingDelete?.name}」及其问答、转写和复盘记录，此操作无法撤销。
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingDelete(null)}>取消</Button>
+          <Button
+            color="error"
+            variant="contained"
+            onClick={() => {
+              if (pendingDelete) onDeleteSession(pendingDelete.id);
+              setPendingDelete(null);
+            }}
+          >
+            删除
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
@@ -769,7 +1085,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
   const [jdText, setJdText] = useState(
     editing
       ? (activeSession?.jd ?? jd) || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd
-      : currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd,
+      : jd || currentRole?.jd || INTERVIEW_ROLE_PRESETS[0].jd,
   );
   const [expertKnowledgeText, setExpertKnowledgeText] = useState(
     editing ? activeSession?.expertKnowledge ?? '' : '',
@@ -786,7 +1102,12 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     setSelectedRole(nextRole as typeof selectedRole);
     if (preset) {
       setProjectName((current) => current || preset.label);
-      setJdText(preset.jd);
+      setJdText((current) => {
+        // A role preset may update its own sample JD, but must never erase a
+        // pasted company JD / interview goal.
+        const isPresetText = INTERVIEW_ROLE_PRESETS.some((item) => item.jd.trim() === current.trim());
+        return !current.trim() || isPresetText ? preset.jd : current;
+      });
       if (preset.key === 'web3') setFocusAreas(['Web3', '系统设计', '项目深挖']);
       if (preset.key === 'bigdata') setFocusAreas(['SQL', '大数据', '项目深挖']);
     }
@@ -831,6 +1152,14 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         ? current.filter((item) => item !== focus)
         : [...current, focus],
     );
+  };
+
+  const handleJdChange = (value: string) => {
+    setJdText(value);
+    // When editing an existing project, persist the company JD / interview
+    // goal as it is pasted. This makes leaving the setup page safe and avoids
+    // relying on a second save click.
+    if (editing && activeSession) updateSessionProfile({ jd: value });
   };
 
   const startProject = () => {
@@ -1026,7 +1355,8 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         maxRows={10}
         label="岗位描述 / 面试目标"
         value={jdText}
-        onChange={(event) => setJdText(event.target.value)}
+        onChange={(event) => handleJdChange(event.target.value)}
+        helperText={editing ? '已自动保存到当前面试项目，并会进入后续每道题的回答上下文。' : '创建项目后会保存到该项目，并进入后续每道题的回答上下文。'}
         sx={{ mt: 2 }}
       />
 

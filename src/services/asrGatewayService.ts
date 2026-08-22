@@ -1,5 +1,6 @@
 import type { ASRGatewayProvider, CloudASRConfig, DoubaoASRConfig } from '../types';
 import { deobfuscate } from './cryptoService';
+import { PcmResampler } from './pcmResampler';
 
 interface GatewayCallbacks {
   onResult: (text: string, isFinal: boolean) => void;
@@ -23,6 +24,12 @@ type GatewaySession = {
 };
 
 const MAX_RECONNECT_ATTEMPTS = 8;
+const CLIENT_HEARTBEAT_INTERVAL_MS = 20_000;
+const NON_RETRYABLE_ERROR_PATTERNS = [
+  /quota exceeded/i,
+  /concurrency/i,
+  /45000292/,
+];
 
 let ws: WebSocket | null = null;
 let callbacksRef: GatewayCallbacks | null = null;
@@ -32,6 +39,7 @@ let queued: Int16Array[] = [];
 let reconnectTimer: number | null = null;
 let reconnectAttempts = 0;
 let manuallyStopped = false;
+let clientHeartbeatTimer: number | null = null;
 let ownedStream: MediaStream | null = null;
 let context: AudioContext | null = null;
 let source: MediaStreamAudioSourceNode | null = null;
@@ -74,6 +82,7 @@ function connectGateway(session: GatewaySession): void {
   const socket = new WebSocket(buildGatewayUrl());
   ws = socket;
   socket.onopen = () => {
+    startClientHeartbeat(socket);
     socket.send(JSON.stringify({
       type: 'start',
       provider: session.provider,
@@ -103,12 +112,18 @@ function connectGateway(session: GatewaySession): void {
       flushQueue();
       return;
     }
+    if (data.type === 'pong') return;
     if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
       session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
       return;
     }
     if (data.type === 'error') {
-      session.callbacks.onError(data.message || 'ASR Gateway 错误');
+      const message = data.message || 'ASR Gateway 错误';
+      if (isNonRetryableError(message)) {
+        stopAfterRemoteError(session, normalizeNonRetryableError(message));
+      } else {
+        session.callbacks.onError(message);
+      }
       return;
     }
     if (data.type === 'end') {
@@ -121,17 +136,31 @@ function connectGateway(session: GatewaySession): void {
   };
   socket.onerror = () => {
     if (ws !== socket) return;
+    console.warn('[ASR Gateway] socket error');
     if (!manuallyStopped) scheduleReconnect('gateway error');
   };
-  socket.onclose = () => {
+  socket.onclose = (event) => {
     if (ws !== socket) return;
+    console.warn('[ASR Gateway] socket closed', { code: event.code, reason: event.reason });
+    stopClientHeartbeat();
     ready = false;
     ws = null;
     if (manuallyStopped || !currentSession) {
       callbacksRef?.onEnd();
       return;
     }
-    scheduleReconnect('gateway close');
+    const closeDetail = event.reason
+      ? `关闭码 ${event.code}：${event.reason}`
+      : `关闭码 ${event.code}`;
+    if (event.code === 1008) {
+      stopAfterRemoteError(session, `实时识别服务拒绝了此网页来源（${closeDetail}）。`);
+      return;
+    }
+    if (event.code === 1013) {
+      scheduleReconnect('gateway at capacity', `实时识别服务当前繁忙（${closeDetail}）`);
+      return;
+    }
+    scheduleReconnect('gateway close', `实时识别连接已断开（${closeDetail}）`);
   };
 }
 
@@ -166,7 +195,21 @@ export async function startMicrophone(
 }
 
 export function sendAudio(pcm: Int16Array): void {
-  if (!ws || ws.readyState !== WebSocket.OPEN) {
+  if (!ws) {
+    if (currentSession && !manuallyStopped) {
+      queueAudio(pcm);
+      scheduleReconnect('audio while closed');
+    }
+    return;
+  }
+  // System audio starts producing PCM before the gateway's upstream ASR
+  // handshake finishes. CONNECTING is expected, not a disconnect: reconnecting
+  // here repeatedly tears down the socket before it can ever become ready.
+  if (ws.readyState === WebSocket.CONNECTING) {
+    queueAudio(pcm);
+    return;
+  }
+  if (ws.readyState !== WebSocket.OPEN) {
     if (currentSession && !manuallyStopped) {
       queueAudio(pcm);
       scheduleReconnect('audio while closed');
@@ -194,6 +237,7 @@ export function stop(): void {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
+  stopClientHeartbeat();
   cleanupAudioNodes();
   if (ownedStream) {
     ownedStream.getTracks().forEach((track) => track.stop());
@@ -216,7 +260,7 @@ function queueAudio(pcm: Int16Array): void {
   queued = queued.slice(-160);
 }
 
-function scheduleReconnect(reason: string): void {
+function scheduleReconnect(reason: string, messagePrefix?: string): void {
   if (!currentSession || manuallyStopped || reconnectTimer !== null) return;
 
   reconnectAttempts += 1;
@@ -231,7 +275,7 @@ function scheduleReconnect(reason: string): void {
 
   const delay = Math.min(2500, 250 * reconnectAttempts);
   if (reconnectAttempts === 1) {
-    currentSession.callbacks.onError('识别连接暂时中断，正在自动恢复。');
+    currentSession.callbacks.onError(`${messagePrefix ?? '识别连接暂时中断'}，正在自动恢复。`);
   }
   console.warn('[ASR Gateway] reconnect scheduled', {
     reason,
@@ -245,6 +289,62 @@ function scheduleReconnect(reason: string): void {
   }, delay);
 }
 
+function startClientHeartbeat(socket: WebSocket): void {
+  stopClientHeartbeat();
+  clientHeartbeatTimer = window.setInterval(() => {
+    if (ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+    try {
+      socket.send(JSON.stringify({ type: 'keepalive' }));
+    } catch {
+      scheduleReconnect('keepalive send failed');
+    }
+  }, CLIENT_HEARTBEAT_INTERVAL_MS);
+}
+
+function stopClientHeartbeat(): void {
+  if (clientHeartbeatTimer !== null) {
+    window.clearInterval(clientHeartbeatTimer);
+    clientHeartbeatTimer = null;
+  }
+}
+
+function stopAfterRemoteError(session: GatewaySession, message: string): void {
+  manuallyStopped = true;
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  cleanupAudioNodes();
+  if (ownedStream) {
+    ownedStream.getTracks().forEach((track) => track.stop());
+    ownedStream = null;
+  }
+  const socket = ws;
+  ws = null;
+  currentSession = null;
+  ready = false;
+  queued = [];
+  reconnectAttempts = 0;
+  callbacksRef = null;
+  if (socket) {
+    try { socket.send(JSON.stringify({ type: 'stop' })); } catch {}
+    try { socket.close(1000, 'non retryable asr error'); } catch {}
+  }
+  session.callbacks.onError(message);
+  session.callbacks.onEnd();
+}
+
+function isNonRetryableError(message: string): boolean {
+  return NON_RETRYABLE_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+function normalizeNonRetryableError(message: string): string {
+  if (/quota exceeded/i.test(message) && /concurrency/i.test(message)) {
+    return '豆包 ASR 并发额度已满：已停止本次听音并释放连接，请稍等几十秒后再开始，或检查是否有其他窗口/设备正在使用同一套豆包凭证。';
+  }
+  return message;
+}
+
 function flushQueue(): void {
   const pending = queued;
   queued = [];
@@ -252,8 +352,16 @@ function flushQueue(): void {
 }
 
 function buildGatewayUrl(): string {
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    return 'wss://interviewdog-free.vercel.app/api/asr-gateway';
+  const configuredUrl = import.meta.env.VITE_ASR_GATEWAY_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'file:' ||
+      window.desktopWindow?.isDesktop ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1')
+  ) {
+    return 'wss://bwg.yihan.me/api/asr-gateway';
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.host}/api/asr-gateway`;
@@ -262,18 +370,16 @@ function buildGatewayUrl(): string {
 function startPcmFromStream(stream: MediaStream): void {
   cleanupAudioNodes();
   context = new AudioContext({ sampleRate: 16000 });
+  void context.resume().catch(() => {});
   source = context.createMediaStreamSource(stream);
   processor = context.createScriptProcessor(1024, 1, 1);
+  const resampler = new PcmResampler(context.sampleRate);
   silentGain = context.createGain();
   silentGain.gain.value = 0;
   processor.onaudioprocess = (event) => {
     const input = event.inputBuffer.getChannelData(0);
-    const pcm = new Int16Array(input.length);
-    for (let i = 0; i < input.length; i += 1) {
-      const s = Math.max(-1, Math.min(1, input[i]));
-      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-    }
-    sendAudio(pcm);
+    const pcm = resampler.toPcm(input);
+    if (pcm.length > 0) sendAudio(pcm);
   };
   source.connect(processor);
   processor.connect(silentGain);

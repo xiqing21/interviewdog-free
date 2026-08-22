@@ -7,6 +7,7 @@
 
 import type { AISettings } from '../types';
 import { deobfuscate } from './cryptoService';
+import { getApiUrl } from './apiHelper';
 
 interface ChunkAsrCallbacks {
   onResult: (text: string, isFinal: boolean) => void;
@@ -122,7 +123,7 @@ async function transcribeChunk(blob: Blob, settings: AISettings): Promise<void> 
   processingCount += 1;
   try {
     const audioBase64 = await blobToBase64(blob);
-    const response = await fetch('/api/openai-transcribe', {
+    const response = await fetch(getApiUrl('/api/openai-transcribe'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

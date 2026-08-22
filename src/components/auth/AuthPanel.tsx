@@ -13,6 +13,7 @@ import {
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from '../../hooks/useAuth';
+import { COMMERCIAL_MODE, FREE_TRIAL_MINUTES } from '../../config/commercial';
 
 export function AuthPanel() {
   const { user, loading, configured, error, lastEmail, signIn, signUp, signOut, clearAuthError } = useAuth();
@@ -57,7 +58,12 @@ export function AuthPanel() {
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>{mode === 'login' ? '邮箱登录' : '邮箱注册'}</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
-          {!configured && (
+          {COMMERCIAL_MODE && (
+            <Alert severity="success">
+              注册后赠送 {FREE_TRIAL_MINUTES} 分钟试用；简历、知识库、面试记录和购买时长会跟随账号同步。
+            </Alert>
+          )}
+          {!configured && !COMMERCIAL_MODE && (
             <Alert severity="warning">
               还没有配置 Supabase 环境变量。当前可本地使用，但不能云端同步。
             </Alert>

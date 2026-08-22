@@ -1,5 +1,6 @@
 import type { CloudASRConfig, CloudASRProvider } from '../types';
 import { deobfuscate } from './cryptoService';
+import { getApiUrl } from './apiHelper';
 
 interface CloudAsrCallbacks {
   onResult: (text: string, isFinal: boolean) => void;
@@ -125,7 +126,7 @@ async function flush(force: boolean): Promise<void> {
 }
 
 async function callCloudAsr(provider: CloudASRProvider, config: CloudASRConfig, wav: ArrayBuffer, pcm: Int16Array): Promise<string> {
-  const response = await fetch('/api/cloud-asr', {
+  const response = await fetch(getApiUrl('/api/cloud-asr'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

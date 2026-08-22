@@ -1,8 +1,44 @@
 {
-  "rewrites": [
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "bun run build",
+  "outputDirectory": "dist",
+  "installCommand": "bun install",
+  "cleanUrls": true,
+  "headers": [
     {
-      "source": "/((?!api/.*).*)",
-      "destination": "/index.html"
+      "source": "/index.html",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/assets/site.(css|js)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/assets/(.*)\\.mp4",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" },
+        { "key": "Content-Type", "value": "video/mp4" },
+        { "key": "Accept-Ranges", "value": "bytes" }
+      ]
     }
+  ],
+  "rewrites": [
+    { "source": "/interview", "destination": "/app" },
+    { "source": "/interview/(.*)", "destination": "/app" },
+    { "source": "/exam", "destination": "/app" },
+    { "source": "/exam/(.*)", "destination": "/app" },
+    { "source": "/knowledge", "destination": "/app" },
+    { "source": "/knowledge/(.*)", "destination": "/app" },
+    { "source": "/billing", "destination": "/app" },
+    { "source": "/billing/(.*)", "destination": "/app" },
+    { "source": "/settings", "destination": "/app" },
+    { "source": "/settings/(.*)", "destination": "/app" },
+    { "source": "/admin", "destination": "/app" },
+    { "source": "/admin/(.*)", "destination": "/app" }
   ]
 }

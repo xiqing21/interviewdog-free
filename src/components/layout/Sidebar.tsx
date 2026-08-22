@@ -2,7 +2,7 @@
  * Sidebar — Left navigation panel with logo, nav links, version, and theme toggle.
  */
 
-import { useState, type ElementType } from 'react';
+import { useEffect, useState, type ElementType } from 'react';
 import {
   Box,
   List,
@@ -19,25 +19,53 @@ import RecordVoiceOverIcon from '@mui/icons-material/RecordVoiceOver';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import SettingsIcon from '@mui/icons-material/Settings';
 import LibraryBooksIcon from '@mui/icons-material/LibraryBooks';
+import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { NAV_ITEMS } from '../../constants';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 import { useTheme } from '../../hooks/useTheme';
+import { useAuth } from '../../hooks/useAuth';
+import { publicAssetUrl } from '../../lib/assets';
+import { adminRequest } from '../../services/adminService';
 
 /** Maps icon name strings from NAV_ITEMS to actual icon components. */
 const ICON_MAP: Record<string, ElementType> = {
   RecordVoiceOver: RecordVoiceOverIcon,
   EditNote: EditNoteIcon,
   LibraryBooks: LibraryBooksIcon,
+  WorkspacePremium: WorkspacePremiumIcon,
+  AdminPanelSettings: AdminPanelSettingsIcon,
   Settings: SettingsIcon,
 };
 
 export function Sidebar() {
   const { mode, toggleTheme } = useTheme();
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const width = collapsed ? 72 : 220;
+
+  useEffect(() => {
+    let mounted = true;
+    if (!user) {
+      setIsAdmin(false);
+      return;
+    }
+    adminRequest<{ admin: boolean }>('me')
+      .then((result) => {
+        if (mounted) setIsAdmin(Boolean(result.admin));
+      })
+      .catch(() => {
+        if (mounted) setIsAdmin(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
 
   return (
     <Box
@@ -53,8 +81,8 @@ export function Sidebar() {
       }}
     >
       {/* Logo / Title */}
-      <Box sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Box component="img" src="/logo.svg" alt="面试猪" sx={{ width: 30, height: 30, flexShrink: 0 }} />
+      <Box sx={{ p: 1.5, pt: 3.5, display: 'flex', alignItems: 'center', gap: 1, WebkitAppRegion: 'drag', userSelect: 'none' }}>
+        <Box component="img" src={publicAssetUrl('logo.png')} alt="面试猪" sx={{ width: 30, height: 30, flexShrink: 0, borderRadius: '8px', WebkitAppRegion: 'no-drag' }} />
         {!collapsed && (
           <>
             <Typography variant="h6" fontWeight={700}>
@@ -65,7 +93,7 @@ export function Sidebar() {
               color="text.secondary"
               sx={{ ml: 'auto' }}
             >
-              免费版
+              {COMMERCIAL_MODE ? 'Pro' : '免费版'}
             </Typography>
           </>
         )}
@@ -84,7 +112,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <List sx={{ flexGrow: 1, pt: 0 }}>
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => !('adminOnly' in item) || isAdmin).map((item) => {
           const Icon = ICON_MAP[item.icon];
           return (
             <NavLink
@@ -128,7 +156,7 @@ export function Sidebar() {
       >
         {!collapsed && (
           <Typography variant="caption" color="text.secondary">
-            v1.0.0
+            v1.0.5
           </Typography>
         )}
         <IconButton onClick={toggleTheme} size="small">

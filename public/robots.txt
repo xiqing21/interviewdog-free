@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://interviewdog-free.vercel.app/sitemap.xml
+Sitemap: https://mianshizhu.cn/sitemap.xml

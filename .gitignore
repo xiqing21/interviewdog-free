@@ -12,6 +12,7 @@ node_modules
 .models/
 dist
 dist-ssr
+release/
 *.tsbuildinfo
 vite.config.d.ts
 api/*.d.ts
@@ -34,6 +35,7 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+electron-builder.env
 
 # WorkBuddy project memory
 .workbuddy/
@@ -41,3 +43,5 @@ __pycache__/
 # pnpm
 .pnpm-store/
 .vercel
+
+.venv-ffmpeg/

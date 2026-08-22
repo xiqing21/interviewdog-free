@@ -1,3 +1,5 @@
+import { PcmResampler } from './pcmResampler';
+
 /**
  * SystemAudioService — 系统音频捕获服务
  *
@@ -11,6 +13,11 @@ let processor: ScriptProcessorNode | null = null;
 let sourceNode: MediaStreamAudioSourceNode | null = null;
 let currentCallbacks: SystemAudioCallbacks | null = null;
 
+let isDesktopCapturing = false;
+let desktopCleanup: (() => void) | null = null;
+let desktopGeneration = 0;
+let desktopPcmCount = 0;
+
 /** 音频数据回调 */
 export interface SystemAudioCallbacks {
   onPcmData: (pcm: Int16Array) => void;
@@ -23,6 +30,9 @@ export interface SystemAudioCallbacks {
  * Chrome 74+ 支持 getDisplayMedia({ audio: true })。
  */
 export function isSupported(): boolean {
+  if (window.desktopWindow?.startSystemAudio) {
+    return true;
+  }
   return (
     typeof navigator !== 'undefined' &&
     typeof navigator.mediaDevices?.getDisplayMedia === 'function'
@@ -31,13 +41,82 @@ export function isSupported(): boolean {
 
 /**
  * 开始捕获系统音频。
- * 引导用户选择「整个屏幕」或「标签页」并勾选「分享音频」。
+ * 在 Chrome 分享弹窗中选择正在播放面试官声音的微信、腾讯会议、飞书窗口、
+ * 标签页或整个屏幕，并勾选「分享音频」。
  */
 export async function start(
   callbacks: SystemAudioCallbacks,
   sampleRate: number = 16000,
 ): Promise<void> {
-  currentCallbacks = callbacks;
+  if (window.desktopWindow?.startSystemAudio) {
+    const bridge = window.desktopWindow;
+    try {
+      cleanup();
+      const generation = desktopGeneration;
+      desktopPcmCount = 0;
+      currentCallbacks = callbacks;
+
+      let totalSamples = 0;
+      let peakAbs = 0;
+      let silenceWarned = false;
+      const silenceTimer = window.setTimeout(() => {
+        if (generation !== desktopGeneration || silenceWarned) return;
+        if (totalSamples > 8000 && peakAbs < 80) {
+          silenceWarned = true;
+          callbacks.onError(
+            '已开始系统音频捕获，但几乎听不到声音。请确认：1) 系统设置→隐私与安全性→屏幕录制 已勾选 MianshiZhu Pro；2) 微信语音在本机扬声器/耳机播放（手机外放无效）；3) 系统音量未静音。可点「开始听音」重试。',
+          );
+        } else if (totalSamples === 0) {
+          silenceWarned = true;
+          callbacks.onError(
+            '未收到系统音频数据。请在「屏幕录制」权限中允许本应用，并完全退出后重开 App。',
+          );
+        }
+      }, 3500);
+
+      const unsubscribeData = bridge.onSystemAudioData((pcm) => {
+        if (generation !== desktopGeneration) return;
+        totalSamples += pcm.length;
+        for (let i = 0; i < pcm.length; i += 32) {
+          const v = Math.abs(pcm[i] || 0);
+          if (v > peakAbs) peakAbs = v;
+        }
+        callbacks.onPcmData(pcm);
+        desktopPcmCount += 1;
+        if (desktopPcmCount <= 3) console.info('[SystemAudio] PCM received', desktopPcmCount, pcm.length);
+      });
+
+      const unsubscribeEnded = bridge.onSystemAudioEnded(() => {
+        if (generation !== desktopGeneration) return;
+        window.clearTimeout(silenceTimer);
+        callbacks.onEnd();
+        cleanup();
+      });
+
+      const unsubscribeError = bridge.onSystemAudioError?.((message) => {
+        if (generation !== desktopGeneration) return;
+        window.clearTimeout(silenceTimer);
+        callbacks.onError(message);
+      });
+
+      desktopCleanup = () => {
+        window.clearTimeout(silenceTimer);
+        unsubscribeData();
+        unsubscribeEnded();
+        unsubscribeError?.();
+        bridge.stopSystemAudio();
+      };
+
+      await bridge.startSystemAudio();
+      isDesktopCapturing = true;
+      return;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '原生系统音频捕获失败';
+      callbacks.onError(msg);
+      cleanup();
+      return;
+    }
+  }
 
   try {
     await prepare(callbacks);
@@ -48,18 +127,16 @@ export async function start(
       throw new Error('系统音频流未准备好，请先共享系统音频。');
     }
     audioContext = new AudioContext({ sampleRate });
+    void audioContext.resume().catch(() => {});
     sourceNode = audioContext.createMediaStreamSource(audioStream);
+    const resampler = new PcmResampler(audioContext.sampleRate, sampleRate);
 
     // 使用 ScriptProcessorNode 获取 PCM 数据
     processor = audioContext.createScriptProcessor(1024, 1, 1);
     processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
-      const pcm = new Int16Array(input.length);
-      for (let i = 0; i < input.length; i++) {
-        const s = Math.max(-1, Math.min(1, input[i]));
-        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-      }
-      callbacks.onPcmData(pcm);
+      const pcm = resampler.toPcm(input);
+      if (pcm.length > 0) callbacks.onPcmData(pcm);
     };
 
     sourceNode.connect(processor);
@@ -72,6 +149,10 @@ export async function start(
 }
 
 export async function prepare(callbacks?: Pick<SystemAudioCallbacks, 'onError' | 'onEnd'>): Promise<boolean> {
+  if (window.desktopWindow?.startSystemAudio) {
+    return true; // 桌面端原生捕获不需要提前授权弹窗
+  }
+
   if (audioStream?.getAudioTracks().some((track) => track.readyState === 'live')) {
     return true;
   }
@@ -113,14 +194,17 @@ export function stop(): void {
 }
 
 export function isActive(): boolean {
-  return audioStream !== null;
+  return audioStream !== null || isDesktopCapturing;
 }
 
 export function isProcessing(): boolean {
-  return processor !== null;
+  return processor !== null || isDesktopCapturing;
 }
 
 export function getStream(): MediaStream | null {
+  if (window.desktopWindow?.startSystemAudio) {
+    return null; // 原生流不通过 MediaStream 传递
+  }
   if (!audioStream?.getAudioTracks().some((track) => track.readyState === 'live')) {
     return null;
   }
@@ -128,11 +212,17 @@ export function getStream(): MediaStream | null {
 }
 
 function cleanup(): void {
+  desktopGeneration += 1;
   cleanupAudioNodes();
   if (audioStream) {
     audioStream.getTracks().forEach((track) => track.stop());
     audioStream = null;
   }
+  if (desktopCleanup) {
+    desktopCleanup();
+    desktopCleanup = null;
+  }
+  isDesktopCapturing = false;
   currentCallbacks = null;
 }
 

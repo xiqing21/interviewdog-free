@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   IconButton,
@@ -21,6 +22,8 @@ import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import type { ASRProvider, SpeakerAudioSource } from '../../types';
 import { SPEAKER_AUDIO_SOURCES } from '../../constants';
 import { useSettings } from '../../hooks/useSettings';
+import { COMMERCIAL_MODE } from '../../config/commercial';
+import * as systemAudioService from '../../services/systemAudioService';
 
 export function AudioSourceSettings() {
   const {
@@ -31,6 +34,8 @@ export function AudioSourceSettings() {
     updateAppSettings,
   } = useSettings();
   const [newHotword, setNewHotword] = useState('');
+  const [healthStatus, setHealthStatus] = useState<{ severity: 'info' | 'success' | 'warning' | 'error'; message: string } | null>(null);
+  const isDesktop = Boolean(window.desktopWindow?.isDesktop);
 
   const hotwords = parseHotwords(appSettings.asrHotwords);
 
@@ -54,6 +59,198 @@ export function AudioSourceSettings() {
   const handleDeleteHotword = (index: number): void => {
     updateHotwords(hotwords.filter((_, itemIndex) => itemIndex !== index));
   };
+
+  const testMicrophoneHealth = async (): Promise<void> => {
+    setHealthStatus({ severity: 'info', message: '正在检测麦克风输入...' });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const level = await measureAudioLevel(stream);
+      stream.getTracks().forEach((track) => track.stop());
+      setHealthStatus(level > 0.006
+        ? { severity: 'success', message: '麦克风权限和输入正常。' }
+        : { severity: 'warning', message: '麦克风权限正常。刚才没有检测到明显声音，如果你没说话这是正常的。' });
+    } catch (error) {
+      setHealthStatus({ severity: 'error', message: `麦克风检测失败：${error instanceof Error ? error.message : '请检查浏览器权限'}` });
+    }
+  };
+
+  const testSystemAudioHealth = async (): Promise<void> => {
+    setHealthStatus({ severity: 'info', message: '请在弹窗中选择会议窗口/标签页，并勾选共享音频...' });
+    if (isDesktop) {
+      let packetCount = 0;
+      let captureError = '';
+      try {
+        await systemAudioService.start({
+          onPcmData: () => { packetCount += 1; },
+          onError: (message) => { captureError = message; },
+          onEnd: () => {},
+        });
+        await new Promise((resolve) => window.setTimeout(resolve, 1800));
+        systemAudioService.stop();
+        if (captureError) {
+          setHealthStatus({ severity: 'error', message: `Mac 系统音频检测失败：${captureError}` });
+          return;
+        }
+        setHealthStatus(packetCount > 0
+          ? { severity: 'success', message: 'Mac 原生系统音频捕获正常，未启用麦克风。' }
+          : { severity: 'info', message: '系统音频权限正常，但刚才没有检测到播放中的会议声音。' });
+      } catch (error) {
+        systemAudioService.stop();
+        setHealthStatus({ severity: 'error', message: `Mac 系统音频检测失败：${error instanceof Error ? error.message : '请检查屏幕录制权限'}` });
+      }
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
+      stream.getVideoTracks().forEach((track) => track.stop());
+      const hasAudio = stream.getAudioTracks().some((track) => track.readyState === 'live');
+      const level = hasAudio ? await measureAudioLevel(stream) : 0;
+      stream.getTracks().forEach((track) => track.stop());
+      if (!hasAudio) {
+        setHealthStatus({ severity: 'error', message: '没有拿到系统音频轨道，请重新共享并勾选“分享音频”。' });
+        return;
+      }
+      setHealthStatus(level > 0.002
+        ? { severity: 'success', message: '系统音频共享正常，已经检测到输入。' }
+        : { severity: 'info', message: '系统音频权限正常。刚才共享的窗口/应用没有明显播放声音，如果当时没放音频这是正常的。' });
+    } catch (error) {
+      setHealthStatus({ severity: 'error', message: `系统音频检测失败：${error instanceof Error ? error.message : '请使用 Chrome 并允许共享'}` });
+    }
+  };
+
+  const testTranscriptionHealth = async (): Promise<void> => {
+    setHealthStatus({ severity: 'info', message: '正在检测实时转写通道...' });
+    const socket = new WebSocket(buildGatewayTestUrl());
+    const timer = window.setTimeout(() => {
+      socket.close();
+      setHealthStatus({ severity: 'error', message: '实时转写通道超时，请稍后重试。' });
+    }, 6000);
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: 'start',
+        provider: 'gateway-doubao',
+        speaker: 'interviewer',
+        asrEndWindowSize: appSettings.mergeTimeoutMs,
+        config: { hotwords: appSettings.asrHotwords ?? '' },
+      }));
+    };
+    socket.onmessage = (event) => {
+      const data = JSON.parse(String(event.data || '{}'));
+      if (data.type === 'ready') {
+        window.clearTimeout(timer);
+        socket.close();
+        setHealthStatus({ severity: 'success', message: '实时转写服务连接正常。' });
+      } else if (data.type === 'error') {
+        window.clearTimeout(timer);
+        socket.close();
+        setHealthStatus({ severity: 'error', message: data.message || '实时转写服务返回错误。' });
+      }
+    };
+    socket.onerror = () => {
+      window.clearTimeout(timer);
+      setHealthStatus({ severity: 'error', message: '实时转写服务连接失败。' });
+    };
+  };
+
+  if (COMMERCIAL_MODE) {
+    return (
+      <Paper sx={{ p: 3 }}>
+        <Typography variant="h6" gutterBottom>实时听音与专业热词</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          {isDesktop
+            ? 'Mac 客户端只捕获系统音频中的面试官声音，不启用麦克风；请先确认系统设置中已允许本应用进行屏幕录制。'
+            : '开始面试后，请按浏览器提示选择正在面试的窗口或标签页，并勾选共享音频。面试猪会自动区分对话角色，只针对面试官问题生成回答。'}
+        </Typography>
+        <Paper variant="outlined" sx={{ p: 2, mb: 2, bgcolor: 'background.default' }}>
+          <Typography variant="subtitle2" fontWeight={800} gutterBottom>听音健康检查</Typography>
+          <Typography variant="caption" color="text.secondary">
+            用来确认本机权限、共享音频和实时转写通道是否正常。
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.25 }}>
+            {!isDesktop && <Button variant="outlined" onClick={() => { void testMicrophoneHealth(); }}>测试麦克风</Button>}
+            <Button variant="outlined" onClick={() => { void testSystemAudioHealth(); }}>测试系统音频</Button>
+            <Button variant="contained" onClick={() => { void testTranscriptionHealth(); }}>测试实时转写</Button>
+          </Box>
+          {healthStatus && <Alert severity={healthStatus.severity} sx={{ mt: 1.25 }}>{healthStatus.message}</Alert>}
+        </Paper>
+
+        <Box sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, mb: 1 }}>
+            <Box>
+              <Typography variant="subtitle2" fontWeight={800}>专业热词</Typography>
+              <Typography variant="caption" color="text.secondary">
+                添加岗位相关术语、人名、项目名，能提升转写和回答贴合度。
+              </Typography>
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, mb: 1.25 }}>
+            <TextField
+              fullWidth
+              label="新增热词"
+              value={newHotword}
+              onChange={(event) => setNewHotword(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  handleAddHotword();
+                }
+              }}
+              placeholder="Fluss / StarRocks / 实时数仓"
+            />
+            <Button variant="outlined" startIcon={<AddIcon />} onClick={handleAddHotword} sx={{ flexShrink: 0 }}>
+              添加
+            </Button>
+          </Box>
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1 }}>
+            {hotwords.map((word, index) => (
+              <Box key={index} sx={{ display: 'flex', gap: 0.75, alignItems: 'center' }}>
+                <TextField
+                  fullWidth
+                  label={`热词 ${index + 1}`}
+                  value={word}
+                  onChange={(event) => handleHotwordChange(index, event.target.value)}
+                  onBlur={() => updateHotwords(hotwords)}
+                  placeholder="Fluss"
+                />
+                <IconButton
+                  size="small"
+                  color="error"
+                  aria-label={`删除热词 ${word || index + 1}`}
+                  onClick={() => handleDeleteHotword(index)}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </Box>
+            ))}
+            {hotwords.length === 0 && (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 1 }}>
+                建议先添加岗位核心词，例如 Fluss、Flink、StarRocks、Paimon、湖仓一体。
+              </Typography>
+            )}
+          </Box>
+        </Box>
+
+        <FormControl fullWidth sx={{ mt: 2 }}>
+          <InputLabel>问题结束判定</InputLabel>
+          <Select
+            label="问题结束判定"
+            value={String(appSettings.mergeTimeoutMs)}
+            onChange={(e: SelectChangeEvent) => updateAppSettings({ mergeTimeoutMs: Number(e.target.value) })}
+          >
+            <MenuItem value="1000">很快 - 适合短问短答</MenuItem>
+            <MenuItem value="1500">较快 - 允许轻微停顿</MenuItem>
+            <MenuItem value="2000">自然 - 推荐</MenuItem>
+            <MenuItem value="2500">稳一点 - 默认</MenuItem>
+            <MenuItem value="5000">长句 - 适合开放题</MenuItem>
+            <MenuItem value="8000">很稳 - 等完整长问题</MenuItem>
+          </Select>
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+            面试官中途停顿时不会立刻打断，超过这个时间才会自动生成答案。
+          </Typography>
+        </FormControl>
+      </Paper>
+    );
+  }
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -216,6 +413,39 @@ function serializeHotwords(items: string[]): string {
       return true;
     })
     .join('、');
+}
+
+function buildGatewayTestUrl(): string {
+  const configuredUrl = import.meta.env.VITE_ASR_GATEWAY_URL?.trim();
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+  if (window.location.protocol === 'file:' || window.desktopWindow?.isDesktop) {
+    return 'wss://bwg.yihan.me/api/asr-gateway';
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/api/asr-gateway`;
+}
+
+async function measureAudioLevel(stream: MediaStream): Promise<number> {
+  const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextCtor) return 0;
+  const context = new AudioContextCtor();
+  const source = context.createMediaStreamSource(stream);
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);
+  const samples = new Float32Array(analyser.fftSize);
+  let peak = 0;
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < 1800) {
+    analyser.getFloatTimeDomainData(samples);
+    let sum = 0;
+    for (const sample of samples) sum += sample * sample;
+    peak = Math.max(peak, Math.sqrt(sum / samples.length));
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+  }
+  source.disconnect();
+  await context.close();
+  return peak;
 }
 
 function providerDescription(provider: ASRProvider): string {
