@@ -28,17 +28,19 @@
     }
   ],
   "rewrites": [
-    { "source": "/interview", "destination": "/app" },
-    { "source": "/interview/(.*)", "destination": "/app" },
-    { "source": "/exam", "destination": "/app" },
-    { "source": "/exam/(.*)", "destination": "/app" },
-    { "source": "/knowledge", "destination": "/app" },
-    { "source": "/knowledge/(.*)", "destination": "/app" },
-    { "source": "/billing", "destination": "/app" },
-    { "source": "/billing/(.*)", "destination": "/app" },
-    { "source": "/settings", "destination": "/app" },
-    { "source": "/settings/(.*)", "destination": "/app" },
-    { "source": "/admin", "destination": "/app" },
-    { "source": "/admin/(.*)", "destination": "/app" }
+    { "source": "/app", "destination": "/app.html" },
+    { "source": "/app/(.*)", "destination": "/app.html" },
+    { "source": "/interview", "destination": "/app.html" },
+    { "source": "/interview/(.*)", "destination": "/app.html" },
+    { "source": "/exam", "destination": "/app.html" },
+    { "source": "/exam/(.*)", "destination": "/app.html" },
+    { "source": "/knowledge", "destination": "/app.html" },
+    { "source": "/knowledge/(.*)", "destination": "/app.html" },
+    { "source": "/billing", "destination": "/app.html" },
+    { "source": "/billing/(.*)", "destination": "/app.html" },
+    { "source": "/settings", "destination": "/app.html" },
+    { "source": "/settings/(.*)", "destination": "/app.html" },
+    { "source": "/admin", "destination": "/app.html" },
+    { "source": "/admin/(.*)", "destination": "/app.html" }
   ]
 }
