@@ -49,6 +49,16 @@ if (existsSync(promoAssets)) {
   cpSync(promoAssets, distAssets, { recursive: true });
 }
 
+// cleanUrls maps /app.html → /app, but SPA paths like /admin have no file.
+// Vercel rewrites for those paths are not applied on this static output, so
+// duplicate the SPA shell for each BrowserRouter route.
+const spaRoutes = ['admin', 'billing', 'interview', 'exam', 'knowledge', 'settings'];
+if (existsSync(appHtml)) {
+  for (const route of spaRoutes) {
+    cpSync(appHtml, join(dist, `${route}.html`));
+  }
+}
+
 // Normalize absolute app entry is still /app.html — leave as is.
 // Write a tiny marker for debugging deploys.
 writeFileSync(

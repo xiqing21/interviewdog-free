@@ -29,18 +29,18 @@
   ],
   "rewrites": [
     { "source": "/app", "destination": "/app.html" },
-    { "source": "/app/(.*)", "destination": "/app.html" },
+    { "source": "/app/:path*", "destination": "/app.html" },
     { "source": "/interview", "destination": "/app.html" },
-    { "source": "/interview/(.*)", "destination": "/app.html" },
+    { "source": "/interview/:path*", "destination": "/app.html" },
     { "source": "/exam", "destination": "/app.html" },
-    { "source": "/exam/(.*)", "destination": "/app.html" },
+    { "source": "/exam/:path*", "destination": "/app.html" },
     { "source": "/knowledge", "destination": "/app.html" },
-    { "source": "/knowledge/(.*)", "destination": "/app.html" },
+    { "source": "/knowledge/:path*", "destination": "/app.html" },
     { "source": "/billing", "destination": "/app.html" },
-    { "source": "/billing/(.*)", "destination": "/app.html" },
+    { "source": "/billing/:path*", "destination": "/app.html" },
     { "source": "/settings", "destination": "/app.html" },
-    { "source": "/settings/(.*)", "destination": "/app.html" },
+    { "source": "/settings/:path*", "destination": "/app.html" },
     { "source": "/admin", "destination": "/app.html" },
-    { "source": "/admin/(.*)", "destination": "/app.html" }
+    { "source": "/admin/:path*", "destination": "/app.html" }
   ]
 }
