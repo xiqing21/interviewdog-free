@@ -41,7 +41,8 @@ type AdminAction =
   | 'batchRevokeByBatch'
   | 'batchDeleteUnusedByBatch'
   | 'adminRedeemCardKey'
-  | 'updateCardKeyNote';
+  | 'updateCardKeyNote'
+  | 'markCardKeysListed';
 
 type AdminUser = {
   id: string;
@@ -123,6 +124,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     search?: string;
     limit?: number;
     plan?: string;
+    listed?: string;
+    listedChannel?: string;
+    ids?: string[];
   };
 
   try {
@@ -211,6 +215,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
         status: body.status,
         batchNo: body.batchNo,
         search: body.search,
+        listed: body.listed,
         limit: body.limit,
       }));
       return;
@@ -245,6 +250,10 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     if (body.action === 'updateCardKeyNote') {
       response.status(200).json(await updateCardKeyNote(supabase, actor, body.id, body.note));
+      return;
+    }
+    if (body.action === 'markCardKeysListed') {
+      response.status(200).json(await markCardKeysListed(supabase, actor, body));
       return;
     }
     response.status(400).json({ error: '未知后台操作。' });
@@ -977,7 +986,7 @@ function toDateString(date: Date) {
 
 async function listCardKeys(
   supabase: AdminSupabaseClient,
-  params: { status?: string; batchNo?: string; search?: string; limit?: number } = {},
+  params: { status?: string; batchNo?: string; search?: string; listed?: string; limit?: number } = {},
 ) {
   let query = supabase
     .from('license_card_keys')
@@ -989,6 +998,11 @@ async function listCardKeys(
   }
   if (params.batchNo && params.batchNo !== 'all') {
     query = query.eq('batch_no', params.batchNo);
+  }
+  if (params.listed === 'yes') {
+    query = query.not('listed_at', 'is', null);
+  } else if (params.listed === 'no') {
+    query = query.is('listed_at', null);
   }
   if (params.search) {
     const search = params.search.trim();
@@ -1003,12 +1017,13 @@ async function listCardKeys(
   // 全量汇总指标
   const { data: allKeys, error: statsError } = await supabase
     .from('license_card_keys')
-    .select('id, batch_no, status, minutes, redeemed_at');
+    .select('id, batch_no, status, minutes, redeemed_at, listed_at');
   if (statsError) throw statsError;
 
   const list = allKeys ?? [];
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
+  const lowStockThreshold = 20;
 
   const batchCountMap = new Map<string, number>();
   for (const k of list) {
@@ -1016,9 +1031,14 @@ async function listCardKeys(
     batchCountMap.set(b, (batchCountMap.get(b) ?? 0) + 1);
   }
 
+  const unused = list.filter((k: any) => k.status === 'unused');
+  const listedUnused = unused.filter((k: any) => Boolean(k.listed_at)).length;
+  const unlistedUnused = unused.length - listedUnused;
   const summary = {
     total: list.length,
-    unused: list.filter((k: any) => k.status === 'unused').length,
+    unused: unused.length,
+    listedUnused,
+    unlistedUnused,
     redeemed: list.filter((k: any) => k.status === 'redeemed').length,
     revoked: list.filter((k: any) => k.status === 'revoked').length,
     expired: list.filter((k: any) => k.status === 'expired').length,
@@ -1028,6 +1048,8 @@ async function listCardKeys(
     todayRedeemedCount: list.filter(
       (k: any) => k.status === 'redeemed' && k.redeemed_at && new Date(k.redeemed_at) >= startOfToday,
     ).length,
+    lowStockThreshold,
+    lowStock: listedUnused < lowStockThreshold,
     batches: Array.from(batchCountMap.entries()).map(([batchNo, count]) => ({ batchNo, count })),
   };
 
@@ -1058,7 +1080,11 @@ async function generateCardKeys(
   const note = str(body.note) || `批量生成 ${minutes} 分钟卡密 (${count} 笔)`;
   const expiresAt = body.expiresAt ? new Date(body.expiresAt).toISOString() : null;
 
-  const generatedCodes = new Set<string>();
+  const { data: existingRows, error: existingError } = await supabase
+    .from('license_card_keys')
+    .select('code');
+  if (existingError) throw existingError;
+  const generatedCodes = new Set<string>((existingRows ?? []).map((item: { code: string }) => item.code));
   const rows: Array<{
     code: string;
     batch_no: string;
@@ -1070,7 +1096,10 @@ async function generateCardKeys(
     expires_at: string | null;
   }> = [];
 
+  let guard = 0;
   while (rows.length < count) {
+    guard += 1;
+    if (guard > count * 20) throw new Error('卡密编码生成冲突过多，请重试。');
     const part1 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const part2 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const part3 = crypto.randomBytes(2).toString('hex').toUpperCase();
@@ -1299,6 +1328,57 @@ async function updateCardKeyNote(supabase: AdminSupabaseClient, actor: AdminUser
   if (error) throw error;
   await audit(supabase, actor.id, 'update_card_key_note', undefined, { id, note });
   return { ok: true, cardKey: data };
+}
+
+async function markCardKeysListed(
+  supabase: AdminSupabaseClient,
+  actor: AdminUser,
+  body: {
+    ids?: string[];
+    batchNo?: string;
+    listed?: boolean | string;
+    listedChannel?: string;
+  },
+) {
+  const listed = body.listed !== false && body.listed !== 'false';
+  const channel = listed ? (str(body.listedChannel) || 'houfaka') : null;
+  const listedAt = listed ? new Date().toISOString() : null;
+  const ids = Array.isArray(body.ids) ? body.ids.filter(Boolean) : [];
+  const batchNo = str(body.batchNo);
+
+  if (ids.length === 0 && !batchNo) {
+    throw new Error('请提供卡密 ID 或批次号。');
+  }
+
+  let query = supabase
+    .from('license_card_keys')
+    .update({
+      listed_at: listedAt,
+      listed_channel: channel,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('status', 'unused');
+
+  if (ids.length > 0) query = query.in('id', ids);
+  if (batchNo) query = query.eq('batch_no', batchNo);
+
+  const { data, error } = await query.select('id, code, batch_no, listed_at, listed_channel');
+  if (error) throw error;
+
+  await audit(supabase, actor.id, listed ? 'mark_card_keys_listed' : 'unmark_card_keys_listed', undefined, {
+    batchNo: batchNo || null,
+    ids,
+    count: data?.length ?? 0,
+    channel,
+  });
+
+  return {
+    ok: true,
+    count: data?.length ?? 0,
+    listed,
+    channel,
+    cardKeys: data ?? [],
+  };
 }
 
 async function totalUsedSeconds(supabase: AdminSupabaseClient): Promise<number> {

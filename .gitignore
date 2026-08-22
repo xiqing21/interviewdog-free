@@ -45,3 +45,8 @@ electron-builder.env
 .vercel
 
 .venv-ffmpeg/
+
+# Generated card keys must never be committed
+secrets/
+*.cardkeys.txt
+

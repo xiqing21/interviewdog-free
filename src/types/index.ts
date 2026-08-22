@@ -143,6 +143,8 @@ export interface CardKeyRow {
   redeemed_by_email?: string | null;
   redeemed_at?: string | null;
   expires_at?: string | null;
+  listed_at?: string | null;
+  listed_channel?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -150,11 +152,15 @@ export interface CardKeyRow {
 export interface CardKeySummary {
   total: number;
   unused: number;
+  listedUnused: number;
+  unlistedUnused: number;
   redeemed: number;
   revoked: number;
   expired: number;
   totalMinutesRedeemed: number;
   todayRedeemedCount: number;
+  lowStockThreshold: number;
+  lowStock: boolean;
   batches: Array<{ batchNo: string; count: number }>;
 }
 

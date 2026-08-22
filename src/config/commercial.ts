@@ -44,3 +44,17 @@ export const COMMERCIAL_PLANS: CommercialPlan[] = [
 export function commercialPlanById(id: string | undefined): CommercialPlan | undefined {
   return COMMERCIAL_PLANS.find((plan) => plan.id === id);
 }
+
+export const FAKA_SHOP_NAME = '面试猪发卡网';
+export const FAKA_LOW_STOCK_THRESHOLD = 20;
+
+export const FAKA_PRODUCTS = [
+  {
+    id: 'manual-30',
+    shopName: '面试猪手动充值',
+    priceYuan: 30,
+    minutes: 30,
+    plan: 'pro',
+    note: '对应发卡网 ¥30 商品，兑换后到账 30 分钟',
+  },
+] as const;

@@ -83,7 +83,7 @@ export function AdminPage() {
   // 卡密与发卡网模块状态
   const [cardKeys, setCardKeys] = useState<CardKeyRow[]>([]);
   const [cardKeySummary, setCardKeySummary] = useState<CardKeySummary | null>(null);
-  const [cardKeyFilter, setCardKeyFilter] = useState({ status: 'all', batchNo: 'all', search: '' });
+  const [cardKeyFilter, setCardKeyFilter] = useState({ status: 'all', batchNo: 'all', listed: 'all', search: '' });
   const [cardGenForm, setCardGenForm] = useState({
     minutes: '30',
     count: '20',
@@ -125,6 +125,7 @@ export function AdminPage() {
       const cardKeyResult = await adminRequest<CardKeysPayload>('listCardKeys', {
         status: filter.status,
         batchNo: filter.batchNo,
+        listed: filter.listed,
         search: filter.search,
       });
       setCardKeys(cardKeyResult.cardKeys);
@@ -149,8 +150,25 @@ export function AdminPage() {
         adminRequest<CardKeysPayload>('listCardKeys', {
           status: cardKeyFilter.status,
           batchNo: cardKeyFilter.batchNo,
+          listed: cardKeyFilter.listed,
           search: cardKeyFilter.search,
-        }).catch(() => ({ cardKeys: [], summary: { total: 0, unused: 0, redeemed: 0, revoked: 0, expired: 0, totalMinutesRedeemed: 0, todayRedeemedCount: 0, batches: [] } })),
+        }).catch(() => ({
+          cardKeys: [],
+          summary: {
+            total: 0,
+            unused: 0,
+            listedUnused: 0,
+            unlistedUnused: 0,
+            redeemed: 0,
+            revoked: 0,
+            expired: 0,
+            totalMinutesRedeemed: 0,
+            todayRedeemedCount: 0,
+            lowStockThreshold: 20,
+            lowStock: false,
+            batches: [],
+          },
+        })),
       ]);
       setUsers(userResult.users);
       setTransactions(txResult.transactions);
@@ -312,6 +330,40 @@ export function AdminPage() {
     }
   };
 
+  const downloadPlainText = (text: string, filename: string) => {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleMarkListed = async (batchNo: string, listed: boolean) => {
+    if (!batchNo || batchNo === 'all') {
+      setError('请先筛选指定批次，再标记是否已导入发卡网。');
+      return;
+    }
+    try {
+      const result = await adminRequest<{ ok: boolean; count: number }>('markCardKeysListed', {
+        batchNo,
+        listed,
+        listedChannel: 'houfaka',
+      });
+      setCardOpSuccessMessage(
+        listed
+          ? `已将批次 ${batchNo} 的 ${result.count} 笔待使用卡密标记为已导入发卡网。`
+          : `已取消批次 ${batchNo} 的发卡网上架标记。`,
+      );
+      await refreshCardKeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新上架状态失败');
+    }
+  };
+
   const handleCopySingle = async (code: string) => {
     try {
       await navigator.clipboard.writeText(code);
@@ -322,13 +374,18 @@ export function AdminPage() {
     }
   };
 
-  const handleExportFilteredUnused = async () => {
+  const handleExportFilteredUnused = async (download = false) => {
     const unusedKeys = cardKeys.filter((k) => k.status === 'unused');
     if (unusedKeys.length === 0) {
       setError('当前列表没有待使用的卡密可导出。');
       return;
     }
     const text = unusedKeys.map((k) => k.code).join('\n');
+    if (download) {
+      downloadPlainText(text, `faka-${cardKeyFilter.batchNo === 'all' ? 'unused' : cardKeyFilter.batchNo}.txt`);
+      setCardOpSuccessMessage(`已下载当前筛选的 ${unusedKeys.length} 笔待使用卡密，可直接导入发卡网。`);
+      return;
+    }
     await handleCopyBatch(text);
     setCardOpSuccessMessage(`已一键复制当前筛选的 ${unusedKeys.length} 笔待使用卡密（每行一个）！`);
   };
@@ -558,7 +615,7 @@ export function AdminPage() {
               <Box sx={{ flex: 1 }}>
                 <Typography variant="h6" fontWeight={900}>发卡网与卡密全生命周期管理</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  监控卡密库存与兑换进度，支持批量制卡、单张定制、一键导出纯文本、批量作废/删除及后台为用户代充。
+                  对接猴发卡商品「面试猪手动充值」（¥30 = 30 分钟）。后台制卡后导出粘贴到发卡网，用户购买后在充值页兑换。
                 </Typography>
               </Box>
               <Button
@@ -570,18 +627,29 @@ export function AdminPage() {
               </Button>
             </Stack>
 
+            {cardKeySummary?.lowStock && (
+              <Alert severity="warning" sx={{ mb: 1.5 }}>
+                发卡网待售库存仅剩 {cardKeySummary.listedUnused} 笔（预警线 {cardKeySummary.lowStockThreshold}）。请尽快生成新卡密并导入发卡网，避免售罄。
+              </Alert>
+            )}
+
+            <Alert severity="info" sx={{ mb: 1.5 }}>
+              发卡网导入步骤：打开该商品的「卡密管理」→「添加卡密」→ 粘贴下方每行一个的卡密 → 保存。导入后点「标记已导入发卡网」，库存监控才会按待售数量计算。
+            </Alert>
+
             <Grid container spacing={1.5}>
               {[
-                { title: '📦 可售库存卡密', value: cardKeySummary?.unused ?? 0, color: 'success.main', sub: '发卡平台待售可用库存' },
-                { title: '⚡ 已兑换激活卡密', value: cardKeySummary?.redeemed ?? 0, color: 'primary.main', sub: '用户已充值激活' },
-                { title: '⏱️ 累计兑换时长', value: `${cardKeySummary?.totalMinutesRedeemed ?? 0} 分钟`, color: 'info.main', sub: '累计充值服务总量' },
-                { title: '📅 今日兑换笔数', value: cardKeySummary?.todayRedeemedCount ?? 0, color: 'warning.main', sub: '今日新增充值笔数' },
-                { title: '🚫 已作废/已过期', value: (cardKeySummary?.revoked ?? 0) + (cardKeySummary?.expired ?? 0), color: 'text.secondary', sub: '无效/已废弃卡密' },
+                { title: '发卡网待售', value: cardKeySummary?.listedUnused ?? 0, color: 'success.main', sub: '已导入发卡网、尚未兑换' },
+                { title: '未导入发卡网', value: cardKeySummary?.unlistedUnused ?? 0, color: 'warning.main', sub: '已生成但还没贴进发卡网' },
+                { title: '已兑换激活', value: cardKeySummary?.redeemed ?? 0, color: 'primary.main', sub: '用户已充值到账' },
+                { title: '今日兑换', value: cardKeySummary?.todayRedeemedCount ?? 0, color: 'info.main', sub: '今天新增兑换笔数' },
+                { title: '累计兑换时长', value: `${cardKeySummary?.totalMinutesRedeemed ?? 0} 分`, color: 'secondary.main', sub: '累计充值服务总量' },
+                { title: '已作废/过期', value: (cardKeySummary?.revoked ?? 0) + (cardKeySummary?.expired ?? 0), color: 'text.secondary', sub: '不可再售卖或兑换' },
               ].map((metric) => (
-                <Grid item xs={6} md={2.4} key={metric.title}>
+                <Grid item xs={6} md={2} key={metric.title}>
                   <Paper variant="outlined" sx={{ p: 1.75, height: '100%' }}>
                     <Typography variant="caption" color="text.secondary" fontWeight={700}>{metric.title}</Typography>
-                    <Typography variant="h4" fontWeight={900} sx={{ color: metric.color, my: 0.5 }}>
+                    <Typography variant="h4" fontWeight={900} sx={{ color: metric.color, my: 0.5, fontSize: { xs: 26, md: 32 } }}>
                       {metric.value}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">{metric.sub}</Typography>
@@ -713,16 +781,38 @@ export function AdminPage() {
                       helperText="格式为每行一个卡密，完全兼容发卡平台的批量卡密导入格式。"
                     />
 
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      size="large"
-                      startIcon={<ContentCopyIcon />}
-                      onClick={() => { void handleCopyBatch(generatedBatchResult.plainTextList); }}
-                      sx={{ fontWeight: 900 }}
-                    >
-                      {copiedBatch ? '✅ 已成功复制全部卡密！可直接粘贴到发卡网' : '一键复制全部卡密 (直接粘贴到发卡网后台)'}
-                    </Button>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        size="large"
+                        startIcon={<ContentCopyIcon />}
+                        onClick={() => { void handleCopyBatch(generatedBatchResult.plainTextList); }}
+                        sx={{ fontWeight: 900, flex: 1 }}
+                      >
+                        {copiedBatch ? '已复制，去发卡网粘贴' : '复制全部卡密（粘贴到发卡网）'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        startIcon={<FileDownloadIcon />}
+                        onClick={() => {
+                          downloadPlainText(
+                            generatedBatchResult.plainTextList,
+                            `${generatedBatchResult.batchNo}.txt`,
+                          );
+                        }}
+                      >
+                        下载 txt
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        onClick={() => { void handleMarkListed(generatedBatchResult.batchNo, true); }}
+                      >
+                        标记已导入发卡网
+                      </Button>
+                    </Stack>
                   </Stack>
                 ) : (
                   <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 3, textAlign: 'center' }}>
@@ -731,7 +821,7 @@ export function AdminPage() {
                       在左侧设定时长与数量并点击生成，此处将显示可直接一键复制的卡密池。
                     </Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
-                      系统已预置 20 笔 30 分钟面额卡密，可在下方卡密列表中直接复制单条或批量查看。
+                      公开仓库里的种子卡密已作废。请用这里生成新卡密，再导入猴发卡「面试猪手动充值」商品。
                     </Typography>
                   </Box>
                 )}
@@ -782,10 +872,27 @@ export function AdminPage() {
                     }}
                   >
                     <MenuItem value="all">全部状态</MenuItem>
-                    <MenuItem value="unused">🟢 待使用</MenuItem>
-                    <MenuItem value="redeemed">🔵 已兑换</MenuItem>
-                    <MenuItem value="revoked">🔴 已作废</MenuItem>
-                    <MenuItem value="expired">⚪ 已过期</MenuItem>
+                    <MenuItem value="unused">待使用</MenuItem>
+                    <MenuItem value="redeemed">已兑换</MenuItem>
+                    <MenuItem value="revoked">已作废</MenuItem>
+                    <MenuItem value="expired">已过期</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" sx={{ minWidth: 140 }}>
+                  <InputLabel>上架筛选</InputLabel>
+                  <Select
+                    label="上架筛选"
+                    value={cardKeyFilter.listed}
+                    onChange={(e) => {
+                      const next = { ...cardKeyFilter, listed: e.target.value };
+                      setCardKeyFilter(next);
+                      void refreshCardKeys(next);
+                    }}
+                  >
+                    <MenuItem value="all">全部上架状态</MenuItem>
+                    <MenuItem value="yes">已导入发卡网</MenuItem>
+                    <MenuItem value="no">未导入发卡网</MenuItem>
                   </Select>
                 </FormControl>
 
@@ -807,10 +914,18 @@ export function AdminPage() {
                 <Button
                   variant="outlined"
                   size="small"
-                  startIcon={<FileDownloadIcon />}
-                  onClick={() => { void handleExportFilteredUnused(); }}
+                  startIcon={<ContentCopyIcon />}
+                  onClick={() => { void handleExportFilteredUnused(false); }}
                 >
-                  导出待使用卡密
+                  复制待使用
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<FileDownloadIcon />}
+                  onClick={() => { void handleExportFilteredUnused(true); }}
+                >
+                  下载 txt
                 </Button>
               </Stack>
             </Stack>
@@ -822,6 +937,12 @@ export function AdminPage() {
                 sx={{ mb: 2 }}
                 action={
                   <Stack direction="row" spacing={1}>
+                    <Button size="small" variant="outlined" onClick={() => { void handleMarkListed(cardKeyFilter.batchNo, true); }}>
+                      标记已导入发卡网
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => { void handleMarkListed(cardKeyFilter.batchNo, false); }}>
+                      取消上架标记
+                    </Button>
                     <Button size="small" color="warning" variant="outlined" onClick={() => { void handleBatchRevokeCurrent(); }}>
                       作废此批次
                     </Button>
@@ -895,14 +1016,22 @@ export function AdminPage() {
                         }
                         label={
                           card.status === 'unused'
-                            ? '🟢 待使用'
+                            ? '待使用'
                             : card.status === 'redeemed'
-                              ? '🔵 已兑换'
+                              ? '已兑换'
                               : card.status === 'revoked'
-                                ? '🔴 已作废'
-                                : '⚪ 已过期'
+                                ? '已作废'
+                                : '已过期'
                         }
                       />
+                      {card.status === 'unused' && (
+                        <Chip
+                          size="small"
+                          variant="outlined"
+                          color={card.listed_at ? 'success' : 'warning'}
+                          label={card.listed_at ? '已导入发卡网' : '未导入发卡网'}
+                        />
+                      )}
 
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         {card.status === 'redeemed' ? (

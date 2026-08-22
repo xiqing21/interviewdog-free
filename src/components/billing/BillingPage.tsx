@@ -125,10 +125,10 @@ export function BillingPage() {
               <Chip size="small" color="primary" label="自动发卡秒到账" />
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              在发卡平台或官方渠道购买了充值卡密？输入卡密即可瞬间充值到账，全天 24 小时自动生效。
+              在发卡网购买「面试猪手动充值」（¥30 = 30 分钟）后，把卡密贴到这里即可到账，全天 24 小时自动生效。
             </Typography>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              客服邮箱：xiaosuange@gmail.com ｜ 官方QQ群：592806421
+              客服邮箱：xiaosuange@gmail.com ｜ 官方QQ群：592906421
             </Typography>
           </Box>
 

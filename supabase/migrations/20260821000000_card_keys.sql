@@ -32,27 +32,5 @@ create index if not exists license_card_keys_status_idx on public.license_card_k
 create index if not exists license_card_keys_created_idx on public.license_card_keys (created_at desc);
 create index if not exists license_card_keys_redeemed_idx on public.license_card_keys (redeemed_at desc);
 
--- Seed initial batch of 20 card keys (30 Minutes for 30 RMB product in Card Delivery Shop)
-insert into public.license_card_keys (code, batch_no, minutes, plan, status, note)
-values
-  ('MSZ-30M-8F3A-7K9Q-2W4E', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-4H9C-1T6X-8P2V', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-9K2L-5N7M-3B8A', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-6W1E-8R4T-9Y2U', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-3X7C-2V9B-5N1M', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-7Q4W-1E8R-6T2Y', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-2U9I-5O3P-8A4S', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-5D8F-2G6H-1J7K', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-1L4Z-7X2C-9V5B', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-8N3M-6Q1W-4E9R', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-4T7Y-9U2I-3O8P', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-9A5S-1D8F-6G2H', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-3J7K-8L2Z-5X1C', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-7V4B-2N9M-6Q3W', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-1E8R-5T2Y-9U4I', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-6O1P-3A7S-8D2F', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-2G9H-7J4K-1L6Z', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-8X3C-5V1B-4N7M', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-5Q2W-9E6R-3T8Y', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密'),
-  ('MSZ-30M-3U7I-1O4P-9A2S', 'FAKA-20260821-30M', 30, 'pro', 'unused', '发卡平台首批30元商品卡密')
-on conflict (code) do nothing;
+-- Do not seed plaintext card keys in git. Generate them from the admin console
+-- so they never appear in the public repository.
