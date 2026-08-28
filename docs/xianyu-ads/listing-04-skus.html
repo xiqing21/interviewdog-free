@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 800px; height: 800px; overflow: hidden; }
+    .card {
+      width: 800px; height: 800px;
+      background: #fff;
+      font-family: 'Noto Sans SC', sans-serif;
+      padding: 48px;
+      display: flex; flex-direction: column;
+    }
+    .kicker { font-size: 22px; font-weight: 700; color: #7c3aed; }
+    h1 { margin-top: 8px; font-size: 48px; font-weight: 900; }
+    table { margin-top: 36px; width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 18px 12px; font-size: 24px; border-bottom: 2px solid #f0ece6; }
+    th { color: #8b8196; font-size: 20px; }
+    td.name { font-weight: 800; font-size: 26px; }
+    td.price { font-weight: 900; font-size: 32px; color: #ea580c; }
+    tr.hit td { background: #fff7ed; }
+    .note { margin-top: auto; font-size: 22px; color: #534b58; line-height: 1.5; font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="kicker">AI 面试助手额度</div>
+    <h1>按场次买辅助时长</h1>
+    <table>
+      <thead>
+        <tr><th>套餐</th><th>时长</th><th>闲鱼价</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name">体验卡</td>
+          <td>30 分钟</td>
+          <td class="price">¥9.9</td>
+        </tr>
+        <tr class="hit">
+          <td class="name">一场卡 · 主推</td>
+          <td>60 分钟</td>
+          <td class="price">¥19.9</td>
+        </tr>
+        <tr>
+          <td class="name">冲刺卡</td>
+          <td>180 分钟</td>
+          <td class="price">¥39.9</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">正式技术面常见 45–60 分钟。先买一场卡，好用再补冲刺卡。</p>
+  </div>
+</body>
+</html>

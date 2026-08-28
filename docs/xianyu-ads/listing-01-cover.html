@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 800px; height: 800px; overflow: hidden; }
+    .card {
+      width: 800px; height: 800px;
+      background: linear-gradient(160deg, #f4ecff 0%, #efe7ff 40%, #ffe8d6 100%);
+      font-family: 'Noto Sans SC', sans-serif;
+      padding: 48px 48px 40px;
+      display: flex; flex-direction: column;
+      position: relative;
+    }
+    .badge {
+      align-self: flex-start;
+      background: #111;
+      color: #fff;
+      font-size: 22px;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 999px;
+      letter-spacing: 1px;
+    }
+    h1 {
+      margin-top: 28px;
+      font-size: 72px;
+      line-height: 1.08;
+      font-weight: 900;
+      color: #16121c;
+    }
+    h1 span { color: #6d28d9; }
+    .price-row {
+      margin-top: 36px;
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+    }
+    .now {
+      font-size: 108px;
+      font-weight: 900;
+      color: #ea580c;
+      line-height: 0.9;
+    }
+    .unit { font-size: 36px; font-weight: 800; color: #ea580c; margin-bottom: 12px; }
+    .old {
+      font-size: 32px;
+      color: #8b8196;
+      text-decoration: line-through;
+      margin-bottom: 18px;
+    }
+    .meta {
+      margin-top: 18px;
+      font-size: 28px;
+      font-weight: 700;
+      color: #3f3a47;
+    }
+    .pills {
+      margin-top: auto;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .pill {
+      background: #fff;
+      border: 2px solid #16121c;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+    img.mascot {
+      position: absolute;
+      right: 28px;
+      bottom: 28px;
+      width: 240px;
+      height: 240px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">闲鱼特价 · 秒发货</div>
+    <h1>AI 面试<br>辅助工具</h1>
+    <div class="price-row">
+      <div class="now">19.9</div>
+      <div class="unit">元</div>
+      <div class="old">官网 29 元</div>
+    </div>
+    <div class="meta">60 分钟 · 实时听问题出回答</div>
+    <div class="pills">
+      <span class="pill">面试助手</span>
+      <span class="pill">按简历作答</span>
+      <span class="pill">实时出答</span>
+    </div>
+    <img class="mascot" src="../../public/logo.png" alt="" />
+  </div>
+</body>
+</html>

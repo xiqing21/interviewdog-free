@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 800px; height: 800px; overflow: hidden; }
+    .card {
+      width: 800px; height: 800px;
+      background: #16121c;
+      color: #fff;
+      font-family: 'Noto Sans SC', sans-serif;
+      padding: 48px;
+      display: flex; flex-direction: column;
+    }
+    .kicker { font-size: 22px; font-weight: 700; color: #fbbf24; }
+    h1 { margin-top: 10px; font-size: 52px; font-weight: 900; }
+    ol { margin-top: 40px; list-style: none; display: flex; flex-direction: column; gap: 22px; }
+    li {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 18px;
+      align-items: start;
+      background: #221c2a;
+      border-radius: 24px;
+      padding: 22px;
+    }
+    .n { font-size: 40px; font-weight: 900; color: #c4b5fd; }
+    .t { font-size: 28px; font-weight: 800; }
+    .d { margin-top: 6px; font-size: 22px; color: #d6d0de; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="kicker">拍下后怎么用</div>
+    <h1>三步到账</h1>
+    <ol>
+      <li>
+        <div class="n">01</div>
+        <div>
+          <div class="t">闲鱼内发货</div>
+          <div class="d">付款后我在订单消息发兑换码，不走站外。</div>
+        </div>
+      </li>
+      <li>
+        <div class="n">02</div>
+        <div>
+          <div class="t">打开网站登录</div>
+          <div class="d">注册账号，进入「套餐与账单」页。</div>
+        </div>
+      </li>
+      <li>
+        <div class="n">03</div>
+        <div>
+          <div class="t">粘贴兑换码</div>
+          <div class="d">秒到账。网页就能用，Mac 客户端也可。</div>
+        </div>
+      </li>
+    </ol>
+  </div>
+</body>
+</html>

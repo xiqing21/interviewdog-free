@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;700;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 800px; height: 800px; overflow: hidden; }
+    .card {
+      width: 800px; height: 800px;
+      background: #faf7f2;
+      font-family: 'Noto Sans SC', sans-serif;
+      padding: 48px;
+      display: flex; flex-direction: column;
+    }
+    .kicker { font-size: 22px; font-weight: 700; color: #7c3aed; letter-spacing: 2px; }
+    h1 { margin-top: 12px; font-size: 48px; font-weight: 900; line-height: 1.2; }
+    .grid { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; flex: 1; }
+    .box {
+      background: #fff;
+      border-radius: 28px;
+      padding: 28px 24px;
+      border: 3px solid #ece6dc;
+    }
+    .box.hit {
+      border-color: #ea580c;
+      background: #fff7ed;
+    }
+    .box h2 { font-size: 24px; margin-bottom: 18px; }
+    .box .num { font-size: 56px; font-weight: 900; }
+    .box p { margin-top: 12px; font-size: 22px; color: #534b58; line-height: 1.45; font-weight: 500; }
+    .foot { margin-top: 24px; font-size: 22px; font-weight: 700; color: #16121c; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="kicker">AI 面试助手 · 闲鱼特价</div>
+    <h1>实时辅助一场面试<br>不必花几百请陪练</h1>
+    <div class="grid">
+      <div class="box">
+        <h2>线下面试辅导</h2>
+        <div class="num">200+</div>
+        <p>一次陪练就要几百，还不一定对得上你的项目。</p>
+      </div>
+      <div class="box hit">
+        <h2>这场辅助额度</h2>
+        <div class="num">19.9</div>
+        <p>60 分钟。实时听问题，结合简历给可口述的回答。</p>
+      </div>
+    </div>
+    <div class="foot">线上面试实时辅助。你自己开口，工具补结构和关键词。</div>
+  </div>
+</body>
+</html>
