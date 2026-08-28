@@ -1267,7 +1267,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
               引用专家库（卡片可多选）
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              已选择 {selectedKnowledgeIds.length} / {knowledgeProfile.expertKnowledgeItems.length}
+              已选择 {selectedKnowledgeIds.length} / {knowledgeProfile.expertKnowledgeItems.length}，答题时按问题检索相关片段
             </Typography>
           </Box>
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 1.25 }}>

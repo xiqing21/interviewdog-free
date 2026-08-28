@@ -30,10 +30,10 @@ import type { KnowledgeLibraryItem, KnowledgeQAPair, KnowledgeSourceType } from 
 import { getApiUrl } from '../../services/apiHelper';
 
 const KNOWLEDGE_TYPE_OPTIONS: Array<{ key: KnowledgeSourceType; label: string; desc: string }> = [
-  { key: 'qa', label: 'QA 模式', desc: '适合常见问答、项目追问，命中问题时优先引用。' },
-  { key: 'document', label: '文档模式', desc: '适合较长技术文档、项目复盘、架构说明。' },
-  { key: 'text', label: '文本粘贴', desc: '适合临时话术、技术点、业务背景。' },
-  { key: 'webpage', label: '网页读取', desc: '输入 URL 读取网页正文并保存。' },
+  { key: 'qa', label: 'QA 模式', desc: '适合常见问答、项目追问。面试时按问题检索命中条目，优先引用。' },
+  { key: 'document', label: '文档模式', desc: '适合较长技术文档、项目复盘。面试时按问题切块检索相关片段，不会整篇塞进上下文。' },
+  { key: 'text', label: '文本粘贴', desc: '适合临时话术、技术点。同样按问题检索，不整段全量注入。' },
+  { key: 'webpage', label: '网页读取', desc: '输入 URL 读取网页正文并保存，检索方式和文档模式相同。' },
 ];
 
 export function KnowledgePage() {
@@ -255,7 +255,7 @@ export function KnowledgePage() {
         />
         {knowledgeType === 'qa' && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            已解析 {parseQAPairs(knowledgeText).length} 组 QA；回答时会按面试官问题做轻量匹配，命中后优先引用。
+            已解析 {parseQAPairs(knowledgeText).length} 组 QA；回答时会按面试官问题检索命中条目，优先引用。文档和文本粘贴会按问题切块检索，不再整卡塞进上下文。
           </Typography>
         )}
         <Button

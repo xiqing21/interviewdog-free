@@ -24,7 +24,6 @@ import type {
   ASRGatewayProvider,
   ASRProvider,
   KnowledgeLibraryItem,
-  KnowledgeQAPair,
   WebSearchResult,
 } from '../types';
 import {
@@ -46,6 +45,11 @@ import * as billingService from '../services/billingService';
 import type { LocalQwenSession } from '../services/localQwenAsrService';
 import { chat } from '../services/aiService';
 import { webSearch } from '../services/webSearchService';
+import {
+  buildKnowledgeCatalog,
+  formatRetrievedKnowledge,
+  retrieveKnowledgeSnippets,
+} from '../services/knowledgeRetrievalService';
 import { useSettings } from '../hooks/useSettings';
 import { useSession } from '../hooks/useSession';
 import { useKnowledge } from '../hooks/useKnowledge';
@@ -297,10 +301,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         prompt += '\n\n' + rj;
       }
 
-      const generalKnowledge = buildGeneralKnowledgeContext();
-      if (generalKnowledge) {
-        prompt += `\n\n## 当前项目挂载的专家知识库摘要\n${generalKnowledge}`;
-        prompt += '\n\n回答时请优先结合相关材料，提炼成自然口述，不要机械照抄；QA 命中内容优先级最高。';
+      const knowledgeCatalog = buildMountedKnowledgeCatalog();
+      if (knowledgeCatalog) {
+        prompt += `\n\n## 当前项目挂载的专家知识库\n${knowledgeCatalog}`;
+        prompt += '\n\n只使用本题检索到的知识库片段和简历中的真实经历；没有出现的细节不要编造。QA 命中内容优先级最高。';
       }
     }
 
@@ -319,62 +323,30 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     return [];
   }
 
-  function buildGeneralKnowledgeContext(): string {
+  function knowledgeItemsForRetrieval(): { items: KnowledgeLibraryItem[]; manual: string } {
     const session = sessionRef.current;
-    const parts: string[] = [];
-    const manual = session?.expertKnowledge?.trim();
-    if (manual) {
-      parts.push(`### 本项目临时补充\n${manual.slice(0, 2500)}`);
+    const selected = selectedKnowledgeItems();
+    const manual = session?.expertKnowledge?.trim() ?? '';
+    if (selected.length > 0 || manual) {
+      return { items: selected, manual };
     }
-
-    const items = selectedKnowledgeItems();
-    if (items.length === 0 && !manual) {
-      if (session) return '';
-      const legacy = knowledgeRef.current.expertKnowledge?.trim();
-      if (legacy) return legacy.slice(0, 3000);
-    }
-
-    let budget = 6500;
-    for (const item of items) {
-      if (budget <= 0) break;
-      const type = knowledgeTypeLabel(item);
-      const content = item.type === 'qa' && item.qaPairs?.length
-        ? item.qaPairs.slice(0, 8).map((pair) => `Q: ${pair.question}\nA: ${pair.answer}`).join('\n\n')
-        : item.content;
-      const chunk = `### ${item.name}（${type}）\n${content.slice(0, Math.min(1600, budget))}`;
-      parts.push(chunk);
-      budget -= chunk.length;
-    }
-    return parts.join('\n\n').slice(0, 8000);
+    if (session) return { items: [], manual: '' };
+    return {
+      items: knowledgeRef.current.expertKnowledgeItems ?? [],
+      manual: knowledgeRef.current.expertKnowledge?.trim() ?? '',
+    };
   }
 
-  function buildMatchedQAContext(question: string): string {
-    const pairs = selectedKnowledgeItems()
-      .filter((item) => item.type === 'qa' && item.qaPairs?.length)
-      .flatMap((item) => (item.qaPairs ?? []).map((pair) => ({ item, pair, score: qaMatchScore(question, pair) })))
-      .filter((entry) => entry.score >= 0.16)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-    if (pairs.length === 0) return '';
-    return pairs
-      .map((entry, index) => `${index + 1}. 来源：${entry.item.name}\nQ: ${entry.pair.question}\nA: ${entry.pair.answer}`)
-      .join('\n\n')
-      .slice(0, 4500);
+  function buildMountedKnowledgeCatalog(): string {
+    const { items, manual } = knowledgeItemsForRetrieval();
+    return buildKnowledgeCatalog(items, manual);
   }
 
-  function qaMatchScore(question: string, pair: KnowledgeQAPair): number {
-    const q = normalizeTranscriptText(question);
-    const target = normalizeTranscriptText(`${pair.question}${pair.answer}`);
-    if (!q || !target) return 0;
-    if (target.includes(q) || q.includes(normalizeTranscriptText(pair.question))) return 1;
-    return textSimilarity(q, target);
-  }
-
-  function knowledgeTypeLabel(item: KnowledgeLibraryItem): string {
-    if (item.type === 'qa') return 'QA';
-    if (item.type === 'webpage') return '网页';
-    if (item.type === 'text') return '文本';
-    return '文档';
+  function buildRetrievedKnowledgeContext(question: string): string {
+    const { items, manual } = knowledgeItemsForRetrieval();
+    if (items.length === 0 && !manual) return '';
+    const { qaHits, docHits } = retrieveKnowledgeSnippets(question, items, manual);
+    return formatRetrievedKnowledge(qaHits, docHits);
   }
 
   function formatSearchResults(results: Awaited<ReturnType<typeof webSearch>>): string {
@@ -688,10 +660,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const searchContext = searchResults.length
       ? `\n\n联网搜索结果：\n${formatSearchResults(searchResults)}\n\n请把搜索结果作为补充资料使用；如与简历/专家库冲突，以候选人真实经历优先。`
       : '';
-    const matchedQA = policy.includeProfileKnowledge ? buildMatchedQAContext(question) : '';
-    const qaKnowledgeContext = matchedQA
-      ? `\n\n命中的专家库 QA（优先参考）：\n${matchedQA}`
-      : '';
+    const retrievedKnowledge = policy.includeProfileKnowledge ? buildRetrievedKnowledgeContext(question) : '';
+    const qaKnowledgeContext = retrievedKnowledge ? `\n\n${retrievedKnowledge}` : '';
     const hotwords = policy.includeHotwords ? parseHotwords(appRef.current.asrHotwords) : [];
     const hotwordContext = hotwords.length ? `\n\n语音识别热词/专业词：${hotwords.join('、')}` : '';
     const modeContext = `\n\n本次重新生成要求：${modeInstruction(mode)}`;
