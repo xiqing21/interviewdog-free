@@ -222,10 +222,10 @@ html[data-theme='light'] .MuiPaper-root {
   background: rgba(108, 99, 255, 0.5);
 }
 
-/* ===== Highlight.js Theme (Atom One Dark) ===== */
+/* ===== Highlight.js Theme (readable on light and dark app chrome) ===== */
 .hljs {
-  color: #abb2bf;
-  background: #282c34;
+  color: #e2e8f0;
+  background: transparent;
 }
 
 .hljs-comment,
@@ -237,7 +237,8 @@ html[data-theme='light'] .MuiPaper-root {
 .hljs-doctag,
 .hljs-keyword,
 .hljs-formula {
-  color: #c678dd;
+  color: #7dd3fc;
+  font-weight: 650;
 }
 
 .hljs-section,
@@ -300,9 +301,12 @@ html[data-theme='light'] .MuiPaper-root {
 
 /* ===== Code Block Styling ===== */
 .code-block {
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   margin: 12px 0;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: #0f172a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .code-block pre {
@@ -310,11 +314,27 @@ html[data-theme='light'] .MuiPaper-root {
   padding: 16px !important;
   overflow-x: auto;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
+  color: #e2e8f0 !important;
+  background: transparent !important;
+  tab-size: 2;
 }
 
-.code-block code {
-  font-family: 'Fira Code', Consolas, monospace;
+.code-block code,
+.code-block .hljs {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+  color: #e2e8f0;
+  background: transparent !important;
+}
+
+.markdown-body :not(pre) > code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.15em 0.4em;
+  border-radius: 6px;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
 }
 
 /* ===== Exam answer presentation ===== */
@@ -442,7 +462,7 @@ html[data-theme='light'] .MuiPaper-root {
 
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid hsl(var(--border));
   padding: 8px 12px;
   text-align: left;
 }
@@ -452,7 +472,7 @@ html[data-theme='light'] .MuiPaper-root {
 }
 
 .markdown-body a {
-  color: #61aeee;
+  color: hsl(var(--primary));
   text-decoration: none;
 }
 

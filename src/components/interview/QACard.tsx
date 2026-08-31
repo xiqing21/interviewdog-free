@@ -17,6 +17,7 @@ import StopCircleIcon from '@mui/icons-material/StopCircle';
 import ShortTextIcon from '@mui/icons-material/ShortText';
 import SubjectIcon from '@mui/icons-material/Subject';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import EditNoteIcon from '@mui/icons-material/EditNote';
 import type { QAItem } from '../../types';
 import { useInterview } from '../../hooks/useInterview';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
@@ -126,6 +127,14 @@ export function QACard({ qa }: QACardProps) {
             >
               <AccountTreeIcon fontSize="inherit" />
               STAR
+            </Button>
+            <Button
+              size="sm"
+              variant={qa.generationMode === 'exam' ? 'default' : 'outline'}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'exam' })}
+            >
+              <EditNoteIcon fontSize="inherit" />
+              笔试
             </Button>
           </Box>
           <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', alignItems: 'center' }}>

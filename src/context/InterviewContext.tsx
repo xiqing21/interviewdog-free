@@ -384,6 +384,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (mode === 'star') {
       return '请用 STAR 结构生成：Situation 背景、Task 任务、Action 行动、Result 结果。每一段都要自然口语化，突出我做了什么、为什么这么做、结果如何。';
     }
+    if (mode === 'exam') {
+      return '请按笔试/机试题解答，不要引用简历、专家知识库、历史问答、转写或面试口述风格。SQL 题给出可运行 SQL 并标明语言；代码题给完整代码和关键思路；选择题先给答案再解析选项；简答题直接给要点。代码必须放在 markdown 代码块里并写上语言（sql、python、java 等）。不要编造项目经历或业务数据。';
+    }
     if (mode === 'no-context') {
       return '请清除上下文重新生成：不要引用简历、专家知识库、历史问答、最近转写或联网搜索结果，只基于面试官当前问题回答。回答仍要完整，给出可直接口述的结构化答案。';
     }
@@ -394,7 +397,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   }
 
   function buildPromptForMode(mode: AnswerGenerationMode): string {
-    if (mode === 'no-context' || mode === 'star-no-context') {
+    if (mode === 'no-context' || mode === 'star-no-context' || mode === 'exam') {
       return modeInstruction(mode);
     }
     const forcedMode = mode === 'concise' ? 'concise' : mode === 'detailed' ? 'detailed' : undefined;
@@ -402,7 +405,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   }
 
   function generationPolicy(mode: AnswerGenerationMode) {
-    const clearContext = mode === 'no-context' || mode === 'star-no-context';
+    const clearContext = mode === 'no-context' || mode === 'star-no-context' || mode === 'exam';
     return {
       includeHistory: !clearContext,
       includeTranscript: !clearContext,

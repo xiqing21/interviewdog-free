@@ -262,7 +262,7 @@ export interface QAItem {
   generationMode?: AnswerGenerationMode;
 }
 
-export type AnswerGenerationMode = 'normal' | 'concise' | 'detailed' | 'star' | 'no-context' | 'star-no-context';
+export type AnswerGenerationMode = 'normal' | 'concise' | 'detailed' | 'star' | 'exam' | 'no-context' | 'star-no-context';
 
 export interface WebSearchResult {
   title: string;

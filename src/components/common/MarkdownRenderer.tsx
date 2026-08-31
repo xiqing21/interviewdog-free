@@ -20,7 +20,7 @@ export function MarkdownRenderer({
   return (
     <div className={`markdown-body ${className ?? ''}`}>
       <ReactMarkdown
-        rehypePlugins={[rehypeHighlight]}
+        rehypePlugins={[[rehypeHighlight, { detect: true, ignoreMissing: true }]]}
         components={{
           pre: ({ children }) => (
             <div className="code-block">
