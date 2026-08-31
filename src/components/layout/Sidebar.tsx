@@ -31,6 +31,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useAuth } from '../../hooks/useAuth';
 import { publicAssetUrl } from '../../lib/assets';
 import { adminRequest } from '../../services/adminService';
+import { version as APP_VERSION } from '../../../package.json';
 
 /** Maps icon name strings from NAV_ITEMS to actual icon components. */
 const ICON_MAP: Record<string, ElementType> = {
@@ -156,7 +157,7 @@ export function Sidebar() {
       >
         {!collapsed && (
           <Typography variant="caption" color="text.secondary">
-            v1.0.5
+            v{APP_VERSION}
           </Typography>
         )}
         <IconButton onClick={toggleTheme} size="small">
