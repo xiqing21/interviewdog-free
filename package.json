@@ -11,9 +11,9 @@
     "build": "tsc -b && vite build && node scripts/assemble-site.mjs",
     "build:app": "tsc -b && vite build",
     "assemble:site": "node scripts/assemble-site.mjs",
-    "desktop:pack": "bun run build && electron-builder --mac --dir",
-    "desktop:dist": "bun run build && electron-builder --mac dmg",
-    "desktop:dist:signed": "bun run build && electron-builder --mac dmg --publish never",
+    "desktop:pack": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --mac --dir",
+    "desktop:dist": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --mac dmg",
+    "desktop:dist:signed": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --mac dmg --publish never",
     "preview": "vite preview"
   },
   "dependencies": {

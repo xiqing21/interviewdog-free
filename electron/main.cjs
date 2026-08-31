@@ -35,6 +35,17 @@ function openScreenRecordingSettings() {
   });
 }
 
+function resolveRendererHtml() {
+  const distDir = path.join(__dirname, '..', 'dist');
+  const appHtml = path.join(distDir, 'app.html');
+  const indexHtml = path.join(distDir, 'index.html');
+  // assemble-site moves the SPA to app.html and replaces index.html with marketing.
+  // A desktop-only Vite build keeps the SPA at index.html. Prefer the SPA shell.
+  if (fs.existsSync(appHtml)) return appHtml;
+  if (fs.existsSync(indexHtml)) return indexHtml;
+  return appHtml;
+}
+
 function resolveAudioHelperPath() {
   const candidates = [];
   if (app.isPackaged) {
@@ -78,9 +89,16 @@ function createWindow() {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    // Web deploy uses dist/index.html as marketing site; the SPA shell is app.html.
-    mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'app.html'));
+    const rendererHtml = resolveRendererHtml();
+    console.log('[main] loading renderer', rendererHtml);
+    mainWindow.loadFile(rendererHtml).catch((err) => {
+      console.error('[main] failed to load renderer', rendererHtml, err);
+    });
   }
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('[main] did-fail-load', { errorCode, errorDescription, validatedURL });
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
