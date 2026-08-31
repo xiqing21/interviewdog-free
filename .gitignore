@@ -50,3 +50,9 @@ electron-builder.env
 secrets/
 *.cardkeys.txt
 
+# Accidental Vite leftover at repo root
+/index-*.js
+
+# Supabase CLI local cache
+supabase/.temp/
+
