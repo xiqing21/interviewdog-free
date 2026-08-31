@@ -82,8 +82,9 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": true,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "面试猪需要访问您的麦克风以采集您的声音并进行实时转写。",
-        "NSScreenCaptureUsageDescription": "面试猪需要屏幕录制权限以捕获会议窗口并提取系统/会议音频进行实时转写。"
+        "NSMicrophoneUsageDescription": "面试猪默认不使用麦克风。仅在你主动开启麦克风采集时需要此权限。",
+        "NSAudioCaptureUsageDescription": "面试猪需要系统音频权限，用于识别面试官所在应用播放的声音，不会采集你的麦克风。",
+        "NSScreenCaptureUsageDescription": "面试猪需要屏幕录制/系统音频权限，用于捕获微信、会议等应用播放的面试官声音。"
       },
       "target": [
         {

@@ -1,7 +1,14 @@
-const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapturer, session } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
+
+// Chromium loopback on macOS 14.2+/26 uses Core Audio taps when this is on.
+// Must be set before app ready. Harmless if a given Electron build ignores it.
+app.commandLine.appendSwitch(
+  'enable-features',
+  'MacCatapSystemAudioLoopbackCapture,MacLoopbackAudioForScreenShare,MacSckSystemAudioLoopbackOverride',
+);
 
 const APP_TITLE = 'MianshiZhu Pro';
 const MIN_OPACITY = 0.35;
@@ -29,10 +36,38 @@ function getScreenAccessStatus() {
 }
 
 function openScreenRecordingSettings() {
-  // Works across recent macOS versions; fails silently if URL unsupported.
-  shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture').catch(() => {
-    shell.openExternal('x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension').catch(() => {});
-  });
+  // macOS 14.4+/26 splits "系统音频" from classic Screen Recording.
+  const urls = [
+    'x-apple.systempreferences:com.apple.preference.security?Privacy_AudioCapture',
+    'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+    'x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension',
+  ];
+  (async () => {
+    for (const url of urls) {
+      try {
+        await shell.openExternal(url);
+        return;
+      } catch {
+        // try next
+      }
+    }
+  })();
+}
+
+function registerDisplayMediaHandler() {
+  try {
+    session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      const screen = sources[0];
+      if (!screen) {
+        callback({});
+        return;
+      }
+      callback({ video: screen, audio: 'loopback' });
+    });
+  } catch (err) {
+    console.error('[main] setDisplayMediaRequestHandler failed', err);
+  }
 }
 
 function resolveRendererHtml() {
@@ -121,6 +156,7 @@ app.setName(APP_TITLE);
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  registerDisplayMediaHandler();
   // The desktop app is system-audio-only. Permissions are requested only when
   // the user clicks “开始听音”, preventing two startup authorization prompts.
   if (process.platform === 'darwin' && !DEBUG_VISIBLE) {
@@ -167,21 +203,14 @@ ipcMain.handle('desktop-audio:start', async () => {
     return { ok: true, alreadyRunning: true };
   }
 
-  const screenStatus = getScreenAccessStatus();
-  if (screenStatus !== 'granted') {
-    // Best-effort prompt, then ask user to enable in Settings.
-    try {
-      await desktopCapturer.getSources({ types: ['screen'] });
-    } catch (_) {
-      // ignore
-    }
-    const after = getScreenAccessStatus();
-    if (after !== 'granted') {
-      openScreenRecordingSettings();
-      throw new Error(
-        '未获得「屏幕录制」权限。请在 系统设置 → 隐私与安全性 → 屏幕录制 中勾选「MianshiZhu Pro」，然后完全退出 App 再重新打开，再点开始听音。微信语音必须从本机扬声器/耳机播放才能被捕获。',
-      );
-    }
+  // Best-effort TCC prompt. macOS 14.4+/26 uses a separate「系统音频」permission
+  // for Core Audio taps; classic Screen Recording may already be granted while
+  // the helper still gets silent buffers. Always spawn the helper and surface
+  // its AUTH/Error lines instead of blocking here.
+  try {
+    await desktopCapturer.getSources({ types: ['screen'] });
+  } catch (_) {
+    // ignore — helper will request audio-capture itself
   }
 
   const helperPath = resolveAudioHelperPath();
@@ -238,7 +267,15 @@ ipcMain.handle('desktop-audio:start', async () => {
   audioProcess.stderr.on('data', (data) => {
     const text = data.toString().trim();
     console.warn(`[mac-audio-helper]: ${text}`);
-    if (/error|denied|not authorized|fail/i.test(text) && !/SUCCESS/i.test(text)) {
+    if (/not authorized|Error:/i.test(text)) {
+      openScreenRecordingSettings();
+      mainWindow?.webContents.send(
+        'desktop-audio:error',
+        '未获得系统音频权限。请在 系统设置 → 隐私与安全性 里勾选「MianshiZhu Pro」的屏幕录制/系统音频，完全退出后再打开，再点开始听音。微信语音必须从本机扬声器或耳机播放。',
+      );
+      return;
+    }
+    if (/error|denied|fail/i.test(text) && !/SUCCESS/i.test(text)) {
       mainWindow?.webContents.send('desktop-audio:error', text);
     }
   });
@@ -265,11 +302,19 @@ ipcMain.handle('desktop-audio:start', async () => {
 ipcMain.handle('desktop-audio:stop', () => {
   if (audioProcess) {
     audioStopRequested = true;
+    const child = audioProcess;
+    audioProcess = null;
     try {
-      audioProcess.kill('SIGTERM');
+      child.kill('SIGTERM');
     } catch (_) {
       // ignore
     }
-    audioProcess = null;
+    setTimeout(() => {
+      try {
+        child.kill('SIGKILL');
+      } catch (_) {
+        // already gone
+      }
+    }, 800);
   }
 });
