@@ -50,6 +50,7 @@ import { useInterview } from '../../hooks/useInterview';
 import { useSession } from '../../hooks/useSession';
 import { useKnowledge } from '../../hooks/useKnowledge';
 import { isPdfFile, MAX_PDF_SIZE, parsePdf } from '../../services/pdfParserService';
+import { analyzeJdAlignment } from '../../services/jdAlignmentService';
 import type { AppSettings, ASRProvider, InterviewSession, KnowledgeLibraryItem, SpeakerAudioSource } from '../../types';
 import { COMMERCIAL_MODE } from '../../config/commercial';
 
@@ -404,7 +405,7 @@ export function InterviewPage() {
             <Chip size="small" variant="outlined" label={`岗位：${activeSession.targetRole}`} />
           )}
           {activeSession.jd?.trim() && (
-            <Chip size="small" color="success" variant="outlined" label={`岗位目标已挂载（${activeSession.jd.trim().length} 字）`} />
+            <Chip size="small" color="success" variant="outlined" label={`JD 优先（${activeSession.jd.trim().length} 字）`} />
           )}
           <AnswerModeToggle />
           <FormControlLabel
@@ -1091,10 +1092,11 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
     editing ? activeSession?.expertKnowledge ?? '' : '',
   );
   const [focusAreas, setFocusAreas] = useState<string[]>(
-    editing && activeSession?.focusAreas?.length ? activeSession.focusAreas : ['SQL', '项目深挖'],
+    editing && activeSession?.focusAreas?.length ? activeSession.focusAreas : ['SQL', '大数据', 'DataStream', '项目深挖'],
   );
   const [error, setError] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
+  const jdAlignment = analyzeJdAlignment(jdText, resumeText);
 
   const handleRoleChange = (event: SelectChangeEvent) => {
     const nextRole = event.target.value;
@@ -1109,7 +1111,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         return !current.trim() || isPresetText ? preset.jd : current;
       });
       if (preset.key === 'web3') setFocusAreas(['Web3', '系统设计', '项目深挖']);
-      if (preset.key === 'bigdata') setFocusAreas(['SQL', '大数据', '项目深挖']);
+      if (preset.key === 'bigdata') setFocusAreas(['SQL', '大数据', 'DataStream', '项目深挖']);
     }
   };
 
@@ -1188,7 +1190,7 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         {editing ? '项目准备：简历与岗位' : '第一步：准备新的面试项目'}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        先创建项目，放入简历和岗位方向；第二步进入项目后再开始识别面试官问题并生成答案。
+        先创建项目，粘贴 JD 和简历。生成答案时 JD 是第一权重，简历只用来举真实例子；第二步进入工作台后再开始识别问题。
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -1353,12 +1355,24 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         multiline
         minRows={4}
         maxRows={10}
-        label="岗位描述 / 面试目标"
+        label="岗位描述 / 面试目标（第一权重）"
         value={jdText}
         onChange={(event) => handleJdChange(event.target.value)}
-        helperText={editing ? '已自动保存到当前面试项目，并会进入后续每道题的回答上下文。' : '创建项目后会保存到该项目，并进入后续每道题的回答上下文。'}
+        helperText={editing ? '已自动保存。生成答案时 JD 口径优先于简历关键词，问什么答什么。' : '创建项目后会保存到该项目。生成答案时 JD 是第一权重，简历只用来举真实例子。'}
         sx={{ mt: 2 }}
       />
+
+      {jdAlignment.gaps.length > 0 && (
+        <Alert severity="warning" sx={{ mt: 1.5 }}>
+          JD 里这些要求在简历中几乎没出现：{jdAlignment.gaps.join('、')}。
+          面试大概率按岗位追问。回答会优先用 JD 口径，并用相邻经验做能力迁移，而不是直接说“我没做过”。
+        </Alert>
+      )}
+      {jdText.trim() && jdAlignment.gaps.length === 0 && jdAlignment.signals.length > 0 && (
+        <Alert severity="info" sx={{ mt: 1.5 }}>
+          已按 JD 抽取必考信号：{jdAlignment.signals.slice(0, 8).join('、')}。答题会锁定当前问题，避免被简历高频词带跑。
+        </Alert>
+      )}
 
       <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
         {editing && (

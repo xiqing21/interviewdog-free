@@ -43,8 +43,8 @@ export function ResumeJDSettings() {
     <Paper sx={{ p: 3 }}>
       <Typography variant="h6" gutterBottom>简历 & 岗位匹配</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        上传简历和岗位描述（JD），AI 将根据你的背景和应聘岗位给出更有针对性的回答。
-        简历会被注入到每次 AI 调用的上下文中。
+        上传简历和岗位描述（JD）。生成答案时 JD 是第一权重，简历只提供可口述的真实经历。
+        两者都会注入到每次 AI 调用的上下文中。
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
@@ -66,12 +66,12 @@ export function ResumeJDSettings() {
       />
 
       {/* JD */}
-      <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>岗位描述（JD）</Typography>
+      <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>岗位描述（JD，第一权重）</Typography>
       <TextField
         fullWidth multiline minRows={3} maxRows={10}
         label="JD 文本" value={jd}
         onChange={(e) => setJD(e.target.value)}
-        placeholder="粘贴目标岗位的职位描述..."
+        placeholder="粘贴目标岗位的职位描述。答题会优先对齐这里的技术栈和职责，而不是简历里的高频词。"
       />
     </Paper>
   );

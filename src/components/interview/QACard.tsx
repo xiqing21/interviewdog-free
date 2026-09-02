@@ -18,6 +18,8 @@ import ShortTextIcon from '@mui/icons-material/ShortText';
 import SubjectIcon from '@mui/icons-material/Subject';
 import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import EditNoteIcon from '@mui/icons-material/EditNote';
+import GpsFixedIcon from '@mui/icons-material/GpsFixed';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import type { QAItem } from '../../types';
 import { useInterview } from '../../hooks/useInterview';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
@@ -103,6 +105,24 @@ export function QACard({ qa }: QACardProps) {
             >
               <RefreshIcon fontSize="inherit" />
               重新生成
+            </Button>
+            <Button
+              size="sm"
+              variant={qa.generationMode === 'jd-align' ? 'default' : 'outline'}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'jd-align' })}
+              title="按岗位 JD 口径重答，避免被简历或上一题关键词带跑"
+            >
+              <GpsFixedIcon fontSize="inherit" />
+              贴 JD
+            </Button>
+            <Button
+              size="sm"
+              variant={qa.generationMode === 'deep-dive' ? 'default' : 'outline'}
+              onClick={() => regenerateAnswer(qa.id, { mode: 'deep-dive' })}
+              title="按原理、数据流、API/代码和边界条件深挖，并预判追问"
+            >
+              <PsychologyIcon fontSize="inherit" />
+              深挖
             </Button>
             <Button
               size="sm"

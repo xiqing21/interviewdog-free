@@ -29,7 +29,7 @@ import type {
 import {
   STORAGE_KEYS,
   MERGE_TIMEOUT_DEFAULT,
-  RESUME_JD_PROMPT_TEMPLATE,
+  ANSWER_PRIORITY_RULES,
   ANSWER_MODES,
 } from '../constants';
 import * as storageService from '../services/storageService';
@@ -55,6 +55,7 @@ import { useSession } from '../hooks/useSession';
 import { useKnowledge } from '../hooks/useKnowledge';
 import { useBilling } from '../hooks/useBilling';
 import { COMMERCIAL_MODE } from '../config/commercial';
+import { buildResumeJdPrompt } from '../services/jdAlignmentService';
 
 // ===== State =====
 export interface InterviewState {
@@ -277,6 +278,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     prompt += mode === 'detailed'
       ? '\n\n当前选择：详细。请明显展开，不要压缩成短答；开放题至少给 4-6 个段落或结构化要点。'
       : '\n\n当前选择：简洁。请保持口语化但不要敷衍；通常给 3-5 个可直接说出口的要点。';
+    prompt += `\n\n${ANSWER_PRIORITY_RULES}`;
     const session = sessionRef.current;
 
     if (session?.targetRole || session?.focusAreas?.length) {
@@ -287,27 +289,24 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       if (session.focusAreas?.length) {
         prompt += `\n重点考察：${session.focusAreas.join('、')}`;
       }
-      prompt += '\n回答时请优先贴合以上岗位和考察方向。';
+      prompt += '\n岗位方向和考察标签是补充，不能压过 JD 原文和当前问题。';
     }
 
     if (includeProfileContext) {
-      // 注入简历+JD
       const currentResume = session ? session.resume ?? '' : resumeRef.current;
       const currentJd = session ? session.jd ?? '' : jdRef.current;
       if (currentResume || currentJd) {
-        const rj = RESUME_JD_PROMPT_TEMPLATE
-          .replace('{resume}', currentResume || '（未设置）')
-          .replace('{jd}', currentJd || '（未设置）');
-        prompt += '\n\n' + rj;
+        prompt += `\n\n${buildResumeJdPrompt(currentResume, currentJd)}`;
       }
 
       const knowledgeCatalog = buildMountedKnowledgeCatalog();
       if (knowledgeCatalog) {
         prompt += `\n\n## 当前项目挂载的专家知识库\n${knowledgeCatalog}`;
-        prompt += '\n\n只使用本题检索到的知识库片段和简历中的真实经历；没有出现的细节不要编造。QA 命中内容优先级最高。';
+        prompt += '\n\n只使用本题检索到的知识库片段和简历中的真实经历；没有出现的细节不要编造。QA 命中内容优先级最高，但仍不能把无关知识硬套到当前问题上。';
       }
     }
 
+    prompt += '\n\n## 结束提醒\n先对齐本题和 JD，再用简历举例。不要把简历高频词套到无关问题上。';
     return prompt;
   }
 
@@ -376,13 +375,13 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   function modeInstruction(mode: AnswerGenerationMode): string {
     if (mode === 'concise') {
-      return '请用简洁模式重新生成：控制在 4-6 个口述要点内，但必须覆盖结论、依据、项目例子和落地结果。';
+      return '请用简洁模式重新生成：控制在 4-6 个口述要点内，但必须覆盖结论、依据、项目例子和落地结果。口径对齐 JD，不要被简历高频词带跑。';
     }
     if (mode === 'detailed') {
-      return '请用详细模式重新生成：明显展开，按背景、方案、技术细节、结果、可追问点组织，适合 1.5-3 分钟口述。';
+      return '请用详细模式重新生成：明显展开，按背景、方案、技术细节、结果、可追问点组织，适合 1.5-3 分钟口述。技术细节必须对齐 JD 考察点。';
     }
     if (mode === 'star') {
-      return '请用 STAR 结构生成：Situation 背景、Task 任务、Action 行动、Result 结果。每一段都要自然口语化，突出我做了什么、为什么这么做、结果如何。';
+      return '请用 STAR 结构生成：Situation 背景、Task 任务、Action 行动、Result 结果。每一段都要自然口语化，突出我做了什么、为什么这么做、结果如何。Task/Action 优先用 JD 的职责语言来包装简历经历。';
     }
     if (mode === 'exam') {
       return '请按笔试/机试题解答，不要引用简历、专家知识库、历史问答、转写或面试口述风格。SQL 题给出可运行 SQL 并标明语言；代码题给完整代码和关键思路；选择题先给答案再解析选项；简答题直接给要点。代码必须放在 markdown 代码块里并写上语言（sql、python、java 等）。不要编造项目经历或业务数据。';
@@ -393,14 +392,20 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (mode === 'star-no-context') {
       return '请清除上下文并用 STAR 结构重新生成：不要引用简历、专家知识库、历史问答、最近转写或联网搜索结果，只基于问题本身，按 Situation、Task、Action、Result 输出通用但可信的回答。';
     }
-    return '请生成可直接口述的面试答案。';
+    if (mode === 'jd-align') {
+      return '请强制按 JD 口径重新生成：先用岗位 JD 的技术栈和职责定义答题口径，再用简历举可说的证据。若本题主题与上一题不同，彻底丢掉上一题关键词。简历缺 JD 技能时做能力迁移，明确“我在相近场景里怎么落地、如果做这个岗位会怎么做”，不要说没做过。';
+    }
+    if (mode === 'deep-dive') {
+      return '请按技术深挖重新生成，必须包含：1) 底层原理（为什么这样设计）；2) 数据流向/调用链；3) 关键 API 或伪代码（技术岗必须落到代码级，不要只堆 Barrier、两阶段提交等概念词）；4) 失败、延迟、反压、状态过大等边界怎么处理；5) 面试官可能追问的 2-3 个问题及一句答法。场景题优先给 DataStream/API 实现路径，而不是只给 SQL。口径仍对齐 JD。';
+    }
+    return '请生成可直接口述的面试答案。问什么答什么，JD 口径优先于简历关键词。';
   }
 
   function buildPromptForMode(mode: AnswerGenerationMode): string {
     if (mode === 'no-context' || mode === 'star-no-context' || mode === 'exam') {
       return modeInstruction(mode);
     }
-    const forcedMode = mode === 'concise' ? 'concise' : mode === 'detailed' ? 'detailed' : undefined;
+    const forcedMode = mode === 'concise' ? 'concise' : (mode === 'detailed' || mode === 'deep-dive') ? 'detailed' : undefined;
     return `${buildSystemPrompt(forcedMode)}\n\n${modeInstruction(mode)}`;
   }
 
@@ -639,7 +644,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (policy.includeHistory) {
       const allQA = sessionRef.current?.qaList ?? [];
       const itemIndex = allQA.findIndex((q) => q.id === id);
-      const recentQA = allQA.slice(Math.max(0, itemIndex - settings.contextWindowSize), itemIndex);
+      // 贴 JD 只保留上一轮，避免 Checkpoint/Watermark 等旧题把本题带跑；
+      // 追问仍能看到最近一题。普通生成继续用设置里的上下文窗口。
+      const historyWindow = mode === 'jd-align' ? 1 : settings.contextWindowSize;
+      const recentQA = allQA.slice(Math.max(0, itemIndex - historyWindow), itemIndex);
       for (const qa of recentQA) {
         messages.push({ role: 'user', content: qa.question });
         if (qa.answer) messages.push({ role: 'assistant', content: qa.answer });
@@ -661,18 +669,21 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }
 
     const searchContext = searchResults.length
-      ? `\n\n联网搜索结果：\n${formatSearchResults(searchResults)}\n\n请把搜索结果作为补充资料使用；如与简历/专家库冲突，以候选人真实经历优先。`
+      ? `\n\n联网搜索结果：\n${formatSearchResults(searchResults)}\n\n请把搜索结果作为补充资料使用；如与 JD/简历冲突，以 JD 口径和候选人真实经历优先。`
       : '';
     const retrievedKnowledge = policy.includeProfileKnowledge ? buildRetrievedKnowledgeContext(question) : '';
     const qaKnowledgeContext = retrievedKnowledge ? `\n\n${retrievedKnowledge}` : '';
     const hotwords = policy.includeHotwords ? parseHotwords(appRef.current.asrHotwords) : [];
-    const hotwordContext = hotwords.length ? `\n\n语音识别热词/专业词：${hotwords.join('、')}` : '';
-    const modeContext = `\n\n本次重新生成要求：${modeInstruction(mode)}`;
+    const hotwordContext = hotwords.length
+      ? `\n\n语音识别热词仅用于纠正听写，不要当作本题必须展开的主题：${hotwords.join('、')}`
+      : '';
+    const modeContext = `\n\n本次生成要求：${modeInstruction(mode)}`;
+    const transcriptBlock = transcriptContext
+      ? `\n\n最近双路转写（只用于理解追问；主题切换时不要沿用上一题）：\n${transcriptContext}`
+      : '';
     messages.push({
       role: 'user',
-      content: transcriptContext
-        ? `以下是最近的双路语音转写上下文，请结合“我”的回答和“面试官”的问题生成答案。\n\n${transcriptContext}${qaKnowledgeContext}${searchContext}${hotwordContext}${modeContext}\n\n请回答面试官问题：${question}`
-        : `面试官问题：${question}${qaKnowledgeContext}${searchContext}${hotwordContext}${modeContext}`,
+      content: `【本题锁定】${question}${transcriptBlock}${qaKnowledgeContext}${searchContext}${hotwordContext}${modeContext}\n\n请只回答【本题锁定】中的问题。历史问答和转写仅用于判断是否为追问；若本题主题已切换，禁止继续围绕上一题或简历高频词展开。`,
     });
 
     let accumulated = '';
