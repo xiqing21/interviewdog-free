@@ -46,6 +46,8 @@ export function commercialPlanById(id: string | undefined): CommercialPlan | und
 }
 
 export const FAKA_SHOP_NAME = '面试猪发卡网';
+export const FAKA_PURCHASE_URL = 'https://www.houfaka.com/details/B6B8314B';
+export const XIANYU_SEARCH_KEYWORD = '面试猪';
 export const FAKA_LOW_STOCK_THRESHOLD = 20;
 
 export const FAKA_PRODUCTS = [

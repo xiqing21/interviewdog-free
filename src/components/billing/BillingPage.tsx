@@ -5,6 +5,10 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Grid,
   LinearProgress,
   Paper,
@@ -17,7 +21,10 @@ import WorkspacePremiumIcon from '@mui/icons-material/WorkspacePremium';
 import PrivacyTipIcon from '@mui/icons-material/PrivacyTip';
 import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
-import { COMMERCIAL_PLANS, FREE_TRIAL_MINUTES } from '../../config/commercial';
+import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
+import LocalOfferIcon from '@mui/icons-material/LocalOffer';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { COMMERCIAL_PLANS, FAKA_PURCHASE_URL, FREE_TRIAL_MINUTES } from '../../config/commercial';
 import { ContactSupport } from '../common/ContactSupport';
 import { useAuth } from '../../hooks/useAuth';
 import { useBilling } from '../../hooks/useBilling';
@@ -33,6 +40,7 @@ export function BillingPage() {
   const [redeemLoading, setRedeemLoading] = useState(false);
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
   const [redeemError, setRedeemError] = useState<string | null>(null);
+  const [xianyuDialogOpen, setXianyuDialogOpen] = useState(false);
 
   const totalSeconds = entitlement
     ? (entitlement.freeTrialMinutes + entitlement.purchasedMinutes) * 60
@@ -125,9 +133,46 @@ export function BillingPage() {
               <Chip size="small" color="primary" label="自动发卡秒到账" />
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              在发卡网购买「面试猪手动充值」（¥30 = 30 分钟）后，把卡密贴到这里即可到账，全天 24 小时自动生效。
+              在合作发卡网购买卡密后，贴到右侧即可立即充值到账；或前往闲鱼搜索享专属特惠。
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+
+            {/* 快捷购买与闲鱼优惠通道 */}
+            <Stack direction="row" spacing={1.5} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>
+              <Button
+                variant="contained"
+                color="primary"
+                size="small"
+                startIcon={<ShoppingCartIcon />}
+                endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+                href={FAKA_PURCHASE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{ fontWeight: 800, borderRadius: 2 }}
+              >
+                去发卡网购买卡密 (24H秒发)
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<LocalOfferIcon />}
+                onClick={() => setXianyuDialogOpen(true)}
+                sx={{
+                  fontWeight: 800,
+                  borderRadius: 2,
+                  borderColor: '#f59e0b',
+                  color: '#d97706',
+                  bgcolor: 'rgba(245,158,11,0.04)',
+                  '&:hover': {
+                    borderColor: '#d97706',
+                    bgcolor: 'rgba(245,158,11,0.10)',
+                  },
+                }}
+              >
+                闲鱼搜「面试猪」享专属特惠 🎁
+              </Button>
+            </Stack>
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
               客服邮箱：xiaosuange@gmail.com ｜ 官方QQ群：592906421
             </Typography>
           </Box>
@@ -141,7 +186,7 @@ export function BillingPage() {
               <TextField
                 fullWidth
                 size="small"
-                placeholder="请输入卡密 (如 MSZ-30M-XXXX-XXXX-XXXX)"
+                placeholder="请输入卡密 (如 MSZ-30M-XXXX-XXXX)"
                 value={cardCode}
                 onChange={(e) => setCardCode(e.target.value.toUpperCase())}
                 disabled={!user || redeemLoading}
@@ -184,9 +229,41 @@ export function BillingPage() {
       </Paper>
 
       <Box>
-        <Typography variant="h5" fontWeight={900} gutterBottom>
-          商业版套餐选购
-        </Typography>
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ sm: 'center' }}
+          sx={{ mb: 1 }}
+          spacing={1}
+        >
+          <Typography variant="h5" fontWeight={900}>
+            商业版套餐选购
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button
+              size="small"
+              variant="outlined"
+              color="primary"
+              startIcon={<ShoppingCartIcon />}
+              endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
+              href={FAKA_PURCHASE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{ fontWeight: 700 }}
+            >
+              发卡网直达
+            </Button>
+            <Button
+              size="small"
+              variant="text"
+              startIcon={<LocalOfferIcon />}
+              onClick={() => setXianyuDialogOpen(true)}
+              sx={{ fontWeight: 700, color: '#d97706' }}
+            >
+              闲鱼搜「面试猪」更优惠
+            </Button>
+          </Stack>
+        </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           选择适合你的面试时长套餐，或在合作发卡平台购买卡密兑换。
         </Typography>
@@ -252,6 +329,51 @@ export function BillingPage() {
       </Paper>
 
       <ContactSupport />
+
+      {/* 闲鱼专属优惠弹窗 */}
+      <Dialog
+        open={xianyuDialogOpen}
+        onClose={() => setXianyuDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 3, p: 1 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 900, pb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <LocalOfferIcon sx={{ color: '#f59e0b' }} />
+          闲鱼搜索「面试猪」专享优惠
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary', lineHeight: 1.6 }}>
+            想获取更优惠的时长尝鲜特惠？你可以前往闲鱼搜索官方认证渠道，拍下即可享受专属特惠体验价：
+          </Typography>
+          <Box sx={{ p: 2, bgcolor: 'rgba(245,158,11,0.08)', borderRadius: 2, border: '1px dashed #f59e0b', mb: 2 }}>
+            <Typography variant="subtitle2" fontWeight={800} color="#b45309" gutterBottom>
+              📱 闲鱼省钱流程：
+            </Typography>
+            <Typography variant="body2" sx={{ color: '#92400e', fontSize: 13, lineHeight: 1.8 }}>
+              1. 打开手机 <b>闲鱼 App</b><br />
+              2. 搜索框输入 <b>「面试猪」</b> 或 <b>「求职面试练习模拟器」</b><br />
+              3. 认准「面试猪」官方特惠卡密宝贝，拍下享粉丝专属折扣<br />
+              4. 付款后自动发卡密，复制回本页面兑换即可秒到账！
+            </Typography>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2, display: 'flex', gap: 1 }}>
+          <Button
+            variant="contained"
+            fullWidth
+            href="https://www.goofish.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ fontWeight: 800, bgcolor: '#f59e0b', '&:hover': { bgcolor: '#d97706' } }}
+          >
+            打开闲鱼搜索
+          </Button>
+          <Button variant="outlined" onClick={() => setXianyuDialogOpen(false)}>
+            我知道了
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
