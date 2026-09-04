@@ -22,7 +22,7 @@ declare global {
 
 export function useGoogleOneTap() {
   const { user } = useAuth();
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+  const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) || '503299800983-2pfb0k2puce4negl38jdef4l4psdal99.apps.googleusercontent.com';
 
   useEffect(() => {
     if (!googleClientId || user || !supabase) return;
