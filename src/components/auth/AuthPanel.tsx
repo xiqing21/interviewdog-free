@@ -16,7 +16,19 @@ import { useAuth } from '../../hooks/useAuth';
 import { COMMERCIAL_MODE, FREE_TRIAL_MINUTES } from '../../config/commercial';
 
 export function AuthPanel() {
-  const { user, loading, configured, error, lastEmail, signIn, signUp, signOut, clearAuthError } = useAuth();
+  const {
+    user,
+    loading,
+    configured,
+    error,
+    notice,
+    lastEmail,
+    signIn,
+    signUp,
+    signOut,
+    clearAuthError,
+    clearAuthNotice,
+  } = useAuth();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState(lastEmail);
   const [password, setPassword] = useState('');
@@ -27,11 +39,17 @@ export function AuthPanel() {
     try {
       if (mode === 'login') {
         await signIn(email.trim(), password);
+        setPassword('');
+        setOpen(false);
       } else {
-        await signUp(email.trim(), password);
+        const result = await signUp(email.trim(), password);
+        setPassword('');
+        if (result.needsConfirmation) {
+          setMode('login');
+        } else {
+          setOpen(false);
+        }
       }
-      setPassword('');
-      if (!error) setOpen(false);
     } catch {
       // AuthContext already exposes a user-facing error.
     }
@@ -71,6 +89,11 @@ export function AuthPanel() {
           {error && (
             <Alert severity="error" onClose={clearAuthError}>
               {error}
+            </Alert>
+          )}
+          {notice && (
+            <Alert severity="success" onClose={clearAuthNotice}>
+              {notice}
             </Alert>
           )}
           <TextField

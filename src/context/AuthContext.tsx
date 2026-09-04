@@ -16,11 +16,13 @@ export interface AuthContextValue {
   loading: boolean;
   configured: boolean;
   error: string | null;
+  notice: string | null;
   lastEmail: string;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
   clearAuthError: () => void;
+  clearAuthNotice: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
@@ -45,6 +47,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(Boolean(supabase));
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [lastEmail, setLastEmail] = useState(
     storageService.get<string>(STORAGE_KEYS.LAST_AUTH_EMAIL, ''),
   );
@@ -127,17 +130,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = useCallback(async (email: string, password: string) => {
     if (!supabase) {
       setError('还没有配置 Supabase 环境变量，无法注册。');
-      return;
+      return { needsConfirmation: false };
     }
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
       if (signUpError) throw signUpError;
       rememberEmail(email);
       if (!data.session) {
-        setError('注册成功，但 Supabase 当前要求邮箱确认。请在 Auth 设置里关闭 Confirm email 后再登录。');
+        setNotice('注册成功！激活确认邮件已发送至您的邮箱，请点击邮件中的确认链接完成激活后再登录。');
+        return { needsConfirmation: true };
       }
+      return { needsConfirmation: false };
     } catch (err) {
       setError(getAuthErrorMessage(err, '注册失败'));
       throw err;
@@ -150,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return;
     setLoading(true);
     setError(null);
+    setNotice(null);
     try {
       const { error: signOutError } = await supabase.auth.signOut();
       if (signOutError) throw signOutError;
@@ -166,12 +173,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     configured: isSupabaseConfigured(),
     error,
+    notice,
     lastEmail,
     signIn,
     signUp,
     signOut,
     clearAuthError: () => setError(null),
-  }), [error, lastEmail, loading, signIn, signOut, signUp, user]);
+    clearAuthNotice: () => setNotice(null),
+  }), [error, lastEmail, loading, notice, signIn, signOut, signUp, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
