@@ -143,6 +143,16 @@ export type CardKeyRow = {
   updated_at: string;
 };
 
+export type CardKeyBatchStat = {
+  batchNo: string;
+  count: number;
+  unused: number;
+  redeemed: number;
+  revoked: number;
+  minutes: number;
+  isCampaign: boolean;
+};
+
 export type CardKeySummary = {
   total: number;
   unused: number;
@@ -155,7 +165,7 @@ export type CardKeySummary = {
   todayRedeemedCount: number;
   lowStockThreshold: number;
   lowStock: boolean;
-  batches: Array<{ batchNo: string; count: number }>;
+  batches: CardKeyBatchStat[];
 };
 
 export type CardKeysPayload = {

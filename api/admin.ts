@@ -1025,10 +1025,39 @@ async function listCardKeys(
   startOfToday.setHours(0, 0, 0, 0);
   const lowStockThreshold = 20;
 
-  const batchCountMap = new Map<string, number>();
+  const batchStatsMap = new Map<string, {
+    batchNo: string;
+    count: number;
+    unused: number;
+    redeemed: number;
+    revoked: number;
+    minutes: number;
+    isCampaign: boolean;
+  }>();
+
   for (const k of list) {
     const b = k.batch_no || 'DEFAULT';
-    batchCountMap.set(b, (batchCountMap.get(b) ?? 0) + 1);
+    const isCampaign =
+      b.toUpperCase().startsWith('EVENT-') ||
+      b.toUpperCase().startsWith('ACT-') ||
+      b.toUpperCase().startsWith('CAMPAIGN-');
+    let entry = batchStatsMap.get(b);
+    if (!entry) {
+      entry = {
+        batchNo: b,
+        count: 0,
+        unused: 0,
+        redeemed: 0,
+        revoked: 0,
+        minutes: Number(k.minutes ?? 30),
+        isCampaign,
+      };
+      batchStatsMap.set(b, entry);
+    }
+    entry.count += 1;
+    if (k.status === 'unused') entry.unused += 1;
+    else if (k.status === 'redeemed') entry.redeemed += 1;
+    else if (k.status === 'revoked') entry.revoked += 1;
   }
 
   const unused = list.filter((k: any) => k.status === 'unused');
@@ -1050,7 +1079,7 @@ async function listCardKeys(
     ).length,
     lowStockThreshold,
     lowStock: listedUnused < lowStockThreshold,
-    batches: Array.from(batchCountMap.entries()).map(([batchNo, count]) => ({ batchNo, count })),
+    batches: Array.from(batchStatsMap.values()),
   };
 
   return {
@@ -1069,15 +1098,37 @@ async function generateCardKeys(
     plan?: string;
     note?: string;
     expiresAt?: string;
+    isCampaign?: boolean;
   },
 ) {
   const minutes = Math.max(1, int(body.minutes, 30));
   const count = Math.min(500, Math.max(1, int(body.count, 20)));
   const now = new Date();
   const dateTag = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const batchNo = str(body.batchNo) || `FAKA-${dateTag}-${minutes}M`;
+  const isCampaign = Boolean(body.isCampaign);
+
+  let batchNo = str(body.batchNo);
+  if (isCampaign) {
+    if (!batchNo) {
+      batchNo = `EVENT-${dateTag}-${minutes}M`;
+    } else if (
+      !batchNo.toUpperCase().startsWith('EVENT-') &&
+      !batchNo.toUpperCase().startsWith('ACT-') &&
+      !batchNo.toUpperCase().startsWith('CAMPAIGN-')
+    ) {
+      batchNo = `EVENT-${batchNo}`;
+    }
+  } else {
+    batchNo = batchNo || `FAKA-${dateTag}-${minutes}M`;
+  }
+
   const plan = str(body.plan) || 'pro';
-  const note = str(body.note) || `批量生成 ${minutes} 分钟卡密 (${count} 笔)`;
+  let note = str(body.note);
+  if (isCampaign) {
+    note = note ? `${note} [每人限领1张]` : `宣传活动福利卡密 (${count} 笔) [每人限领1张]`;
+  } else {
+    note = note || `批量生成 ${minutes} 分钟卡密 (${count} 笔)`;
+  }
   const expiresAt = body.expiresAt ? new Date(body.expiresAt).toISOString() : null;
 
   const { data: existingRows, error: existingError } = await supabase
@@ -1103,7 +1154,8 @@ async function generateCardKeys(
     const part1 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const part2 = crypto.randomBytes(2).toString('hex').toUpperCase();
     const part3 = crypto.randomBytes(2).toString('hex').toUpperCase();
-    const code = `MSZ-${minutes}M-${part1}-${part2}-${part3}`;
+    const prefix = isCampaign ? `MSZ-ACT-${minutes}M` : `MSZ-${minutes}M`;
+    const code = `${prefix}-${part1}-${part2}-${part3}`;
     if (!generatedCodes.has(code)) {
       generatedCodes.add(code);
       rows.push({

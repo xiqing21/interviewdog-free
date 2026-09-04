@@ -123,6 +123,33 @@ export default async function handler(request: ApiRequest, response: ApiResponse
         return;
       }
 
+      // 活动/宣传批次防刷规则：同一账号在同一活动批次内限兑换 1 张卡密
+      const batchNo = String(card.batch_no || '');
+      const isCampaignBatch =
+        batchNo.toUpperCase().startsWith('EVENT-') ||
+        batchNo.toUpperCase().startsWith('ACT-') ||
+        batchNo.toUpperCase().startsWith('CAMPAIGN-') ||
+        Boolean(card.note && (card.note.includes('每人限领1张') || card.note.includes('限领一张')));
+
+      if (isCampaignBatch && batchNo) {
+        const { data: alreadyUsedBatch, error: checkBatchError } = await supabase
+          .from('license_card_keys')
+          .select('id, code, redeemed_at')
+          .eq('batch_no', batchNo)
+          .eq('redeemed_by', data.user.id)
+          .eq('status', 'redeemed')
+          .limit(1);
+
+        if (checkBatchError) throw checkBatchError;
+
+        if (alreadyUsedBatch && alreadyUsedBatch.length > 0) {
+          response.status(400).json({
+            error: `该活动福利（批次: ${batchNo}）每个账号限领 1 张。您已成功兑换过本活动卡密，无法重复叠加。`,
+          });
+          return;
+        }
+      }
+
       // 原子更新卡密状态为已兑换
       const { data: updatedCard, error: updateCardError } = await supabase
         .from('license_card_keys')

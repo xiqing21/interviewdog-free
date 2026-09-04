@@ -15,6 +15,7 @@ import {
   Grid,
   IconButton,
   InputLabel,
+  LinearProgress,
   MenuItem,
   Paper,
   Select,
@@ -89,6 +90,7 @@ export function AdminPage() {
     count: '20',
     batchNo: `FAKA-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-30M`,
     note: '发卡平台30元商品卡密',
+    isCampaign: false,
   });
   const [generatingCards, setGeneratingCards] = useState(false);
   const [generatedBatchResult, setGeneratedBatchResult] = useState<GenerateCardKeysResponse | null>(null);
@@ -292,9 +294,12 @@ export function AdminPage() {
         count: Number(cardGenForm.count),
         batchNo: cardGenForm.batchNo,
         note: cardGenForm.note,
+        isCampaign: cardGenForm.isCampaign,
       });
       setGeneratedBatchResult(result);
-      setCardOpSuccessMessage(`成功批量生成 ${result.count} 笔卡密！已放入导出预览区。`);
+      setCardOpSuccessMessage(
+        `成功批量生成 ${result.count} 笔${cardGenForm.isCampaign ? '【活动限领】' : '【发卡网】'}卡密！已放入导出预览区。`,
+      );
       await refreshCardKeys();
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成卡密失败');
@@ -669,28 +674,86 @@ export function AdminPage() {
                 </Typography>
 
                 <Stack spacing={2}>
+                  {/* 模式选择：发卡网售卖 vs 宣传活动限领 */}
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      bgcolor: cardGenForm.isCampaign ? 'rgba(245,158,11,0.08)' : 'action.hover',
+                      borderRadius: 2,
+                      border: '1px solid',
+                      borderColor: cardGenForm.isCampaign ? '#f59e0b' : 'divider',
+                    }}
+                  >
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={cardGenForm.isCampaign}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            const dateTag = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                            setCardGenForm((prev) => ({
+                              ...prev,
+                              isCampaign: checked,
+                              batchNo: checked
+                                ? `EVENT-${dateTag}-${prev.minutes}M`
+                                : `FAKA-${dateTag}-${prev.minutes}M`,
+                              note: checked
+                                ? `宣传视频福利卡密 [每人限领1张]`
+                                : `发卡平台商品卡密`,
+                            }));
+                          }}
+                          color="warning"
+                        />
+                      }
+                      label={
+                        <Box>
+                          <Typography
+                            variant="subtitle2"
+                            fontWeight={800}
+                            color={cardGenForm.isCampaign ? '#b45309' : 'text.primary'}
+                          >
+                            {cardGenForm.isCampaign ? '🎁 宣传活动批次（同批次每账号限领 1 张）' : '💳 常规发卡网批次（不限兑换次数）'}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {cardGenForm.isCampaign
+                              ? '防刷保护生效：同一用户兑换其中 1 张后，同批次其他卡密无法再叠加使用！'
+                              : '普通付费卡密，用户购买后可多张持续累加充值。'}
+                          </Typography>
+                        </Box>
+                      }
+                    />
+                  </Box>
+
                   <Box>
                     <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: 'block', mb: 0.75 }}>
-                      快捷选择套餐时长 (分钟)：
+                      快捷选择时长 (分钟)：
                     </Typography>
                     <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                      {[
-                        { label: '30 分钟 (发卡网推荐¥30)', value: '30' },
-                        { label: '60 分钟', value: '60' },
-                        { label: '120 分钟', value: '120' },
-                        { label: '300 分钟', value: '300' },
-                      ].map((item) => (
+                      {(cardGenForm.isCampaign
+                        ? [
+                            { label: '15 分钟 (视频福利)', value: '15' },
+                            { label: '30 分钟 (大厂尝鲜)', value: '30' },
+                            { label: '60 分钟 (豪华礼包)', value: '60' },
+                          ]
+                        : [
+                            { label: '30 分钟 (发卡网¥30)', value: '30' },
+                            { label: '60 分钟', value: '60' },
+                            { label: '120 分钟', value: '120' },
+                            { label: '300 分钟', value: '300' },
+                          ]
+                      ).map((item) => (
                         <Chip
                           key={item.value}
                           label={item.label}
                           clickable
-                          color={cardGenForm.minutes === item.value ? 'primary' : 'default'}
+                          color={cardGenForm.minutes === item.value ? (cardGenForm.isCampaign ? 'warning' : 'primary') : 'default'}
                           onClick={() => {
                             const dateTag = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                            const prefix = cardGenForm.isCampaign ? 'EVENT' : 'FAKA';
                             setCardGenForm((prev) => ({
                               ...prev,
                               minutes: item.value,
-                              batchNo: `FAKA-${dateTag}-${item.value}M`,
+                              batchNo: `${prefix}-${dateTag}-${item.value}M`,
                             }));
                           }}
                         />
@@ -727,7 +790,7 @@ export function AdminPage() {
                     label="批次名称 (Batch Tag)"
                     value={cardGenForm.batchNo}
                     onChange={(e) => setCardGenForm((prev) => ({ ...prev, batchNo: e.target.value }))}
-                    helperText="用于在发卡网和管理后台区分不同的补货批次"
+                    helperText={cardGenForm.isCampaign ? '活动批次标识。每个账号在同一批次内限领 1 张' : '用于在发卡网和管理后台区分不同补货批次'}
                   />
 
                   <TextField
@@ -741,11 +804,15 @@ export function AdminPage() {
                   <Button
                     variant="contained"
                     size="large"
+                    color={cardGenForm.isCampaign ? 'warning' : 'primary'}
                     startIcon={generatingCards ? <CircularProgress size={18} color="inherit" /> : <CardGiftcardIcon />}
                     disabled={generatingCards}
                     onClick={() => { void handleGenerateCardKeys(); }}
+                    sx={{ fontWeight: 800 }}
                   >
-                    {generatingCards ? '正在批量生成...' : `立即批量生成 ${cardGenForm.count} 笔卡密`}
+                    {generatingCards
+                      ? '正在批量生成...'
+                      : `立即批量生成 ${cardGenForm.count} 笔${cardGenForm.isCampaign ? '活动限领' : '发卡网'}卡密`}
                   </Button>
                 </Stack>
               </Paper>
@@ -829,7 +896,105 @@ export function AdminPage() {
             </Grid>
           </Grid>
 
-          {/* 3. 卡密列表与实时状态管理 */}
+          {/* 3. 宣传活动批次投放监控专区 */}
+          {Boolean((cardKeySummary?.batches ?? []).some((b) => b.isCampaign)) && (
+            <Paper sx={{ p: 2.5, border: '1px solid', borderColor: '#f59e0b', borderRadius: 2 }}>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+                <StorefrontIcon sx={{ color: '#d97706' }} />
+                <Typography variant="h6" fontWeight={900} color="#b45309">
+                  宣传活动与视频卡密投放监控
+                </Typography>
+                <Chip size="small" color="warning" label="同批次每账号限领 1 张" />
+              </Stack>
+              <Grid container spacing={2}>
+                {(cardKeySummary?.batches ?? [])
+                  .filter((b) => b.isCampaign)
+                  .map((b) => {
+                    const redeemPercent = b.count > 0 ? Math.round((b.redeemed / b.count) * 100) : 0;
+                    return (
+                      <Grid item xs={12} sm={6} md={4} key={b.batchNo}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            borderColor: 'divider',
+                            bgcolor: 'rgba(245,158,11,0.02)',
+                          }}
+                        >
+                          <Stack spacing={1}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="subtitle2" fontWeight={800} noWrap title={b.batchNo}>
+                                {b.batchNo}
+                              </Typography>
+                              <Chip size="small" label={`${b.minutes}分钟`} color="warning" variant="outlined" />
+                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                已领 <b>{b.redeemed}</b> / 待领 <b>{b.unused}</b> (共{b.count}张)
+                              </Typography>
+                              <Typography variant="caption" fontWeight={800} color="#b45309">
+                                {redeemPercent}% 兑换率
+                              </Typography>
+                            </Box>
+                            <LinearProgress
+                              variant="determinate"
+                              value={redeemPercent}
+                              sx={{
+                                height: 7,
+                                borderRadius: 3,
+                                bgcolor: 'action.hover',
+                                '& .MuiLinearProgress-bar': { bgcolor: '#f59e0b' },
+                              }}
+                            />
+                            <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => {
+                                  const next = { ...cardKeyFilter, batchNo: b.batchNo };
+                                  setCardKeyFilter(next);
+                                  void refreshCardKeys(next);
+                                }}
+                                sx={{ flex: 1, fontSize: 12 }}
+                              >
+                                查看明细
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                color="warning"
+                                onClick={() => {
+                                  const unusedCodes = cardKeys
+                                    .filter((k) => k.batch_no === b.batchNo && k.status === 'unused')
+                                    .map((k) => k.code);
+                                  if (unusedCodes.length > 0) {
+                                    void navigator.clipboard.writeText(unusedCodes.slice(0, 20).join('\n'));
+                                    setCardOpSuccessMessage(
+                                      `已复制批次 ${b.batchNo} 的 ${Math.min(20, unusedCodes.length)} 张未用卡密，可直接贴到评论区！`,
+                                    );
+                                  } else {
+                                    const next = { ...cardKeyFilter, batchNo: b.batchNo };
+                                    setCardKeyFilter(next);
+                                    void refreshCardKeys(next);
+                                    setCardOpSuccessMessage(`已为你筛选批次 ${b.batchNo}，加载后可一键复制。`);
+                                  }
+                                }}
+                                sx={{ flex: 1, fontSize: 12, fontWeight: 800 }}
+                              >
+                                复制未用卡密
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      </Grid>
+                    );
+                  })}
+              </Grid>
+            </Paper>
+          )}
+
+          {/* 4. 卡密列表与实时状态管理 */}
           <Paper sx={{ p: 2.5 }}>
             <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} sx={{ mb: 2 }}>
               <Box sx={{ flex: 1 }}>
