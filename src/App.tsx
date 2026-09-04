@@ -21,11 +21,13 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { BillingPage } from './components/billing/BillingPage';
 import { AdminPage } from './components/admin/AdminPage';
 import { useSettings } from './hooks/useSettings';
+import { useGoogleOneTap } from './hooks/useGoogleOneTap';
 import { isDesktopApp, syncStoredDesktopOpacity } from './services/desktopWindowService';
 import { createAppTheme } from './styles/theme';
 
 function AppContent(): ReactElement {
   const { appSettings } = useSettings();
+  useGoogleOneTap();
   const theme = useMemo(() => createAppTheme(appSettings.theme), [appSettings.theme]);
   const Router = isDesktopApp() ? HashRouter : BrowserRouter;
 

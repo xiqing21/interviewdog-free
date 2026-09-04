@@ -20,6 +20,7 @@ export interface AuthContextValue {
   lastEmail: string;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
+  signInWithOAuth: (provider: 'google' | 'github') => Promise<void>;
   signOut: () => Promise<void>;
   clearAuthError: () => void;
   clearAuthNotice: () => void;
@@ -152,6 +153,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [rememberEmail]);
 
+  const signInWithOAuth = useCallback(async (provider: 'google' | 'github') => {
+    if (!supabase) {
+      setError('还没有配置 Supabase 环境变量，无法登录。');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: `${window.location.origin}/interview`,
+        },
+      });
+      if (oauthError) throw oauthError;
+    } catch (err) {
+      setError(getAuthErrorMessage(err, `${provider === 'google' ? 'Google' : 'GitHub'} 登录失败`));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     if (!supabase) return;
     setLoading(true);
@@ -177,10 +202,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     lastEmail,
     signIn,
     signUp,
+    signInWithOAuth,
     signOut,
     clearAuthError: () => setError(null),
     clearAuthNotice: () => setNotice(null),
-  }), [error, lastEmail, loading, notice, signIn, signOut, signUp, user]);
+  }), [error, lastEmail, loading, notice, signIn, signInWithOAuth, signOut, signUp, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
