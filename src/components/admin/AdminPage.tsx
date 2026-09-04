@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Dialog,
@@ -36,6 +37,8 @@ import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import CardGiftcardIcon from '@mui/icons-material/CardGiftcard';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
+import CampaignIcon from '@mui/icons-material/Campaign';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import StorefrontIcon from '@mui/icons-material/Storefront';
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
@@ -96,6 +99,20 @@ export function AdminPage() {
   const [generatedBatchResult, setGeneratedBatchResult] = useState<GenerateCardKeysResponse | null>(null);
   const [copiedBatch, setCopiedBatch] = useState(false);
   const [copiedSingleCode, setCopiedSingleCode] = useState<string | null>(null);
+
+  // 卡密多选与批量删除
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+
+  // 宣传活动独立标签页生成表单
+  const [campaignGenForm, setCampaignGenForm] = useState({
+    minutes: '15',
+    count: '50',
+    batchNo: `EVENT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-15M`,
+    note: '宣传视频福利卡密 [每人限领1张]',
+  });
+  const [generatingCampaignCards, setGeneratingCampaignCards] = useState(false);
+  const [campaignBatchResult, setCampaignBatchResult] = useState<GenerateCardKeysResponse | null>(null);
+  const [copiedCampaignBatch, setCopiedCampaignBatch] = useState(false);
 
   // 单张卡密自定义创建
   const [singleDialogOpen, setSingleDialogOpen] = useState(false);
@@ -401,10 +418,133 @@ export function AdminPage() {
     await refreshCardKeys();
   };
 
+  const handleToggleSelectCard = (id: string) => {
+    setSelectedCardIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleToggleSelectAll = (selectableIds: string[]) => {
+    if (selectableIds.length === 0) return;
+    const allSelected = selectableIds.every((id) => selectedCardIds.includes(id));
+    if (allSelected) {
+      setSelectedCardIds((prev) => prev.filter((id) => !selectableIds.includes(id)));
+    } else {
+      setSelectedCardIds((prev) => Array.from(new Set([...prev, ...selectableIds])));
+    }
+  };
+
   const handleDeleteCardKey = async (id: string) => {
-    if (!window.confirm('确定彻底删除该条未使用卡密吗？')) return;
-    await adminRequest('deleteCardKey', { id });
-    await refreshCardKeys();
+    if (!window.confirm('确定彻底删除该条卡密吗？此操作不可撤销！')) return;
+    try {
+      await adminRequest('deleteCardKey', { id });
+      setSelectedCardIds((prev) => prev.filter((item) => item !== id));
+      setCardOpSuccessMessage('成功删除该卡密！');
+      await refreshCardKeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除失败');
+    }
+  };
+
+  const handleBatchDeleteSelected = async () => {
+    if (selectedCardIds.length === 0) return;
+    if (!window.confirm(`确定彻底删除选中的 ${selectedCardIds.length} 张卡密吗？已兑换入账的卡密不会被删除。此操作不可恢复！`)) return;
+    try {
+      const res = await adminRequest<{ ok: boolean; count: number }>('batchDeleteCardKeys', {
+        ids: selectedCardIds,
+      });
+      setCardOpSuccessMessage(`成功批量彻底删除 ${res.count} 张卡密！`);
+      setSelectedCardIds([]);
+      await refreshCardKeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '批量删除失败');
+    }
+  };
+
+  const handleBatchRevokeSelected = async () => {
+    if (selectedCardIds.length === 0) return;
+    if (!window.confirm(`确定将选中的 ${selectedCardIds.length} 张卡密批量作废吗？`)) return;
+    try {
+      await Promise.all(
+        selectedCardIds.map((id) => adminRequest('revokeCardKey', { id, status: 'revoked' }))
+      );
+      setCardOpSuccessMessage(`成功将选中的 ${selectedCardIds.length} 张卡密批量作废。`);
+      setSelectedCardIds([]);
+      await refreshCardKeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '批量作废失败');
+    }
+  };
+
+  const handleBatchCopySelected = async () => {
+    const selectedCodes = cardKeys
+      .filter((k) => selectedCardIds.includes(k.id))
+      .map((k) => k.code);
+    if (selectedCodes.length === 0) {
+      setError('没有选中的卡密可复制。');
+      return;
+    }
+    await navigator.clipboard.writeText(selectedCodes.join('\n'));
+    setCardOpSuccessMessage(`已复制选中的 ${selectedCodes.length} 张卡密（每行一个）！`);
+  };
+
+  const handleBatchDeleteAllRevoked = async (batchNo = 'all') => {
+    const promptMsg = batchNo === 'all'
+      ? '确定彻底删除系统中的所有【已作废】卡密吗？此操作不可撤销！'
+      : `确定彻底删除批次【${batchNo}】中的所有【已作废】卡密吗？此操作不可撤销！`;
+    if (!window.confirm(promptMsg)) return;
+    try {
+      const res = await adminRequest<{ ok: boolean; count: number }>('batchDeleteRevokedCards', {
+        batchNo,
+      });
+      setCardOpSuccessMessage(`成功清空删除 ${res.count} 张已作废卡密！`);
+      setSelectedCardIds((prev) => prev.filter((id) => !cardKeys.some((k) => k.id === id && k.status === 'revoked')));
+      await refreshCardKeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '清理已作废卡密失败');
+    }
+  };
+
+  const handleGenerateCampaignCardKeys = async () => {
+    const countNum = parseInt(campaignGenForm.count, 10);
+    const minutesNum = parseInt(campaignGenForm.minutes, 10);
+    if (isNaN(countNum) || countNum <= 0 || countNum > 1000) {
+      setError('生成数量须为 1 ~ 1000 之间的正整数。');
+      return;
+    }
+    if (isNaN(minutesNum) || minutesNum <= 0) {
+      setError('充值时长必须大于 0。');
+      return;
+    }
+    setGeneratingCampaignCards(true);
+    try {
+      const result = await adminRequest<GenerateCardKeysResponse>('generateCardKeys', {
+        count: countNum,
+        minutes: minutesNum,
+        batchNo: campaignGenForm.batchNo.trim(),
+        note: campaignGenForm.note.trim(),
+        isCampaign: true,
+      });
+      setCampaignBatchResult(result);
+      setCardOpSuccessMessage(
+        `🎉 成功生成 ${result.count} 笔宣传活动福利卡密！批次：${result.batchNo}。同批次每账号限领 1 张防刷规则已生效。`
+      );
+      await refreshCardKeys();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成活动卡密失败');
+    } finally {
+      setGeneratingCampaignCards(false);
+    }
+  };
+
+  const handleCopyCampaignBatch = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCampaignBatch(true);
+      setTimeout(() => setCopiedCampaignBatch(false), 3000);
+    } catch {
+      // ignore
+    }
   };
 
   const handleBatchRevokeCurrent = async () => {
@@ -507,7 +647,12 @@ export function AdminPage() {
       <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto">
         <Tab label="用户与充值" />
         <Tab label="消费/充值记录" />
-        <Tab icon={<StorefrontIcon fontSize="small" />} iconPosition="start" label="发卡网与卡密管理" />
+        <Tab icon={<StorefrontIcon fontSize="small" />} iconPosition="start" label="发卡网售卖卡密" />
+        <Tab
+          icon={<CampaignIcon fontSize="small" sx={{ color: '#d97706' }} />}
+          iconPosition="start"
+          label="🎁 宣传活动卡密 (限领1张)"
+        />
         <Tab label="模型与语音配置" />
         <Tab label="SEO/GEO" />
         <Tab label="增长/工单/风控" />
@@ -1092,6 +1237,16 @@ export function AdminPage() {
                 >
                   下载 txt
                 </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  startIcon={<DeleteSweepIcon />}
+                  onClick={() => { void handleBatchDeleteAllRevoked(cardKeyFilter.batchNo); }}
+                  disabled={!cardKeys.some((k) => k.status === 'revoked')}
+                >
+                  一键清空已作废 ({cardKeys.filter((k) => k.status === 'revoked').length})
+                </Button>
               </Stack>
             </Stack>
 
@@ -1101,7 +1256,7 @@ export function AdminPage() {
                 severity="info"
                 sx={{ mb: 2 }}
                 action={
-                  <Stack direction="row" spacing={1}>
+                  <Stack direction="row" spacing={1} flexWrap="wrap">
                     <Button size="small" variant="outlined" onClick={() => { void handleMarkListed(cardKeyFilter.batchNo, true); }}>
                       标记已导入发卡网
                     </Button>
@@ -1111,8 +1266,11 @@ export function AdminPage() {
                     <Button size="small" color="warning" variant="outlined" onClick={() => { void handleBatchRevokeCurrent(); }}>
                       作废此批次
                     </Button>
-                    <Button size="small" color="error" variant="outlined" onClick={() => { void handleBatchDeleteCurrent(); }}>
-                      删除此批次待使用卡密
+                    <Button size="small" color="error" variant="outlined" onClick={() => { void handleBatchDeleteAllRevoked(cardKeyFilter.batchNo); }}>
+                      清空此批次已作废
+                    </Button>
+                    <Button size="small" color="error" variant="contained" onClick={() => { void handleBatchDeleteCurrent(); }}>
+                      删除此批次待使用
                     </Button>
                   </Stack>
                 }
@@ -1120,6 +1278,96 @@ export function AdminPage() {
                 当前选中批次：<strong>{cardKeyFilter.batchNo}</strong>，你可以对该批次执行批量运维操作。
               </Alert>
             )}
+
+            {/* 多选批量操作悬浮提示条 */}
+            {selectedCardIds.length > 0 && (
+              <Paper
+                elevation={3}
+                sx={{
+                  p: 1.5,
+                  mb: 2,
+                  bgcolor: 'rgba(239, 68, 68, 0.08)',
+                  border: '1.5px solid',
+                  borderColor: 'error.main',
+                  borderRadius: 2,
+                }}
+              >
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center" flexWrap="wrap">
+                  <Chip
+                    color="error"
+                    label={`已勾选 ${selectedCardIds.length} 张卡密`}
+                    sx={{ fontWeight: 900, px: 0.5 }}
+                  />
+                  <Button
+                    variant="contained"
+                    color="error"
+                    size="small"
+                    startIcon={<DeleteOutlineIcon />}
+                    onClick={() => { void handleBatchDeleteSelected(); }}
+                    sx={{ fontWeight: 800 }}
+                  >
+                    彻底删除勾选项 ({selectedCardIds.length})
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    size="small"
+                    onClick={() => { void handleBatchRevokeSelected(); }}
+                  >
+                    批量作废勾选项 ({selectedCardIds.length})
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<ContentCopyIcon />}
+                    onClick={() => { void handleBatchCopySelected(); }}
+                  >
+                    复制勾选卡密 ({selectedCardIds.length})
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setSelectedCardIds([])}
+                    sx={{ ml: 'auto' }}
+                  >
+                    取消全选
+                  </Button>
+                </Stack>
+              </Paper>
+            )}
+
+            {/* 全选可操作卡密复选框 */}
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, px: 0.5 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={
+                      cardKeys.filter((k) => k.status !== 'redeemed').length > 0 &&
+                      cardKeys
+                        .filter((k) => k.status !== 'redeemed')
+                        .every((k) => selectedCardIds.includes(k.id))
+                    }
+                    indeterminate={
+                      cardKeys.filter((k) => k.status !== 'redeemed').some((k) => selectedCardIds.includes(k.id)) &&
+                      !cardKeys
+                        .filter((k) => k.status !== 'redeemed')
+                        .every((k) => selectedCardIds.includes(k.id))
+                    }
+                    onChange={() =>
+                      handleToggleSelectAll(
+                        cardKeys.filter((k) => k.status !== 'redeemed').map((k) => k.id)
+                      )
+                    }
+                  />
+                }
+                label={
+                  <Typography variant="body2" fontWeight={800} color="text.secondary">
+                    全选当前列表可删除/作废卡密（已勾选 {selectedCardIds.length} / 共 {cardKeys.filter((k) => k.status !== 'redeemed').length} 项）
+                  </Typography>
+                }
+              />
+            </Box>
 
             <Divider sx={{ mb: 2 }} />
 
@@ -1133,11 +1381,23 @@ export function AdminPage() {
                     variant="outlined"
                     sx={{
                       p: 1.5,
-                      borderColor: card.status === 'unused' ? 'success.light' : card.status === 'redeemed' ? 'primary.light' : 'divider',
-                      backgroundColor: card.status === 'revoked' ? 'action.hover' : 'background.paper',
+                      borderColor: selectedCardIds.includes(card.id) ? 'error.main' : card.status === 'unused' ? 'success.light' : card.status === 'redeemed' ? 'primary.light' : 'divider',
+                      backgroundColor: selectedCardIds.includes(card.id) ? 'rgba(239, 68, 68, 0.04)' : card.status === 'revoked' ? 'action.hover' : 'background.paper',
                     }}
                   >
                     <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+                      {card.status !== 'redeemed' ? (
+                        <Checkbox
+                          size="small"
+                          checked={selectedCardIds.includes(card.id)}
+                          onChange={() => handleToggleSelectCard(card.id)}
+                        />
+                      ) : (
+                        <Tooltip title="已兑换入账卡密作为充值凭据，不可删除">
+                          <Box sx={{ width: 38, display: { xs: 'none', md: 'block' } }} />
+                        </Tooltip>
+                      )}
+
                       <Box sx={{ minWidth: 260 }}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <Typography
@@ -1238,7 +1498,7 @@ export function AdminPage() {
                             {card.status === 'revoked' ? '恢复启用' : '作废'}
                           </Button>
                         )}
-                        {card.status === 'unused' && (
+                        {card.status !== 'redeemed' && (
                           <Button
                             size="small"
                             variant="outlined"
@@ -1259,8 +1519,589 @@ export function AdminPage() {
         </Stack>
       )}
 
-      {/* Tab 3: 模型与语音配置 */}
+      {/* Tab 3: 🎁 宣传活动卡密 (限领1张) */}
       {tab === 3 && (
+        <Stack spacing={2.5}>
+          {/* 1. 活动专属防刷机制说明卡片 */}
+          <Paper
+            sx={{
+              p: 2.5,
+              bgcolor: 'rgba(245, 158, 11, 0.05)',
+              border: '1.5px solid #f59e0b',
+              borderRadius: 2,
+            }}
+          >
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+              <Box
+                sx={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: 2,
+                  bgcolor: '#f59e0b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  flexShrink: 0,
+                }}
+              >
+                <CampaignIcon sx={{ fontSize: 32 }} />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" sx={{ mb: 0.5 }}>
+                  <Typography variant="h6" fontWeight={900} color="#b45309">
+                    宣传活动与视频推广福利卡密专区
+                  </Typography>
+                  <Chip size="small" color="warning" label="内置防刷：同批次每账号限领 1 张" sx={{ fontWeight: 800 }} />
+                </Stack>
+                <Typography variant="body2" color="text.secondary">
+                  专为 B站、抖音、小红书、微信公众号等平台的宣传视频与评论区置顶设计。
+                  <strong>防刷保护机制</strong>：在同一个活动批次中，<strong>任何用户只要兑换了其中 1 张，同批次其他卡密对该用户永久失效</strong>，无法被同一账号反复白嫖！
+                </Typography>
+              </Box>
+              <Button
+                variant="outlined"
+                size="small"
+                startIcon={<StorefrontIcon />}
+                onClick={() => setTab(2)}
+              >
+                发卡网售卖卡密
+              </Button>
+            </Stack>
+          </Paper>
+
+          {/* 2. 批量制卡与投放导出工具 */}
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={5}>
+              <Paper sx={{ p: 2.5, height: '100%' }}>
+                <Typography variant="h6" fontWeight={800} gutterBottom color="#b45309">
+                  批量生成活动福利卡密
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  一键生成活动专属卡密。生成后可直接一键复制，贴到视频简介、置顶评论或社群中供粉丝领取。
+                </Typography>
+
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" fontWeight={700} sx={{ display: 'block', mb: 0.75 }}>
+                      推荐活动套餐预设：
+                    </Typography>
+                    <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                      {[
+                        { label: '15 分钟 (视频评论区首选)', value: '15' },
+                        { label: '30 分钟 (大厂求职尝鲜)', value: '30' },
+                        { label: '60 分钟 (VIP豪华福利)', value: '60' },
+                      ].map((item) => (
+                        <Chip
+                          key={item.value}
+                          label={item.label}
+                          clickable
+                          color={campaignGenForm.minutes === item.value ? 'warning' : 'default'}
+                          onClick={() => {
+                            const dateTag = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                            setCampaignGenForm((prev) => ({
+                              ...prev,
+                              minutes: item.value,
+                              batchNo: `EVENT-${dateTag}-${item.value}M`,
+                            }));
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+
+                  <Grid container spacing={1.5}>
+                    <Grid item xs={6}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="赠送时长 (分钟)"
+                        type="number"
+                        value={campaignGenForm.minutes}
+                        onChange={(e) => setCampaignGenForm((prev) => ({ ...prev, minutes: e.target.value }))}
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="生成数量 (张)"
+                        type="number"
+                        value={campaignGenForm.count}
+                        onChange={(e) => setCampaignGenForm((prev) => ({ ...prev, count: e.target.value }))}
+                      />
+                    </Grid>
+                  </Grid>
+
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="活动批次标识 (Batch Tag)"
+                    value={campaignGenForm.batchNo}
+                    onChange={(e) => setCampaignGenForm((prev) => ({ ...prev, batchNo: e.target.value }))}
+                    helperText="建议保留 EVENT- 或包含限领，系统将自动对该批次执行每账号仅限使用 1 张的限制"
+                  />
+
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="备注说明"
+                    value={campaignGenForm.note}
+                    onChange={(e) => setCampaignGenForm((prev) => ({ ...prev, note: e.target.value }))}
+                  />
+
+                  <Button
+                    variant="contained"
+                    size="large"
+                    color="warning"
+                    startIcon={generatingCampaignCards ? <CircularProgress size={18} color="inherit" /> : <CardGiftcardIcon />}
+                    disabled={generatingCampaignCards}
+                    onClick={() => { void handleGenerateCampaignCardKeys(); }}
+                    sx={{ fontWeight: 900, py: 1.2 }}
+                  >
+                    {generatingCampaignCards
+                      ? '正在生成活动卡密...'
+                      : `立即批量生成 ${campaignGenForm.count} 笔活动福利卡密（每人限领1张）`}
+                  </Button>
+                </Stack>
+              </Paper>
+            </Grid>
+
+            {/* 活动卡密导出投放区 */}
+            <Grid item xs={12} md={7}>
+              <Paper sx={{ p: 2.5, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
+                  <ContentCopyIcon color="warning" />
+                  <Typography variant="h6" fontWeight={800} color="#b45309">
+                    活动卡密一键复制与投放区
+                  </Typography>
+                  {campaignBatchResult && (
+                    <Chip
+                      size="small"
+                      color="warning"
+                      label={`批次: ${campaignBatchResult.batchNo} (${campaignBatchResult.count}笔)`}
+                      sx={{ ml: 'auto', fontWeight: 800 }}
+                    />
+                  )}
+                </Stack>
+
+                {campaignBatchResult ? (
+                  <Stack spacing={1.5} sx={{ flex: 1 }}>
+                    <Alert severity="success" icon={<CheckCircleOutlineIcon fontSize="inherit" />}>
+                      成功生成 <strong>{campaignBatchResult.count}</strong> 笔面额为 <strong>{campaignBatchResult.minutes} 分钟</strong> 的活动福利卡密！
+                      <strong>每账号限领 1 张防刷规则已生效</strong>。
+                    </Alert>
+
+                    <TextField
+                      fullWidth
+                      multiline
+                      minRows={7}
+                      maxRows={10}
+                      value={campaignBatchResult.plainTextList}
+                      InputProps={{
+                        readOnly: true,
+                        sx: { fontFamily: 'monospace', fontSize: 13, backgroundColor: 'action.hover' },
+                      }}
+                      helperText="格式为每行一个卡密，可直接全选复制贴入视频置顶评论或粉丝群"
+                    />
+
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                      <Button
+                        variant="contained"
+                        color="warning"
+                        size="large"
+                        startIcon={<ContentCopyIcon />}
+                        onClick={() => { void handleCopyCampaignBatch(campaignBatchResult.plainTextList); }}
+                        sx={{ fontWeight: 900, flex: 1 }}
+                      >
+                        {copiedCampaignBatch ? '✅ 已复制全部卡密，快去贴评论区' : '一键复制全部卡密（贴评论区）'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        startIcon={<FileDownloadIcon />}
+                        onClick={() => {
+                          downloadPlainText(
+                            campaignBatchResult.plainTextList,
+                            `${campaignBatchResult.batchNo}.txt`,
+                          );
+                        }}
+                      >
+                        下载 txt 文本
+                      </Button>
+                    </Stack>
+                  </Stack>
+                ) : (
+                  <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 3, textAlign: 'center' }}>
+                    <CampaignIcon sx={{ fontSize: 64, color: '#f59e0b', mb: 1.5, opacity: 0.8 }} />
+                    <Typography color="#b45309" fontWeight={800} variant="subtitle1">
+                      在左侧设定数量与时长，点击生成活动福利卡密
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 420 }}>
+                      系统会为这一批卡密自动打上活动防刷标签，生成后您可在此处一键复制所有卡密，粘贴到 B站/抖音 评论区或微信群，粉丝兑换一张后无法重复兑换同批次其他卡密。
+                    </Typography>
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* 3. 活动投放批次实时监控看板 */}
+          <Paper sx={{ p: 2.5, border: '1px solid', borderColor: '#f59e0b', borderRadius: 2 }}>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+              <StorefrontIcon sx={{ color: '#d97706' }} />
+              <Typography variant="h6" fontWeight={900} color="#b45309">
+                宣传活动批次投放监控与消耗看板
+              </Typography>
+              <Chip size="small" color="warning" label="同批次每账号限领 1 张" />
+            </Stack>
+
+            {!(cardKeySummary?.batches ?? []).some((b) => b.isCampaign || b.batchNo.startsWith('EVENT-') || b.batchNo.startsWith('ACT-')) ? (
+              <Alert severity="info">暂无宣传活动批次。请在上方表单中生成新活动卡密。</Alert>
+            ) : (
+              <Grid container spacing={2}>
+                {(cardKeySummary?.batches ?? [])
+                  .filter((b) => b.isCampaign || b.batchNo.startsWith('EVENT-') || b.batchNo.startsWith('ACT-'))
+                  .map((b) => {
+                    const redeemPercent = b.count > 0 ? Math.round((b.redeemed / b.count) * 100) : 0;
+                    return (
+                      <Grid item xs={12} sm={6} md={4} key={b.batchNo}>
+                        <Paper
+                          variant="outlined"
+                          sx={{
+                            p: 2,
+                            borderRadius: 2,
+                            borderColor: 'divider',
+                            bgcolor: 'rgba(245,158,11,0.02)',
+                          }}
+                        >
+                          <Stack spacing={1}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Typography variant="subtitle2" fontWeight={800} noWrap title={b.batchNo}>
+                                {b.batchNo}
+                              </Typography>
+                              <Chip size="small" label={`${b.minutes}分钟`} color="warning" variant="outlined" />
+                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                              <Typography variant="caption" color="text.secondary">
+                                已领 <b>{b.redeemed}</b> / 待领 <b>{b.unused}</b> (共{b.count}张)
+                              </Typography>
+                              <Typography variant="caption" fontWeight={800} color="#b45309">
+                                {redeemPercent}% 兑换率
+                              </Typography>
+                            </Box>
+                            <LinearProgress
+                              variant="determinate"
+                              value={redeemPercent}
+                              sx={{
+                                height: 7,
+                                borderRadius: 3,
+                                bgcolor: 'action.hover',
+                                '& .MuiLinearProgress-bar': { bgcolor: '#f59e0b' },
+                              }}
+                            />
+                            <Stack direction="row" spacing={1} sx={{ pt: 0.5 }}>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                onClick={() => {
+                                  const next = { ...cardKeyFilter, batchNo: b.batchNo };
+                                  setCardKeyFilter(next);
+                                  void refreshCardKeys(next);
+                                }}
+                                sx={{ flex: 1, fontSize: 12 }}
+                              >
+                                查看明细
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                color="warning"
+                                onClick={() => {
+                                  const unusedCodes = cardKeys
+                                    .filter((k) => k.batch_no === b.batchNo && k.status === 'unused')
+                                    .map((k) => k.code);
+                                  if (unusedCodes.length > 0) {
+                                    void navigator.clipboard.writeText(unusedCodes.slice(0, 50).join('\n'));
+                                    setCardOpSuccessMessage(
+                                      `已复制批次 ${b.batchNo} 的 ${Math.min(50, unusedCodes.length)} 张未用卡密，可直接贴到评论区！`,
+                                    );
+                                  } else {
+                                    const next = { ...cardKeyFilter, batchNo: b.batchNo };
+                                    setCardKeyFilter(next);
+                                    void refreshCardKeys(next);
+                                    setCardOpSuccessMessage(`已为你筛选批次 ${b.batchNo}，加载后可一键复制。`);
+                                  }
+                                }}
+                                sx={{ flex: 1, fontSize: 12, fontWeight: 800 }}
+                              >
+                                复制未用卡密
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        </Paper>
+                      </Grid>
+                    );
+                  })}
+              </Grid>
+            )}
+          </Paper>
+
+          {/* 4. 活动卡密明细列表（支持复选框多选批量删除、一键清空已作废） */}
+          <Paper sx={{ p: 2.5 }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} sx={{ mb: 2 }}>
+              <Box sx={{ flex: 1 }}>
+                <Typography variant="h6" fontWeight={800} color="#b45309">
+                  活动卡密明细列表
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  专用于活动卡密的明细监控、多选批量删除、作废与一键清理
+                </Typography>
+              </Box>
+
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<ContentCopyIcon />}
+                  onClick={() => { void handleExportFilteredUnused(false); }}
+                >
+                  复制待使用
+                </Button>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  size="small"
+                  startIcon={<DeleteSweepIcon />}
+                  onClick={() => { void handleBatchDeleteAllRevoked(cardKeyFilter.batchNo); }}
+                  disabled={!cardKeys.some((k) => k.status === 'revoked')}
+                >
+                  一键清空已作废 ({cardKeys.filter((k) => k.status === 'revoked').length})
+                </Button>
+              </Stack>
+            </Stack>
+
+            {/* 批量操作浮层 */}
+            {selectedCardIds.length > 0 && (
+              <Paper
+                elevation={3}
+                sx={{
+                  p: 1.5,
+                  mb: 2,
+                  bgcolor: 'rgba(239, 68, 68, 0.08)',
+                  border: '1.5px solid',
+                  borderColor: 'error.main',
+                  borderRadius: 2,
+                }}
+              >
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center" flexWrap="wrap">
+                  <Chip
+                    color="error"
+                    label={`已勾选 ${selectedCardIds.length} 张卡密`}
+                    sx={{ fontWeight: 900, px: 0.5 }}
+                  />
+                  <Button
+                    variant="contained"
+                    color="error"
+                    size="small"
+                    startIcon={<DeleteOutlineIcon />}
+                    onClick={() => { void handleBatchDeleteSelected(); }}
+                    sx={{ fontWeight: 800 }}
+                  >
+                    彻底删除勾选项 ({selectedCardIds.length})
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    size="small"
+                    onClick={() => { void handleBatchRevokeSelected(); }}
+                  >
+                    批量作废勾选项 ({selectedCardIds.length})
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<ContentCopyIcon />}
+                    onClick={() => { void handleBatchCopySelected(); }}
+                  >
+                    复制勾选卡密 ({selectedCardIds.length})
+                  </Button>
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setSelectedCardIds([])}
+                    sx={{ ml: 'auto' }}
+                  >
+                    取消全选
+                  </Button>
+                </Stack>
+              </Paper>
+            )}
+
+            {/* 全选复选框 */}
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1.5, px: 0.5 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    size="small"
+                    checked={
+                      cardKeys.filter((k) => k.status !== 'redeemed').length > 0 &&
+                      cardKeys
+                        .filter((k) => k.status !== 'redeemed')
+                        .every((k) => selectedCardIds.includes(k.id))
+                    }
+                    indeterminate={
+                      cardKeys.filter((k) => k.status !== 'redeemed').some((k) => selectedCardIds.includes(k.id)) &&
+                      !cardKeys
+                        .filter((k) => k.status !== 'redeemed')
+                        .every((k) => selectedCardIds.includes(k.id))
+                    }
+                    onChange={() =>
+                      handleToggleSelectAll(
+                        cardKeys.filter((k) => k.status !== 'redeemed').map((k) => k.id)
+                      )
+                    }
+                  />
+                }
+                label={
+                  <Typography variant="body2" fontWeight={800} color="text.secondary">
+                    全选当前列表可删除/作废卡密（已勾选 {selectedCardIds.length} / 共 {cardKeys.filter((k) => k.status !== 'redeemed').length} 项）
+                  </Typography>
+                }
+              />
+            </Box>
+
+            <Divider sx={{ mb: 2 }} />
+
+            <Stack spacing={1.25}>
+              {cardKeys.length === 0 ? (
+                <Alert severity="info">没有找到匹配的活动卡密记录。</Alert>
+              ) : (
+                cardKeys.map((card) => (
+                  <Paper
+                    key={card.id}
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      borderColor: selectedCardIds.includes(card.id) ? 'error.main' : card.status === 'unused' ? 'warning.light' : card.status === 'redeemed' ? 'primary.light' : 'divider',
+                      backgroundColor: selectedCardIds.includes(card.id) ? 'rgba(239, 68, 68, 0.04)' : card.status === 'revoked' ? 'action.hover' : 'background.paper',
+                    }}
+                  >
+                    <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
+                      {card.status !== 'redeemed' ? (
+                        <Checkbox
+                          size="small"
+                          checked={selectedCardIds.includes(card.id)}
+                          onChange={() => handleToggleSelectCard(card.id)}
+                        />
+                      ) : (
+                        <Tooltip title="已兑换入账卡密作为充值凭据，不可删除">
+                          <Box sx={{ width: 38, display: { xs: 'none', md: 'block' } }} />
+                        </Tooltip>
+                      )}
+
+                      <Box sx={{ minWidth: 260 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography
+                            component="span"
+                            sx={{ fontFamily: 'monospace', fontWeight: 900, fontSize: 15, letterSpacing: 0.5 }}
+                          >
+                            {card.code}
+                          </Typography>
+                          <Button
+                            size="small"
+                            variant="text"
+                            sx={{ minWidth: 48, p: 0.5, fontSize: 12 }}
+                            onClick={() => { void handleCopySingle(card.code); }}
+                          >
+                            {copiedSingleCode === card.code ? '✅ 已复制' : '复制'}
+                          </Button>
+                        </Stack>
+                        <Typography variant="caption" color="text.secondary" display="block">
+                          批次：{card.batch_no} {card.note ? `｜ 备注：${card.note}` : ''}
+                        </Typography>
+                      </Box>
+
+                      <Chip
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        label={`🎁 ${card.minutes} 分钟`}
+                        sx={{ fontWeight: 800 }}
+                      />
+
+                      <Chip
+                        size="small"
+                        color={
+                          card.status === 'unused'
+                            ? 'warning'
+                            : card.status === 'redeemed'
+                              ? 'primary'
+                              : card.status === 'revoked'
+                                ? 'error'
+                                : 'default'
+                        }
+                        label={
+                          card.status === 'unused'
+                            ? '待领取'
+                            : card.status === 'redeemed'
+                              ? '已兑换'
+                              : card.status === 'revoked'
+                                ? '已作废'
+                                : '已过期'
+                        }
+                      />
+
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        {card.status === 'redeemed' ? (
+                          <Typography variant="caption" color="primary.main" fontWeight={700} display="block">
+                            领奖用户：{card.redeemed_by_email || card.redeemed_by || '已兑换'} (
+                            {card.redeemed_at ? new Date(card.redeemed_at).toLocaleString('zh-CN') : '-'})
+                          </Typography>
+                        ) : (
+                          <Typography variant="caption" color="text.secondary" display="block">
+                            创建时间：{new Date(card.created_at).toLocaleString('zh-CN')}
+                          </Typography>
+                        )}
+                      </Box>
+
+                      <Stack direction="row" spacing={1}>
+                        <IconButton size="small" onClick={() => handleOpenNoteModal(card)}>
+                          <EditNoteIcon fontSize="small" />
+                        </IconButton>
+                        {card.status !== 'redeemed' && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color={card.status === 'revoked' ? 'success' : 'warning'}
+                            onClick={() => { void handleRevokeCardKey(card.id, card.status); }}
+                          >
+                            {card.status === 'revoked' ? '恢复启用' : '作废'}
+                          </Button>
+                        )}
+                        {card.status !== 'redeemed' && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            color="error"
+                            startIcon={<DeleteOutlineIcon />}
+                            onClick={() => { void handleDeleteCardKey(card.id); }}
+                          >
+                            删除
+                          </Button>
+                        )}
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                ))
+              )}
+            </Stack>
+          </Paper>
+        </Stack>
+      )}
+
+      {/* Tab 4: 模型与语音配置 */}
+      {tab === 4 && (
         <Grid container spacing={2}>
           <Grid item xs={12} md={6}>
             <ConfigForm
@@ -1303,8 +2144,8 @@ export function AdminPage() {
         </Grid>
       )}
 
-      {/* Tab 4: SEO / GEO */}
-      {tab === 4 && (
+      {/* Tab 5: SEO / GEO */}
+      {tab === 5 && (
         <Grid container spacing={2}>
           <Grid item xs={12} md={5}>
             <ConfigForm
@@ -1336,8 +2177,8 @@ export function AdminPage() {
         </Grid>
       )}
 
-      {/* Tab 5: 增长/工单/风控 */}
-      {tab === 5 && (
+      {/* Tab 6: 增长/工单/风控 */}
+      {tab === 6 && (
         <Grid container spacing={2}>
           <Grid item xs={12}>
             <Paper sx={{ p: 2 }}>
@@ -1479,8 +2320,8 @@ export function AdminPage() {
         </Grid>
       )}
 
-      {/* Tab 6: 审计日志 */}
-      {tab === 6 && (
+      {/* Tab 7: 审计日志 */}
+      {tab === 7 && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="h6" fontWeight={800} gutterBottom>后台审计日志</Typography>
           <Stack spacing={1}>

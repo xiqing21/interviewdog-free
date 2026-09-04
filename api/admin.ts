@@ -38,6 +38,8 @@ type AdminAction =
   | 'createSingleCardKey'
   | 'revokeCardKey'
   | 'deleteCardKey'
+  | 'batchDeleteCardKeys'
+  | 'batchDeleteRevokedCards'
   | 'batchRevokeByBatch'
   | 'batchDeleteUnusedByBatch'
   | 'adminRedeemCardKey'
@@ -234,6 +236,14 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
     if (body.action === 'deleteCardKey') {
       response.status(200).json(await deleteCardKey(supabase, actor, body.id));
+      return;
+    }
+    if (body.action === 'batchDeleteCardKeys') {
+      response.status(200).json(await batchDeleteCardKeys(supabase, actor, body.ids));
+      return;
+    }
+    if (body.action === 'batchDeleteRevokedCards') {
+      response.status(200).json(await batchDeleteRevokedCards(supabase, actor, body.batchNo));
       return;
     }
     if (body.action === 'batchRevokeByBatch') {
@@ -1247,14 +1257,42 @@ async function revokeCardKey(supabase: AdminSupabaseClient, actor: AdminUser, id
 
 async function deleteCardKey(supabase: AdminSupabaseClient, actor: AdminUser, id?: string) {
   if (!id) throw new Error('缺少卡密 ID。');
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('license_card_keys')
     .delete()
     .eq('id', id)
-    .eq('status', 'unused');
+    .neq('status', 'redeemed')
+    .select('id, code');
   if (error) throw error;
-  await audit(supabase, actor.id, 'delete_card_key', undefined, { id });
+  if (!data || data.length === 0) {
+    throw new Error('未找到该卡密或已被兑换（已兑换入账的卡密不可删除，需保留财务凭据）。');
+  }
+  await audit(supabase, actor.id, 'delete_card_key', undefined, { id, code: data[0]?.code });
   return { ok: true };
+}
+
+async function batchDeleteCardKeys(supabase: AdminSupabaseClient, actor: AdminUser, ids?: string[]) {
+  if (!Array.isArray(ids) || ids.length === 0) throw new Error('请提供要删除的卡密 ID 列表。');
+  const { data, error } = await supabase
+    .from('license_card_keys')
+    .delete()
+    .in('id', ids)
+    .neq('status', 'redeemed')
+    .select('id, code');
+  if (error) throw error;
+  await audit(supabase, actor.id, 'batch_delete_card_keys', undefined, { count: data?.length ?? 0, ids });
+  return { ok: true, count: data?.length ?? 0 };
+}
+
+async function batchDeleteRevokedCards(supabase: AdminSupabaseClient, actor: AdminUser, batchNo?: string) {
+  let query = supabase.from('license_card_keys').delete().eq('status', 'revoked');
+  if (batchNo && batchNo !== 'all') {
+    query = query.eq('batch_no', batchNo);
+  }
+  const { data, error } = await query.select('id, code');
+  if (error) throw error;
+  await audit(supabase, actor.id, 'batch_delete_revoked_cards', undefined, { count: data?.length ?? 0, batchNo });
+  return { ok: true, count: data?.length ?? 0 };
 }
 
 async function batchRevokeByBatch(supabase: AdminSupabaseClient, actor: AdminUser, batchNo?: string, status = 'revoked') {
