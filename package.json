@@ -2,7 +2,7 @@
   "name": "interviewdog-free",
   "productName": "MianshiZhu Pro",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -14,6 +14,8 @@
     "desktop:pack": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --mac --dir",
     "desktop:dist": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --mac dmg",
     "desktop:dist:signed": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --mac dmg --publish never",
+    "desktop:pack:win": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --win --dir",
+    "desktop:dist:win": "bun run build:app && node scripts/prepare-desktop-html.mjs && electron-builder --win nsis",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -98,6 +100,29 @@
     },
     "dmg": {
       "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

@@ -4,10 +4,13 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Button, Typography, Chip } from '@mui/material';
 import ScreenshotMonitorIcon from '@mui/icons-material/ScreenshotMonitor';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
+import WindowIcon from '@mui/icons-material/Window';
 import { useExam } from '../../hooks/useExam';
+import { isDesktopApp } from '../../services/desktopWindowService';
+import { WindowSelectorModal } from '../desktop/WindowSelectorModal';
 
 export function ImageUploader() {
   const {
@@ -80,10 +83,15 @@ export function ImageUploader() {
     e.target.value = '';
   };
 
+  const [selectorOpen, setSelectorOpen] = useState(false);
+  const desktop = isDesktopApp();
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
+  const shotKeyHint = isMac ? '⌘+⇧+S' : 'Ctrl+Shift+S';
+
   return (
     <Box>
       {/* Action buttons */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
         {captureSupported && (
           <Button
             variant="contained"
@@ -91,7 +99,16 @@ export function ImageUploader() {
             disabled={isProcessing}
             startIcon={<ScreenshotMonitorIcon />}
           >
-            屏幕截图
+            {desktop ? '一键截屏' : '屏幕截图'}
+          </Button>
+        )}
+        {desktop && (
+          <Button
+            variant="outlined"
+            onClick={() => setSelectorOpen(true)}
+            startIcon={<WindowIcon />}
+          >
+            挑选窗口/屏幕
           </Button>
         )}
         <Button
@@ -101,7 +118,24 @@ export function ImageUploader() {
         >
           上传图片
         </Button>
+        {desktop && (
+          <Chip
+            size="small"
+            color="primary"
+            variant="outlined"
+            label={`快捷键：${shotKeyHint} (全局静默截题)`}
+            sx={{ ml: 'auto', fontWeight: 600 }}
+          />
+        )}
       </Box>
+
+      <WindowSelectorModal
+        open={selectorOpen}
+        onClose={() => setSelectorOpen(false)}
+        onSelectAndSolve={(srcId) => {
+          void captureScreen(srcId);
+        }}
+      />
 
       {/* Hidden file input */}
       <input

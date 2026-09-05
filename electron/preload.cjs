@@ -5,6 +5,34 @@ contextBridge.exposeInMainWorld('desktopWindow', {
   getOpacity: () => ipcRenderer.invoke('desktop-window:get-opacity'),
   setOpacity: (value) => ipcRenderer.invoke('desktop-window:set-opacity', value),
   hide: () => ipcRenderer.invoke('desktop-window:hide'),
+  // 窗口防截屏/录屏隐藏
+  getContentProtection: () => ipcRenderer.invoke('desktop-window:get-content-protection'),
+  setContentProtection: (enabled) => ipcRenderer.invoke('desktop-window:set-content-protection', enabled),
+  // 窗口置顶
+  getAlwaysOnTop: () => ipcRenderer.invoke('desktop-window:get-always-on-top'),
+  setAlwaysOnTop: (flag) => ipcRenderer.invoke('desktop-window:set-always-on-top', flag),
+  // 鼠标穿透（幽灵模式）
+  getIgnoreMouseEvents: () => ipcRenderer.invoke('desktop-window:get-ignore-mouse-events'),
+  setIgnoreMouseEvents: (ignore) => ipcRenderer.invoke('desktop-window:set-ignore-mouse-events', ignore),
+  // 屏幕与窗口源列表获取、原生静默截图
+  getSources: (opts) => ipcRenderer.invoke('desktop-screen:get-sources', opts),
+  captureScreen: (sourceId) => ipcRenderer.invoke('desktop-screen:capture-screen', sourceId),
+  // 全局快捷键事件监听
+  onGlobalScreenshot: (callback) => {
+    const sub = () => callback();
+    ipcRenderer.on('desktop-shortcut:screenshot', sub);
+    return () => ipcRenderer.removeListener('desktop-shortcut:screenshot', sub);
+  },
+  onGlobalToggleIgnoreMouse: (callback) => {
+    const sub = () => callback();
+    ipcRenderer.on('desktop-shortcut:toggle-ignore-mouse', sub);
+    return () => ipcRenderer.removeListener('desktop-shortcut:toggle-ignore-mouse', sub);
+  },
+  onIgnoreMouseChanged: (callback) => {
+    const sub = (_event, state) => callback(state);
+    ipcRenderer.on('desktop-window:ignore-mouse-changed', sub);
+    return () => ipcRenderer.removeListener('desktop-window:ignore-mouse-changed', sub);
+  },
   // 原生音频采集支持
   startSystemAudio: () => ipcRenderer.invoke('desktop-audio:start'),
   stopSystemAudio: () => ipcRenderer.invoke('desktop-audio:stop'),

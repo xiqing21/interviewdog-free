@@ -3,11 +3,14 @@
  * Captures a screenshot from the user's screen and returns it as base64.
  */
 
+import { captureDesktopScreen, isDesktopApp } from './desktopWindowService';
+
 /**
- * Checks whether the browser supports screen capture.
- * @returns true if getDisplayMedia is supported
+ * Checks whether the browser or desktop app supports screen capture.
+ * @returns true if desktop native capture or getDisplayMedia is supported
  */
 export function isSupported(): boolean {
+  if (isDesktopApp()) return true;
   return (
     typeof navigator !== 'undefined' &&
     typeof navigator.mediaDevices?.getDisplayMedia === 'function'
@@ -15,13 +18,18 @@ export function isSupported(): boolean {
 }
 
 /**
- * Captures a screenshot from the user's screen.
- * Uses getDisplayMedia to access the screen, draws a frame to a canvas,
- * converts to base64 PNG, and stops the video track.
+ * Captures a screenshot from the user's screen or window.
+ * In desktop app, uses native desktopCapturer silently without popup.
+ * In browser, uses getDisplayMedia.
+ * @param sourceId Optional target window or screen source ID (desktop only)
  * @returns Base64-encoded PNG image data (without the data URI prefix)
  * @throws Error with a user-friendly message if capture fails
  */
-export async function capture(): Promise<string> {
+export async function capture(sourceId?: string): Promise<string> {
+  if (isDesktopApp()) {
+    return await captureDesktopScreen(sourceId);
+  }
+
   if (!isSupported()) {
     throw new Error('当前浏览器不支持屏幕截图功能。');
   }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapturer, session, globalShortcut, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { spawn } = require('node:child_process');
@@ -11,7 +11,7 @@ app.commandLine.appendSwitch(
 );
 
 const APP_TITLE = 'MianshiZhu Pro';
-const MIN_OPACITY = 0.35;
+const MIN_OPACITY = 0.15;
 const MAX_OPACITY = 1;
 // Debug build: keep the window and Dock icon visible while fixing Mac audio.
 const DEBUG_VISIBLE = false;
@@ -19,6 +19,9 @@ const DEBUG_VISIBLE = false;
 let mainWindow;
 let audioProcess = null;
 let audioStopRequested = false;
+let isContentProtected = true;
+let isAlwaysOnTop = false;
+let isMouseIgnored = false;
 
 function clampOpacity(value) {
   const opacity = Number(value);
@@ -152,6 +155,32 @@ function createWindow() {
   });
 }
 
+function registerGlobalShortcuts() {
+  const isMac = process.platform === 'darwin';
+  const screenshotKey = isMac ? 'Command+Shift+S' : 'Ctrl+Shift+S';
+  const passthroughKey = isMac ? 'Command+Shift+P' : 'Ctrl+Shift+P';
+
+  try {
+    globalShortcut.register(screenshotKey, () => {
+      console.log(`[main] Global shortcut triggered: ${screenshotKey}`);
+      mainWindow?.webContents.send('desktop-shortcut:screenshot');
+    });
+  } catch (err) {
+    console.error(`[main] Failed to register shortcut ${screenshotKey}:`, err);
+  }
+
+  try {
+    globalShortcut.register(passthroughKey, () => {
+      console.log(`[main] Global shortcut triggered: ${passthroughKey}`);
+      isMouseIgnored = !isMouseIgnored;
+      mainWindow?.setIgnoreMouseEvents(isMouseIgnored, { forward: true });
+      mainWindow?.webContents.send('desktop-window:ignore-mouse-changed', isMouseIgnored);
+    });
+  } catch (err) {
+    console.error(`[main] Failed to register shortcut ${passthroughKey}:`, err);
+  }
+}
+
 app.setName(APP_TITLE);
 
 app.whenReady().then(() => {
@@ -163,10 +192,15 @@ app.whenReady().then(() => {
     app.dock.hide();
   }
   createWindow();
+  registerGlobalShortcuts();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 app.on('window-all-closed', () => {
@@ -185,6 +219,86 @@ ipcMain.handle('desktop-window:set-opacity', (_event, value) => {
   const opacity = clampOpacity(value);
   mainWindow?.setOpacity(opacity);
   return opacity;
+});
+
+ipcMain.handle('desktop-window:get-content-protection', () => {
+  return isContentProtected;
+});
+
+ipcMain.handle('desktop-window:set-content-protection', (_event, enabled) => {
+  isContentProtected = Boolean(enabled);
+  if (mainWindow) {
+    mainWindow.setContentProtection(isContentProtected);
+  }
+  return isContentProtected;
+});
+
+ipcMain.handle('desktop-window:get-always-on-top', () => {
+  return mainWindow ? mainWindow.isAlwaysOnTop() : isAlwaysOnTop;
+});
+
+ipcMain.handle('desktop-window:set-always-on-top', (_event, flag) => {
+  isAlwaysOnTop = Boolean(flag);
+  if (mainWindow) {
+    mainWindow.setAlwaysOnTop(isAlwaysOnTop, 'screen-saver');
+  }
+  return isAlwaysOnTop;
+});
+
+ipcMain.handle('desktop-window:get-ignore-mouse-events', () => {
+  return isMouseIgnored;
+});
+
+ipcMain.handle('desktop-window:set-ignore-mouse-events', (_event, ignore) => {
+  isMouseIgnored = Boolean(ignore);
+  if (mainWindow) {
+    mainWindow.setIgnoreMouseEvents(isMouseIgnored, { forward: true });
+  }
+  return isMouseIgnored;
+});
+
+ipcMain.handle('desktop-screen:get-sources', async (_event, opts) => {
+  const types = opts?.types || ['screen', 'window'];
+  const thumbnailSize = opts?.thumbnailSize || { width: 320, height: 180 };
+  const sources = await desktopCapturer.getSources({
+    types,
+    thumbnailSize,
+    fetchWindowIcons: true,
+  });
+  return sources.map((s) => ({
+    id: s.id,
+    name: s.name,
+    display_id: s.display_id,
+    appIcon: s.appIcon ? s.appIcon.toDataURL() : null,
+    thumbnail: s.thumbnail ? s.thumbnail.toDataURL() : null,
+  }));
+});
+
+ipcMain.handle('desktop-screen:capture-screen', async (_event, sourceId) => {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.size;
+  const scale = primaryDisplay.scaleFactor || 2;
+  const captureWidth = Math.min(3840, Math.round(width * scale));
+  const captureHeight = Math.min(2160, Math.round(height * scale));
+
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: captureWidth, height: captureHeight },
+  });
+
+  let target = null;
+  if (sourceId) {
+    target = sources.find((s) => s.id === sourceId);
+  }
+  if (!target) {
+    target = sources.find((s) => s.id.startsWith('screen:')) || sources[0];
+  }
+  if (!target) {
+    throw new Error('未找到可用的屏幕或窗口进行截图');
+  }
+
+  const pngBuffer = target.thumbnail.toPNG();
+  return pngBuffer.toString('base64');
 });
 
 ipcMain.handle('desktop-window:hide', () => {

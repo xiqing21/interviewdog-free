@@ -15,6 +15,7 @@ import type { ExamRecord, ExamType } from '../types';
 import { STORAGE_KEYS, MAX_EXAM_RECORDS, EXAM_TYPES } from '../constants';
 import * as storageService from '../services/storageService';
 import * as captureService from '../services/captureService';
+import { onGlobalScreenshot } from '../services/desktopWindowService';
 import { chat } from '../services/aiService';
 import { extractTextFromImage } from '../services/ocrService';
 import { useSettings } from '../hooks/useSettings';
@@ -145,8 +146,8 @@ function examReducer(state: ExamState, action: ExamAction): ExamState {
 
 // ===== Context Type =====
 export interface ExamContextValue extends ExamState {
-  captureScreen: () => Promise<string | null>;
-  captureAndSolve: () => Promise<void>;
+  captureScreen: (sourceId?: string) => Promise<string | null>;
+  captureAndSolve: (sourceId?: string) => Promise<void>;
   setImageFromUpload: (base64: string) => void;
   setExamType: (type: ExamType) => void;
   solve: () => Promise<void>;
@@ -182,10 +183,10 @@ export function ExamProvider({ children }: ExamProviderProps) {
   }, [state.records]);
 
   // ===== captureScreen =====
-  const captureScreen = useCallback(async (): Promise<string | null> => {
+  const captureScreen = useCallback(async (sourceId?: string): Promise<string | null> => {
     dispatch({ type: 'SET_ERROR', payload: null });
     try {
-      const base64 = await captureService.capture();
+      const base64 = await captureService.capture(sourceId);
       dispatch({ type: 'SET_CURRENT_IMAGE', payload: base64 });
       return base64;
     } catch (error) {
@@ -257,10 +258,20 @@ export function ExamProvider({ children }: ExamProviderProps) {
     if (currentImage) await solveImage(currentImage, currentExamType);
   }, [solveImage]);
 
-  const captureAndSolve = useCallback(async () => {
-    const image = await captureScreen();
+  const captureAndSolve = useCallback(async (sourceId?: string) => {
+    const image = await captureScreen(sourceId);
     if (image) await solveImage(image, stateRef.current.currentExamType);
   }, [captureScreen, solveImage]);
+
+  // Listen for Electron global screenshot shortcut (Cmd+Shift+S / Ctrl+Shift+S)
+  useEffect(() => {
+    const unsubscribe = onGlobalScreenshot(() => {
+      void captureAndSolve();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [captureAndSolve]);
 
   // ===== regenerate =====
   const regenerate = useCallback(async (id: string) => {

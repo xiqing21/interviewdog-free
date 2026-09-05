@@ -20,6 +20,7 @@ import { useBilling } from '../../hooks/useBilling';
 import { StatusIndicator } from '../common/StatusIndicator';
 import { AuthPanel } from '../auth/AuthPanel';
 import { COMMERCIAL_MODE } from '../../config/commercial';
+import { DesktopHudToolbar } from '../desktop/DesktopHudToolbar';
 
 function formatRemaining(seconds: number): string {
   return `${Math.floor(seconds / 60)} 分钟`;
@@ -45,9 +46,12 @@ export function TopBar() {
       sx={{ borderBottom: 1, borderColor: 'divider', WebkitAppRegion: 'drag', userSelect: 'none' }}
     >
       <Toolbar variant="dense">
-        <Typography variant="h6" sx={{ flexGrow: 1 }}>
+        <Typography variant="h6" sx={{ mr: 2 }}>
           {title}
         </Typography>
+        <Box sx={{ flexGrow: 1, display: 'flex', alignItems: 'center' }}>
+          <DesktopHudToolbar />
+        </Box>
         {!COMMERCIAL_MODE && (
           <Box sx={{ WebkitAppRegion: 'no-drag' }}>
             <StatusIndicator status={connectionStatus} />
