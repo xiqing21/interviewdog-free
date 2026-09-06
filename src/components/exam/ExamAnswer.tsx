@@ -53,8 +53,8 @@ export function ExamAnswer() {
         {currentAnswer && !isStreaming && <CopyButton text={currentAnswer} />}
       </Box>
 
-      {/* Error display */}
-      {error && (
+      {/* Error display (仅在未产生有效答案时显示错误提示，避免因为流结束断开而把已生成的答案标记为错误) */}
+      {error && !currentAnswer && (
         <Alert severity="error" sx={{ mb: 1 }}>
           {error}
         </Alert>

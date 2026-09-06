@@ -169,10 +169,19 @@ export async function chat(
   // 流式响应处理
   if (useStreaming && response.body) {
     let fullText = '';
-    await parseSSEStream(response.body, (chunk) => {
-      fullText += chunk;
-      onChunk!(chunk);
-    });
+    try {
+      await parseSSEStream(response.body, (chunk) => {
+        fullText += chunk;
+        onChunk!(chunk);
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (fullText.trim().length > 0 && (msg.includes('aborted') || msg.includes('BodyStreamBuffer') || msg.includes('network error'))) {
+        console.warn('[chat] 流式传输提前终止，已保留并展示已有回答内容:', msg);
+        return fullText;
+      }
+      throw err;
+    }
     return fullText;
   }
 
@@ -346,10 +355,20 @@ async function serverManagedChat(
 
   if (useStreaming && response.body) {
     let fullText = '';
-    await parseSSEStream(response.body, (chunk) => {
-      fullText += chunk;
-      onChunk?.(chunk);
-    });
+    try {
+      await parseSSEStream(response.body, (chunk) => {
+        fullText += chunk;
+        onChunk?.(chunk);
+      });
+    } catch (err: unknown) {
+      // 如果已经收到了部分或全部文本（网络抖动或 upstream 提前关闭连接），保留并返回已有答案，避免前端整个变红报错
+      const msg = err instanceof Error ? err.message : String(err);
+      if (fullText.trim().length > 0 && (msg.includes('aborted') || msg.includes('BodyStreamBuffer') || msg.includes('network error'))) {
+        console.warn('[serverManagedChat] 流式传输提前终止，已保留并展示已有回答内容:', msg);
+        return fullText;
+      }
+      throw err;
+    }
     return fullText;
   }
 

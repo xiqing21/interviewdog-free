@@ -42,5 +42,10 @@
     { "source": "/settings/:path*", "destination": "/app.html" },
     { "source": "/admin", "destination": "/app.html" },
     { "source": "/admin/:path*", "destination": "/app.html" }
-  ]
+  ],
+  "functions": {
+    "api/*.ts": {
+      "maxDuration": 60
+    }
+  }
 }
