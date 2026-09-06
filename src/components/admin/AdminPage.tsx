@@ -237,11 +237,18 @@ export function AdminPage() {
     await refresh();
   };
 
-  const testConfig = async (key: 'ai' | 'asr' | 'seo', form: HTMLFormElement) => {
+  const testConfig = async (key: 'ai' | 'asr' | 'seo', form: HTMLFormElement, testType?: 'text' | 'vision') => {
     const data = new FormData(form);
     const value = Object.fromEntries([...data.entries()].map(([name, item]) => [name, String(item)]));
+    if (testType) {
+      value.testType = testType;
+    }
     const result = await adminRequest<{ ok: boolean; message: string }>('testConfig', { key, value });
-    setConfigTestResult((current) => ({ ...current, [key]: result }));
+    setConfigTestResult((current) => ({
+      ...current,
+      [key]: result,
+      ...(testType ? { [`${key}_${testType}`]: result } : {}),
+    }));
   };
 
   const runSeoAction = async (action: 'getSeoInsights' | 'submitIndexNow' | 'submitBingUrls' | 'submitGoogleSitemap') => {
@@ -2103,23 +2110,16 @@ export function AdminPage() {
       {/* Tab 4: 模型与语音配置 */}
       {tab === 4 && (
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <ConfigForm
-              title="AI 模型配置"
-              icon={<SettingsSuggestIcon />}
-              fields={[
-                ['baseUrl', 'Base URL'],
-                ['textModel', '文本模型'],
-                ['visionModel', '视觉模型'],
-                ['apiKey', 'API Key'],
-              ]}
+          <Grid item xs={12} md={7}>
+            <AiConfigConsole
               values={aiConfig}
               onSubmit={(form) => updateConfig('ai', form)}
-              onTest={(form) => testConfig('ai', form)}
-              testResult={configTestResult.ai}
+              onTest={(form, testType) => testConfig('ai', form, testType)}
+              textTestResult={configTestResult.ai_text ?? configTestResult.ai}
+              visionTestResult={configTestResult.ai_vision}
             />
           </Grid>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={5}>
             <ConfigForm
               title="实时语音配置"
               icon={<SettingsSuggestIcon />}
@@ -2572,6 +2572,209 @@ function SearchRows({
         ))}
       </Stack>
     </Box>
+  );
+}
+
+function AiConfigConsole({
+  values,
+  onSubmit,
+  onTest,
+  textTestResult,
+  visionTestResult,
+}: {
+  values: Record<string, unknown>;
+  onSubmit: (form: HTMLFormElement) => Promise<void>;
+  onTest: (form: HTMLFormElement, testType?: 'text' | 'vision') => Promise<void>;
+  textTestResult?: { ok: boolean; message: string };
+  visionTestResult?: { ok: boolean; message: string };
+}) {
+  const [baseUrl, setBaseUrl] = useState(String(values.baseUrl ?? ''));
+  const [textModel, setTextModel] = useState(String(values.textModel ?? ''));
+  const [visionModel, setVisionModel] = useState(String(values.visionModel ?? ''));
+  const [apiKey, setApiKey] = useState(String(values.apiKey ?? ''));
+
+  useEffect(() => {
+    setBaseUrl(String(values.baseUrl ?? ''));
+    setTextModel(String(values.textModel ?? ''));
+    setVisionModel(String(values.visionModel ?? ''));
+    setApiKey(String(values.apiKey ?? ''));
+  }, [values]);
+
+  const applyPreset = (preset: { baseUrl: string; textModel: string; visionModel: string }) => {
+    setBaseUrl(preset.baseUrl);
+    setTextModel(preset.textModel);
+    setVisionModel(preset.visionModel);
+  };
+
+  return (
+    <Paper
+      component="form"
+      sx={{ p: 2.5 }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void onSubmit(event.currentTarget);
+      }}
+    >
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+        <SettingsSuggestIcon color="primary" />
+        <Typography variant="h6" fontWeight={800}>
+          商业 AI 模型与多模态配置中心
+        </Typography>
+      </Stack>
+
+      <Alert severity="info" sx={{ mb: 2 }}>
+        💡 <strong>全端免配即用</strong>：此处为平台唯一的商业大模型配置。保存后，所有普通用户（<strong>Mac客户端、Windows客户端、网页端</strong>）在做题与面试时全部自动由本配置提供服务，<strong>普通用户无需自行填写任何 API Key</strong>。
+      </Alert>
+
+      {/* 主流预设快捷选填 */}
+      <Box sx={{ mb: 2 }}>
+        <Typography variant="caption" fontWeight={700} color="text.secondary" display="block" sx={{ mb: 0.8 }}>
+          主流模型一键预设（点击一键填入地址与模型名）：
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
+          <Chip
+            label="🌟 阿里百炼 Qwen-VL (推荐首选)"
+            color="primary"
+            variant="outlined"
+            onClick={() =>
+              applyPreset({
+                baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                textModel: 'qwen-plus',
+                visionModel: 'qwen-vl-max',
+              })
+            }
+            sx={{ cursor: 'pointer', fontWeight: 600 }}
+          />
+          <Chip
+            label="🌟 火山豆包 Vision (超高性价比)"
+            color="secondary"
+            variant="outlined"
+            onClick={() =>
+              applyPreset({
+                baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+                textModel: 'doubao-pro-32k',
+                visionModel: 'doubao-vision-pro-32k',
+              })
+            }
+            sx={{ cursor: 'pointer', fontWeight: 600 }}
+          />
+          <Chip
+            label="OpenAI (GPT-4o)"
+            variant="outlined"
+            onClick={() =>
+              applyPreset({
+                baseUrl: 'https://api.openai.com/v1',
+                textModel: 'gpt-4o',
+                visionModel: 'gpt-4o',
+              })
+            }
+            sx={{ cursor: 'pointer' }}
+          />
+          <Chip
+            label="DeepSeek 官方 (纯文本模式)"
+            variant="outlined"
+            onClick={() =>
+              applyPreset({
+                baseUrl: 'https://api.deepseek.com/v1',
+                textModel: 'deepseek-chat',
+                visionModel: 'deepseek-chat',
+              })
+            }
+            sx={{ cursor: 'pointer' }}
+          />
+        </Stack>
+      </Box>
+
+      <Stack spacing={1.5}>
+        <TextField
+          name="baseUrl"
+          label="API Base URL"
+          fullWidth
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+          helperText="兼容 OpenAI 标准格式的 API 基础端点地址"
+        />
+
+        <TextField
+          name="apiKey"
+          label="API Key"
+          type="password"
+          fullWidth
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder={apiKey ? '留空不改，填入新值后覆盖' : 'sk-...'}
+          helperText="平台调用服务商的私密密钥，仅安全保存在服务端数据库"
+        />
+
+        <Grid container spacing={1.5}>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              name="textModel"
+              label="文本模型 (面试辅导/文本问答)"
+              fullWidth
+              value={textModel}
+              onChange={(e) => setTextModel(e.target.value)}
+              placeholder="qwen-plus / deepseek-chat / gpt-4o"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6}>
+            <TextField
+              name="visionModel"
+              label="多模态视觉模型 (笔试截屏/抗干扰出题)"
+              fullWidth
+              value={visionModel}
+              onChange={(e) => setVisionModel(e.target.value)}
+              placeholder="qwen-vl-max / doubao-vision-pro-32k"
+              helperText="用于笔试截图直接看图解答"
+            />
+          </Grid>
+        </Grid>
+
+        {textTestResult && (
+          <Alert severity={textTestResult.ok ? 'success' : 'error'}>
+            <strong>文本模型测试：</strong> {textTestResult.message}
+          </Alert>
+        )}
+
+        {visionTestResult && (
+          <Alert severity={visionTestResult.ok ? 'success' : 'error'}>
+            <strong>多模态视觉测试：</strong> {visionTestResult.message}
+          </Alert>
+        )}
+
+        <Divider sx={{ my: 1 }} />
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+          <Button
+            variant="outlined"
+            startIcon={<ScienceIcon />}
+            onClick={(event) => {
+              const form = event.currentTarget.closest('form');
+              if (form) void onTest(form, 'text');
+            }}
+          >
+            测试文本连接 (Ping)
+          </Button>
+
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<ScienceIcon />}
+            onClick={(event) => {
+              const form = event.currentTarget.closest('form');
+              if (form) void onTest(form, 'vision');
+            }}
+          >
+            测试视觉识图 (Vision Test)
+          </Button>
+
+          <Button type="submit" variant="contained" color="primary" sx={{ ml: { sm: 'auto' } }}>
+            保存模型配置
+          </Button>
+        </Stack>
+      </Stack>
+    </Paper>
   );
 }
 

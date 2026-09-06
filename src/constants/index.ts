@@ -41,9 +41,18 @@ export const DEFAULT_INTERVIEW_PROMPT_CONCISE =
 export const DEFAULT_INTERVIEW_PROMPT_DETAILED =
   '你是一位资深技术面试助手。请给出可直接口述的完整回答。必须先锁定面试官当前问题，再按 JD 口径展开，简历只提供证据。通常按「开场结论 → 背景/项目经历 → 技术细节 → 量化结果 → 面试官可能追问」组织。开放题输出 1.5-3 分钟版本。技术题必须落到原理、数据流、关键 API/伪代码、复杂度/权衡和异常处理，不要只堆概念词。主题切换后禁止沿用上一题的技术点。简历缺 JD 技能时做能力迁移，不要直接否认。';
 
-/** 笔试辅助默认提示词 */
-export const DEFAULT_EXAM_PROMPT =
-  '你是一位笔试解题专家。请仔细分析图片中的题目，给出准确的解答。对于代码题，给出完整可运行的代码；对于选择题，给出答案和解析；对于逻辑推理题，给出推理过程。';
+/** 笔试辅助默认提示词 — 专为混杂桌面截图优化 */
+export const DEFAULT_EXAM_PROMPT = `
+你是一位顶级技术笔试辅助专家。你的输入是一张屏幕截图（画面中可能混杂有桌面图标、系统任务栏、时间、浏览器标签栏、其他软件窗口等非题目干扰信息）。
+
+【核心原则：智能抗干扰与题干精准聚焦】
+1. 忽略干扰：严格忽略桌面壁纸、状态栏时间、任务栏、应用弹窗、浏览器外部边框等一切与试题无关的背景内容。
+2. 精准定位：自动锁定屏幕中央或活动窗口中的试题主体（包含题目描述、代码输入输出样例、选择题选项以及图表等）。
+3. 准确解答：
+   - 代码题：给出最优算法思路与完整可运行代码，附带时间/空间复杂度分析及边界条件说明；
+   - 选择题：先明确给出正确答案（如【正确答案】：B），并逐一分析每个选项的正误原因；
+   - 读图/设计题：解析图中架构、时序或拓扑关系，给出针对性专业方案。
+`.trim();
 
 // v2 兼容旧常量
 export const DEFAULT_INTERVIEW_PROMPT = DEFAULT_INTERVIEW_PROMPT_CONCISE;
@@ -97,7 +106,7 @@ export const PROVIDER_DEFAULTS: Record<AIProvider, ProviderDefault> = {
   deepseek:  { baseUrl: 'https://api.deepseek.com/v1',         textModel: 'deepseek-v4-flash',   visionModel: 'deepseek-v4-flash',    label: 'DeepSeek' },
   zhipu:     { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', textModel: 'glm-4-plus',        visionModel: 'glm-4v-plus',          label: '智谱 GLM' },
   moonshot:  { baseUrl: 'https://api.moonshot.cn/v1',          textModel: 'moonshot-v1-8k',      visionModel: 'moonshot-v1-8k-vision', label: 'Moonshot' },
-  qwen:      { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen-vl-plus', label: '通义千问' },
+  qwen:      { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen-vl-max', label: '通义千问' },
   custom:    { baseUrl: '',                                    textModel: '',                    visionModel: '',                     label: '自定义' },
 };
 

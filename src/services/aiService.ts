@@ -210,17 +210,44 @@ export async function visionChat(
     if (!examConfig) {
       throw new Error(`未知的题型：${examType}`);
     }
-    const recognizedText = await extractTextFromImage(imageBase64);
-    if (!recognizedText) {
-      throw new Error('未能从截图中识别出文字。请框选完整题干、放大后再试。');
-    }
-    const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}\n\n以下是从截图识别出的题目文字：\n${recognizedText}`;
-    return serverManagedChat([
+    const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}`;
+    const dataUrl = `data:image/png;base64,${imageBase64}`;
+
+    const messages: ChatMessage[] = [
       {
         role: 'user',
-        content: userPrompt,
+        content: [
+          { type: 'text', text: userPrompt },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ] as ChatMessageContentPart[],
       },
-    ], settings.streaming, 'text', onChunk);
+    ];
+
+    try {
+      return await serverManagedChat(messages, settings.streaming, 'vision', onChunk);
+    } catch (visionErr) {
+      console.warn('[aiService] 多模态视觉直连失败，尝试使用本地 OCR 降级重试:', visionErr);
+      try {
+        const recognizedText = await extractTextFromImage(imageBase64);
+        if (recognizedText) {
+          const fallbackPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}\n\n以下是从截图识别出的题目文字：\n${recognizedText}`;
+          return await serverManagedChat(
+            [
+              {
+                role: 'user',
+                content: fallbackPrompt,
+              },
+            ],
+            settings.streaming,
+            'text',
+            onChunk,
+          );
+        }
+      } catch (_) {
+        // ignore fallback error
+      }
+      throw visionErr;
+    }
   }
 
   const apiKey = getApiKey(settings);

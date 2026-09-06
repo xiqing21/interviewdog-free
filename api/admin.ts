@@ -442,8 +442,9 @@ async function testConfig(
   const { data: current } = await supabase.from('admin_app_config').select('value').eq('key', key).maybeSingle();
   const merged = mergeConfig(current?.value ?? {}, value);
   const startedAt = Date.now();
+  const testType = str(value.testType);
   const result = key === 'ai'
-    ? await testAiConfig(merged)
+    ? await testAiConfig(merged, testType)
     : key === 'asr'
       ? await testAsrConfig(merged)
       : key === 'seo'
@@ -486,11 +487,54 @@ async function testSeoConfig(config: Record<string, unknown>): Promise<ConfigTes
   return { ok: true, message: messages.join(' '), latencyMs: Date.now() - startedAt };
 }
 
-async function testAiConfig(config: Record<string, unknown>): Promise<ConfigTestResult> {
+async function testAiConfig(config: Record<string, unknown>, testType?: string): Promise<ConfigTestResult> {
   const apiKey = str(config.apiKey);
   const baseUrl = (str(config.baseUrl) || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
-  const model = str(config.textModel) || 'deepseek-chat';
+  const textModel = str(config.textModel) || 'deepseek-chat';
+  const visionModel = str(config.visionModel) || str(config.textModel) || 'gpt-4o';
   if (!apiKey) return { ok: false, message: '未配置 AI API Key。' };
+
+  // 1x1 透明 PNG 用于快速测试多模态图像接收能力
+  const TINY_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+  // 仅测试视觉模型
+  if (testType === 'vision') {
+    const startedAt = Date.now();
+    try {
+      const upstream = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: visionModel,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: '请确认是否能接收图片，回复OK即可' },
+                { type: 'image_url', image_url: { url: TINY_PNG_DATA_URL } },
+              ],
+            },
+          ],
+          max_tokens: 10,
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const latencyMs = Date.now() - startedAt;
+      if (upstream.ok) {
+        return { ok: true, message: `视觉模型 (${visionModel}) 测试成功！识图响应正常，延迟 ${latencyMs}ms。`, latencyMs };
+      }
+      const text = await upstream.text().catch(() => '');
+      return { ok: false, message: `视觉模型 (${visionModel}) 报错：HTTP ${upstream.status} ${text}`, latencyMs };
+    } catch (err) {
+      return { ok: false, message: `视觉模型测试超时或网络错误：${err instanceof Error ? err.message : '未知错误'}` };
+    }
+  }
+
+  // 默认或文本测试
   const startedAt = Date.now();
   const upstream = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -499,7 +543,7 @@ async function testAiConfig(config: Record<string, unknown>): Promise<ConfigTest
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model,
+      model: textModel,
       messages: [{ role: 'user', content: 'Hi' }],
       max_tokens: 5,
       stream: false,
@@ -507,9 +551,11 @@ async function testAiConfig(config: Record<string, unknown>): Promise<ConfigTest
     signal: AbortSignal.timeout(15_000),
   });
   const latencyMs = Date.now() - startedAt;
-  if (upstream.ok) return { ok: true, message: `AI 连接成功，延迟 ${latencyMs}ms。`, latencyMs };
+  if (upstream.ok) {
+    return { ok: true, message: `文本模型 (${textModel}) 连接成功，延迟 ${latencyMs}ms。`, latencyMs };
+  }
   const text = await upstream.text().catch(() => '');
-  return { ok: false, message: text || `AI 测试失败：HTTP ${upstream.status}`, latencyMs };
+  return { ok: false, message: text || `文本模型测试失败：HTTP ${upstream.status}`, latencyMs };
 }
 
 async function testAsrConfig(config: Record<string, unknown>): Promise<ConfigTestResult> {

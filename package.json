@@ -2,7 +2,7 @@
   "name": "interviewdog-free",
   "productName": "MianshiZhu Pro",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {

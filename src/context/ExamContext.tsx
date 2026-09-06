@@ -12,12 +12,11 @@ import {
   type ReactNode,
 } from 'react';
 import type { ExamRecord, ExamType } from '../types';
-import { STORAGE_KEYS, MAX_EXAM_RECORDS, EXAM_TYPES } from '../constants';
+import { STORAGE_KEYS, MAX_EXAM_RECORDS } from '../constants';
 import * as storageService from '../services/storageService';
 import * as captureService from '../services/captureService';
 import { onGlobalScreenshot } from '../services/desktopWindowService';
-import { chat } from '../services/aiService';
-import { extractTextFromImage } from '../services/ocrService';
+import { visionChat } from '../services/aiService';
 import { useSettings } from '../hooks/useSettings';
 
 // ===== State Type =====
@@ -217,15 +216,8 @@ export function ExamProvider({ children }: ExamProviderProps) {
 
     let accumulated = '';
     try {
-      const recognizedText = await extractTextFromImage(image);
-      if (!recognizedText) {
-        throw new Error('未能从截图中识别出文字。请框选完整题干、放大后再试。');
-      }
-      const examConfig = EXAM_TYPES.find((item) => item.key === examType);
-      if (!examConfig) throw new Error(`未知的题型：${examType}`);
       const settings = aiSettingsRef.current;
-      const prompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}\n\n以下是从截图识别出的题目文字：\n${recognizedText}`;
-      await chat([{ role: 'user', content: prompt }], settings, (chunk: string) => {
+      await visionChat(image, examType, settings, (chunk: string) => {
         accumulated += chunk;
         dispatch({ type: 'SET_CURRENT_ANSWER', payload: accumulated });
         if (recordId) {
