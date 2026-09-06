@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Dialog,
@@ -10,12 +11,14 @@ import {
   Divider,
   Stack,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useAuth } from '../../hooks/useAuth';
 import { COMMERCIAL_MODE, FREE_TRIAL_MINUTES } from '../../config/commercial';
+import { getUserProfileInfo } from '../../lib/userProfileHelper';
 
 function GoogleIcon() {
   return (
@@ -94,12 +97,71 @@ export function AuthPanel() {
   };
 
   if (user) {
+    const profile = getUserProfileInfo(user.id || user.email || '');
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 180 }} noWrap>
-          {user.email}
-        </Typography>
-        <Button size="small" startIcon={<LogoutIcon />} onClick={() => { void signOut(); }} disabled={loading}>
+        <Tooltip title={`登录账号: ${user.email} (点击可管理/退出)`}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.8,
+              py: 0.3,
+              px: 0.8,
+              borderRadius: '20px',
+              border: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              cursor: 'default',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+            }}
+          >
+            {/* 潮流个性猪猪微头像 */}
+            <Avatar
+              sx={{
+                width: 24,
+                height: 24,
+                fontSize: '13px',
+                background: profile.avatarBg,
+                color: profile.avatarText,
+                boxShadow: `0 0 8px ${profile.avatarGlow}`,
+                border: '1px solid rgba(255,255,255,0.6)',
+              }}
+            >
+              {profile.emoji}
+            </Avatar>
+
+            {/* 精简、有辨识度的专属昵称 */}
+            <Typography
+              variant="caption"
+              fontWeight={700}
+              sx={{
+                maxWidth: 105,
+                color: 'text.primary',
+                letterSpacing: '0.02em',
+              }}
+              noWrap
+            >
+              {profile.displayName}
+            </Typography>
+          </Box>
+        </Tooltip>
+
+        <Button
+          size="small"
+          color="inherit"
+          onClick={() => { void signOut(); }}
+          disabled={loading}
+          sx={{
+            minWidth: 0,
+            px: 0.8,
+            py: 0.2,
+            fontSize: '0.75rem',
+            color: 'text.secondary',
+            '&:hover': { color: 'error.main' },
+          }}
+          startIcon={<LogoutIcon sx={{ fontSize: '14px !important' }} />}
+        >
           退出
         </Button>
       </Box>
