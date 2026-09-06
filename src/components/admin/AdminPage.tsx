@@ -2618,6 +2618,57 @@ function AiConfigConsole({
     setVisionModel(preset.model);
   };
 
+  // 实时模型发现状态
+  const [fetchingTextModels, setFetchingTextModels] = useState(false);
+  const [textModelList, setTextModelList] = useState<string[]>([]);
+  const [textFetchError, setTextFetchError] = useState<string | null>(null);
+
+  const [fetchingVisionModels, setFetchingVisionModels] = useState(false);
+  const [visionModelList, setVisionModelList] = useState<string[]>([]);
+  const [visionFetchError, setVisionFetchError] = useState<string | null>(null);
+
+  const handleFetchModels = async (channel: 'text' | 'vision') => {
+    if (channel === 'text') {
+      setFetchingTextModels(true);
+      setTextFetchError(null);
+      try {
+        const res = await adminRequest<{ ok: boolean; models?: string[]; error?: string }>('discoverModels', {
+          baseUrl: textBaseUrl,
+          apiKey: textApiKey,
+          channel: 'text',
+        });
+        if (res.ok && res.models?.length) {
+          setTextModelList(res.models);
+        } else {
+          setTextFetchError(res.error || '未返回可用模型列表');
+        }
+      } catch (err) {
+        setTextFetchError(err instanceof Error ? err.message : '获取失败');
+      } finally {
+        setFetchingTextModels(false);
+      }
+    } else {
+      setFetchingVisionModels(true);
+      setVisionFetchError(null);
+      try {
+        const res = await adminRequest<{ ok: boolean; models?: string[]; error?: string }>('discoverModels', {
+          baseUrl: visionBaseUrl,
+          apiKey: visionApiKey,
+          channel: 'vision',
+        });
+        if (res.ok && res.models?.length) {
+          setVisionModelList(res.models);
+        } else {
+          setVisionFetchError(res.error || '未返回可用模型列表');
+        }
+      } catch (err) {
+        setVisionFetchError(err instanceof Error ? err.message : '获取失败');
+      } finally {
+        setFetchingVisionModels(false);
+      }
+    }
+  };
+
   return (
     <Paper
       component="form"
@@ -2691,6 +2742,7 @@ function AiConfigConsole({
                 value={textBaseUrl}
                 onChange={(e) => setTextBaseUrl(e.target.value)}
                 placeholder="https://api.deepseek.com/v1"
+                InputLabelProps={{ shrink: true }}
               />
 
               <TextField
@@ -2701,19 +2753,60 @@ function AiConfigConsole({
                 fullWidth
                 value={textApiKey}
                 onChange={(e) => setTextApiKey(e.target.value)}
-                placeholder={textApiKey ? '留空不改，填入新值后覆盖' : 'sk-...'}
-                helperText="DeepSeek 或其他文本大模型的 API 密钥"
+                placeholder={textApiKey ? '留空不改（使用服务端数据库中已保存的密匙）' : 'sk-...'}
+                helperText="DeepSeek API Key（若显示圆点，说明服务端已安全保存过此 Key）"
+                InputLabelProps={{ shrink: true }}
               />
 
-              <TextField
-                name="textModel"
-                label="文本模型名称"
-                size="small"
-                fullWidth
-                value={textModel}
-                onChange={(e) => setTextModel(e.target.value)}
-                placeholder="deepseek-chat"
-              />
+              <Box>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    name="textModel"
+                    label="文本模型名称"
+                    size="small"
+                    fullWidth
+                    value={textModel}
+                    onChange={(e) => setTextModel(e.target.value)}
+                    placeholder="deepseek-chat"
+                    helperText="官方标准模型名：deepseek-chat (V3/V4)，亦可点击右侧刷新获取服务商全部模型"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={fetchingTextModels ? <CircularProgress size={14} /> : <RefreshIcon />}
+                    onClick={() => handleFetchModels('text')}
+                    disabled={fetchingTextModels}
+                    sx={{ minWidth: 110, whiteSpace: 'nowrap', alignSelf: 'flex-start', mt: 0.2 }}
+                  >
+                    实时获取
+                  </Button>
+                </Stack>
+                {textFetchError && (
+                  <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                    {textFetchError}
+                  </Typography>
+                )}
+                {textModelList.length > 0 && (
+                  <Box sx={{ mt: 1, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                    <Typography variant="caption" fontWeight={600} display="block" sx={{ mb: 0.5 }}>
+                      服务商返回的在线可用模型（点击直接选择填入）：
+                    </Typography>
+                    <Stack direction="row" spacing={0.6} sx={{ flexWrap: 'wrap', gap: 0.6, maxHeight: 100, overflowY: 'auto' }}>
+                      {textModelList.map((m) => (
+                        <Chip
+                          key={m}
+                          label={m}
+                          size="small"
+                          color={textModel === m ? 'primary' : 'default'}
+                          onClick={() => setTextModel(m)}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Box>
 
               {textTestResult && (
                 <Alert severity={textTestResult.ok ? 'success' : 'error'} sx={{ py: 0.5 }}>
@@ -2789,6 +2882,7 @@ function AiConfigConsole({
                 value={visionBaseUrl}
                 onChange={(e) => setVisionBaseUrl(e.target.value)}
                 placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+                InputLabelProps={{ shrink: true }}
               />
 
               <TextField
@@ -2799,19 +2893,61 @@ function AiConfigConsole({
                 fullWidth
                 value={visionApiKey}
                 onChange={(e) => setVisionApiKey(e.target.value)}
-                placeholder={visionApiKey ? '留空不改，填入新值后覆盖' : 'sk-...'}
+                placeholder={visionApiKey ? '留空不改（使用服务端数据库中已保存的密匙）' : 'sk-...'}
                 helperText="阿里百炼 DashScope 或 火山引擎 的 API 密钥"
+                InputLabelProps={{ shrink: true }}
               />
 
-              <TextField
-                name="visionModel"
-                label="多模态视觉模型名称"
-                size="small"
-                fullWidth
-                value={visionModel}
-                onChange={(e) => setVisionModel(e.target.value)}
-                placeholder="qwen-vl-max / doubao-vision-pro-32k"
-              />
+              <Box>
+                <Stack direction="row" spacing={1} alignItems="center">
+                  <TextField
+                    name="visionModel"
+                    label="多模态视觉模型名称"
+                    size="small"
+                    fullWidth
+                    value={visionModel}
+                    onChange={(e) => setVisionModel(e.target.value)}
+                    placeholder="qwen-vl-max / doubao-vision-pro-32k"
+                    helperText="必须为支持 Vision 的模型（推荐 qwen-vl-max / qwen-vl-plus）"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    color="secondary"
+                    startIcon={fetchingVisionModels ? <CircularProgress size={14} /> : <RefreshIcon />}
+                    onClick={() => handleFetchModels('vision')}
+                    disabled={fetchingVisionModels}
+                    sx={{ minWidth: 110, whiteSpace: 'nowrap', alignSelf: 'flex-start', mt: 0.2 }}
+                  >
+                    实时获取
+                  </Button>
+                </Stack>
+                {visionFetchError && (
+                  <Typography variant="caption" color="warning.main" display="block" sx={{ mt: 0.5 }}>
+                    {visionFetchError}
+                  </Typography>
+                )}
+                {visionModelList.length > 0 && (
+                  <Box sx={{ mt: 1, p: 1, bgcolor: 'action.hover', borderRadius: 1 }}>
+                    <Typography variant="caption" fontWeight={600} display="block" sx={{ mb: 0.5 }}>
+                      服务商返回的在线可用模型（点击直接选择填入）：
+                    </Typography>
+                    <Stack direction="row" spacing={0.6} sx={{ flexWrap: 'wrap', gap: 0.6, maxHeight: 100, overflowY: 'auto' }}>
+                      {visionModelList.map((m) => (
+                        <Chip
+                          key={m}
+                          label={m}
+                          size="small"
+                          color={visionModel === m ? 'secondary' : 'default'}
+                          onClick={() => setVisionModel(m)}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+              </Box>
 
               {visionTestResult && (
                 <Alert severity={visionTestResult.ok ? 'success' : 'error'} sx={{ py: 0.5 }}>
@@ -2829,7 +2965,7 @@ function AiConfigConsole({
                 }}
                 sx={{ mt: 'auto' }}
               >
-                测试视觉识图 (Vision Test)
+                测试视觉识图 (实测算法截图)
               </Button>
             </Stack>
           </Paper>
@@ -2894,6 +3030,7 @@ function ConfigForm({
                 minRows={isMultilineSecret ? 4 : undefined}
                 defaultValue={String(values[name] ?? '')}
                 placeholder={/key|token|secret/i.test(name) ? '留空不改，填入新值后保存' : undefined}
+                InputLabelProps={{ shrink: true }}
               />
             );
           })()

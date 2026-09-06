@@ -44,7 +44,8 @@ type AdminAction =
   | 'batchDeleteUnusedByBatch'
   | 'adminRedeemCardKey'
   | 'updateCardKeyNote'
-  | 'markCardKeysListed';
+  | 'markCardKeysListed'
+  | 'discoverModels';
 
 type AdminUser = {
   id: string;
@@ -129,6 +130,9 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     listed?: string;
     listedChannel?: string;
     ids?: string[];
+    baseUrl?: string;
+    apiKey?: string;
+    channel?: 'text' | 'vision';
   };
 
   try {
@@ -266,9 +270,79 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       response.status(200).json(await markCardKeysListed(supabase, actor, body));
       return;
     }
+    if (body.action === 'discoverModels') {
+      response.status(200).json(await discoverModelsFromUpstream(supabase, body));
+      return;
+    }
     response.status(400).json({ error: '未知后台操作。' });
   } catch (err) {
     response.status(500).json({ error: err instanceof Error ? err.message : '后台操作失败。' });
+  }
+}
+
+async function discoverModelsFromUpstream(
+  supabase: AdminSupabaseClient,
+  body: { baseUrl?: string; apiKey?: string; channel?: 'text' | 'vision' },
+) {
+  let baseUrl = str(body.baseUrl);
+  let apiKey = str(body.apiKey);
+
+  // 如果前端传过来的 apiKey 为空或掩码，则从数据库当前配置中取
+  if (!apiKey || apiKey === '********') {
+    const { data: current } = await supabase.from('admin_app_config').select('value').eq('key', 'ai').maybeSingle();
+    const config = (current?.value ?? {}) as Record<string, unknown>;
+    if (body.channel === 'vision') {
+      apiKey = str(config.visionApiKey) || str(config.apiKey);
+      if (!baseUrl) baseUrl = str(config.visionBaseUrl) || str(config.baseUrl);
+    } else {
+      apiKey = str(config.textApiKey) || str(config.apiKey);
+      if (!baseUrl) baseUrl = str(config.textBaseUrl) || str(config.baseUrl);
+    }
+  }
+
+  if (!baseUrl) {
+    baseUrl = body.channel === 'vision'
+      ? 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+      : 'https://api.deepseek.com/v1';
+  }
+
+  if (!apiKey) {
+    return { ok: false, error: '未找到可用的 API Key，请先输入 API Key。' };
+  }
+
+  const endpoint = `${baseUrl.replace(/\/+$/, '')}/models`;
+  try {
+    const upstream = await fetch(endpoint, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!upstream.ok) {
+      const errText = await upstream.text().catch(() => '');
+      return { ok: false, error: `服务商端点返回错误：HTTP ${upstream.status} ${errText.slice(0, 200)}` };
+    }
+
+    const data = (await upstream.json().catch(() => ({}))) as any;
+    let list: Array<any> = [];
+    if (Array.isArray(data?.data)) {
+      list = data.data;
+    } else if (Array.isArray(data?.models)) {
+      list = data.models;
+    } else if (Array.isArray(data)) {
+      list = data;
+    }
+
+    const modelIds = list
+      .map((item) => (typeof item === 'string' ? item : item?.id))
+      .filter((id): id is string => typeof id === 'string' && Boolean(id));
+
+    return { ok: true, models: modelIds };
+  } catch (err) {
+    return { ok: false, error: `拉取失败：${err instanceof Error ? err.message : '网络连接超时'}` };
   }
 }
 
@@ -504,8 +578,8 @@ async function testAiConfig(config: Record<string, unknown>, testType?: string):
     return { ok: false, message: isVision ? '未配置笔试截图视觉通道的 API Key。' : '未配置面试文本通道的 API Key。' };
   }
 
-  // 1x1 透明 PNG 用于快速测试多模态图像接收能力
-  const TINY_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  // 320x180 真实模拟笔试题截图（含模拟终端、代码行及干扰项），完全符合百炼/豆包分辨率尺寸规范（>10x10）
+  const MOCK_EXAM_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUAAAAC0CAIAAABqhmJGAAACrklEQVR4nO3bsWkdURRF0V+GImUC48Ch+3WixtyIWzBPGs5sZsEqYB6cnQzc14+fv4Go1/wLgGMChjABQ5iAIUzAECZgCBMwhAkYwgQMYQKGMAFDmIAhTMAQJmAIEzCECRjCBAxhAoYwAUPY6/39FxAlYAgTMIQJGMIEDGEChjABQ5iAIUzAECZgCBMwhH014Le3D+ArBAxhAoYwAUOYgCFMwBAmYAgTMIQJGMIEDGEChjABQ5iAIUzAECZgCBMwhAkYwgQMYQKGsGXAn3//wPeaFyVgODcvSsBwbl6UgOHcvCgBw7l5UQKGc/OiBAzn5kU9KOD546FOwBAmYAgTMIQJGMIEDGEChjABQ5iAIUzAECZgCBMwhAkYwpYBzy9X4A4EDGEChjABQ5iAIawa8BU/5eBRBAxhAoYwAUOYgCFMwBAmYAgTMIQJGMIEDGEChjABQ5iAIUzAECZgCFsGPL/D5J7mVYQImNuZVxEiYG5nXkWIgLmdeRUhAuZ25lWELAOePx7qBAxhAoYwAUOYgCFMwBAmYAgTMIQJGMIEDGEChjABQ5iAIUzAECZgCFsGPL87hf83b1XAcG7eqoDh3LxVAcO5easChnPzVm8X8PzxUCdgCBMwhAkYwgQMYQKGMAFDmIAhTMAQJmAIEzCECRjCBAxhAoYwAUPYMuD5hSfXmS/7IQTMJebLfggBc4n5sh9CwFxivuyHEDCXmC/7IQTMJebLfggBc4n5sh9iGfD88VAnYAgTMIQJGMIEDGEChjABQ5iAIUzAECZgCBMwhAkYwgQMYQKGMAFDmIAhTMAQJmAIEzCECRjCBAxhAoYwAUPYMmBgSMAQJmAIEzCECRjCBAxhAoYwAUOYgCFMwBAmYAgTMIQJGMIEDGEChjABQ5iAIUzAECZgCBMwhP0DBo1j5Z0r/1gAAAAASUVORK5CYII=';
 
   // 测试视觉模型
   if (isVision) {
@@ -523,19 +597,21 @@ async function testAiConfig(config: Record<string, unknown>, testType?: string):
             {
               role: 'user',
               content: [
-                { type: 'text', text: '请确认是否能接收图片，回复OK即可' },
-                { type: 'image_url', image_url: { url: TINY_PNG_DATA_URL } },
+                { type: 'text', text: '请分析这张带有界面干扰的笔试模拟图，提取核心题目并用一句话简要回复。' },
+                { type: 'image_url', image_url: { url: MOCK_EXAM_PNG_DATA_URL } },
               ],
             },
           ],
-          max_tokens: 10,
+          max_tokens: 60,
           stream: false,
         }),
         signal: AbortSignal.timeout(20_000),
       });
       const latencyMs = Date.now() - startedAt;
       if (upstream.ok) {
-        return { ok: true, message: `多模态视觉模型 (${visionModel}) 测试成功！端点: ${baseUrl}，响应正常，延迟 ${latencyMs}ms。`, latencyMs };
+        const json = (await upstream.json().catch(() => null)) as any;
+        const reply = json?.choices?.[0]?.message?.content?.slice(0, 100) || '识图响应正常';
+        return { ok: true, message: `多模态视觉模型 (${visionModel}) 测试成功！识图响应正常 [${reply}]，延迟 ${latencyMs}ms。`, latencyMs };
       }
       const text = await upstream.text().catch(() => '');
       return { ok: false, message: `视觉模型 (${visionModel}) 报错：HTTP ${upstream.status} ${text}`, latencyMs };
