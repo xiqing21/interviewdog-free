@@ -39,6 +39,8 @@ import ComputerIcon from '@mui/icons-material/Computer';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import SendIcon from '@mui/icons-material/Send';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
+import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 import { MessageScroller } from '@shadcn/react/message-scroller';
 import { Link } from 'react-router-dom';
 import { QACard } from './QACard';
@@ -81,6 +83,8 @@ export function InterviewPage() {
     deleteQuestion,
     generateReview,
     endInterview,
+    isGenerationPaused,
+    toggleGenerationPause,
   } = useInterview();
   const [manualInput, setManualInput] = useState('');
   const [showSetup, setShowSetup] = useState(!activeSession);
@@ -400,6 +404,20 @@ export function InterviewPage() {
             color={isDesktop || systemAudioReady ? 'success' : 'default'}
             icon={isDesktop || systemAudioReady ? <CheckCircleIcon /> : <ComputerIcon />}
             label={isDesktop ? (isListening ? '系统音频已连接' : '系统音频待启动') : (systemAudioReady ? '面试窗口已选择' : '未选择面试窗口')}
+          />
+          {/* AI 自动应答拦截/恢复开关 */}
+          <Chip
+            size="small"
+            color={isGenerationPaused ? 'warning' : 'primary'}
+            variant={isGenerationPaused ? 'filled' : 'outlined'}
+            icon={isGenerationPaused ? <PauseCircleOutlineIcon fontSize="small" /> : <PlayCircleOutlineIcon fontSize="small" />}
+            label={isGenerationPaused ? '自动应答已拦截 (⌘⇧A)' : '自动应答开启 (⌘⇧A)'}
+            onClick={() => toggleGenerationPause()}
+            sx={{
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '0.74rem',
+            }}
           />
           {activeSession.targetRole && (
             <Chip size="small" variant="outlined" label={`岗位：${activeSession.targetRole}`} />

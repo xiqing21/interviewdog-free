@@ -31,7 +31,10 @@ import {
   getSelectedCaptureSourceId,
 } from '../../services/desktopWindowService';
 import { useExam } from '../../hooks/useExam';
+import { useInterview } from '../../hooks/useInterview';
 import { WindowSelectorModal } from './WindowSelectorModal';
+import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
+import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
 
 export function DesktopHudToolbar() {
   const [available, setAvailable] = useState(false);
@@ -43,9 +46,11 @@ export function DesktopHudToolbar() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
 
   const { captureAndSolve, isProcessing } = useExam();
+  const { isGenerationPaused, toggleGenerationPause } = useInterview();
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const shotKeyHint = isMac ? '⌘+⇧+S' : 'Ctrl+Shift+S';
   const ghostKeyHint = isMac ? '⌘+⇧+P' : 'Ctrl+Shift+P';
+  const answerKeyHint = isMac ? '⌘+⇧+A' : 'Ctrl+Shift+A';
 
   useEffect(() => {
     const isDesk = isDesktopApp();
@@ -215,6 +220,35 @@ export function DesktopHudToolbar() {
             }}
           >
             {ignoreMouseState ? `已穿透 (${ghostKeyHint})` : '鼠标穿透'}
+          </Button>
+        </Tooltip>
+
+        <Box sx={{ width: 1, height: 18, bgcolor: 'divider', mx: 0.2 }} />
+
+        {/* 自动生成/暂停生成切换开关 (快捷键 ⌘+Shift+A) */}
+        <Tooltip
+          title={
+            isGenerationPaused
+              ? `AI自动应答已拦截（语音识别持续记录中，不漏任何面试官提问）。按 ${answerKeyHint} 或点击恢复自动解答`
+              : `AI自动应答开启中。面试官提问结束后将自动生成答案。按 ${answerKeyHint} 或点击可快速暂停/恢复`
+          }
+        >
+          <Button
+            size="small"
+            variant={isGenerationPaused ? 'contained' : 'outlined'}
+            color={isGenerationPaused ? 'warning' : 'inherit'}
+            startIcon={isGenerationPaused ? <PauseCircleOutlineIcon /> : <PlayCircleOutlineIcon />}
+            onClick={() => toggleGenerationPause()}
+            sx={{
+              px: 1,
+              py: 0.2,
+              fontSize: '0.72rem',
+              textTransform: 'none',
+              minWidth: 'auto',
+              fontWeight: isGenerationPaused ? 700 : 500,
+            }}
+          >
+            {isGenerationPaused ? `应答暂停 (${answerKeyHint})` : `自动应答 (${answerKeyHint})`}
           </Button>
         </Tooltip>
 

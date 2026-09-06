@@ -10,6 +10,7 @@ export interface HotkeyCallbacks {
   onScrollUp?: () => void;
   onScrollDown?: () => void;
   onToggleMode?: () => void;
+  onToggleAnswerPause?: () => void;
 }
 
 export function useHotkeys(callbacks: HotkeyCallbacks): void {
@@ -18,9 +19,15 @@ export function useHotkeys(callbacks: HotkeyCallbacks): void {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!e.ctrlKey || !e.shiftKey) return;
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (!isCmdOrCtrl || !e.shiftKey) return;
 
       switch (e.key) {
+        case 'A':
+        case 'a':
+          e.preventDefault();
+          ref.current.onToggleAnswerPause?.();
+          break;
         case 'S':
         case 's':
           e.preventDefault();

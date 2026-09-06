@@ -29,6 +29,7 @@ export const STORAGE_KEYS = {
   RESUME_JD: 'interviewdog_resume_jd',
   KNOWLEDGE_PROFILE: 'interviewdog_knowledge_profile',
   LAST_AUTH_EMAIL: 'interviewdog_last_auth_email',
+  GENERATION_PAUSED: 'interviewdog_generation_paused',
 } as const;
 
 // ===== 系统提示词 =====

@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld('desktopWindow', {
     ipcRenderer.on('desktop-shortcut:toggle-ignore-mouse', sub);
     return () => ipcRenderer.removeListener('desktop-shortcut:toggle-ignore-mouse', sub);
   },
+  onGlobalToggleGenerationPause: (callback) => {
+    const sub = () => callback();
+    ipcRenderer.on('desktop-shortcut:toggle-generation-pause', sub);
+    return () => ipcRenderer.removeListener('desktop-shortcut:toggle-generation-pause', sub);
+  },
   onIgnoreMouseChanged: (callback) => {
     const sub = (_event, state) => callback(state);
     ipcRenderer.on('desktop-window:ignore-mouse-changed', sub);

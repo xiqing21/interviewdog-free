@@ -23,6 +23,7 @@ interface DesktopWindowBridge {
   captureScreen?: (sourceId?: string) => Promise<string>;
   onGlobalScreenshot?: (callback: () => void) => () => void;
   onGlobalToggleIgnoreMouse?: (callback: () => void) => () => void;
+  onGlobalToggleGenerationPause?: (callback: () => void) => () => void;
   onIgnoreMouseChanged?: (callback: (state: boolean) => void) => () => void;
   startSystemAudio: () => Promise<{ ok: boolean; alreadyRunning?: boolean; helperPath?: string; screenStatus?: string } | void>;
   stopSystemAudio: () => Promise<void>;

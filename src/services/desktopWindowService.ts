@@ -116,6 +116,13 @@ export function onGlobalToggleIgnoreMouse(callback: () => void): () => void {
   return window.desktopWindow.onGlobalToggleIgnoreMouse(callback);
 }
 
+export function onGlobalToggleGenerationPause(callback: () => void): () => void {
+  if (!isDesktopApp() || !window.desktopWindow?.onGlobalToggleGenerationPause) {
+    return () => {};
+  }
+  return window.desktopWindow.onGlobalToggleGenerationPause(callback);
+}
+
 export function onIgnoreMouseChanged(callback: (state: boolean) => void): () => void {
   if (!isDesktopApp() || !window.desktopWindow?.onIgnoreMouseChanged) {
     return () => {};

@@ -3,7 +3,7 @@
  * Registers global keyboard shortcuts and displays the privacy dialog on first launch.
  */
 
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Box } from '@mui/material';
 import { Sidebar } from './Sidebar';
@@ -13,21 +13,37 @@ import { PrivacyDialog } from '../common/PrivacyDialog';
 import { OnboardingGuide } from '../common/OnboardingGuide';
 import { useSettings } from '../../hooks/useSettings';
 import { useExam } from '../../hooks/useExam';
+import { useInterview } from '../../hooks/useInterview';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkeys } from '../../hooks/useHotkeys';
+import { onGlobalToggleGenerationPause } from '../../services/desktopWindowService';
 import { publicAssetUrl } from '../../lib/assets';
 
 export function AppLayout() {
   const { appSettings, acknowledgePrivacy } = useSettings();
   const { captureAndSolve } = useExam();
+  const { toggleGenerationPause } = useInterview();
   const { toggleTheme } = useTheme();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLDivElement>(null);
+
+  // 监听原生全局快捷键（Cmd+Shift+A / Ctrl+Shift+A）
+  useEffect(() => {
+    const unsub = onGlobalToggleGenerationPause(() => {
+      toggleGenerationPause();
+    });
+    return () => {
+      unsub();
+    };
+  }, [toggleGenerationPause]);
 
   useHotkeys({
     onScreenshot: () => {
       navigate('/exam');
       void captureAndSolve();
+    },
+    onToggleAnswerPause: () => {
+      toggleGenerationPause();
     },
     onScrollUp: () => {
       mainRef.current?.scrollBy({ top: -300, behavior: 'smooth' });

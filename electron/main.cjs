@@ -179,6 +179,16 @@ function registerGlobalShortcuts() {
   } catch (err) {
     console.error(`[main] Failed to register shortcut ${passthroughKey}:`, err);
   }
+
+  const toggleAnswerKey = isMac ? 'Command+Shift+A' : 'Ctrl+Shift+A';
+  try {
+    globalShortcut.register(toggleAnswerKey, () => {
+      console.log(`[main] Global shortcut triggered: ${toggleAnswerKey}`);
+      mainWindow?.webContents.send('desktop-shortcut:toggle-generation-pause');
+    });
+  } catch (err) {
+    console.error(`[main] Failed to register shortcut ${toggleAnswerKey}:`, err);
+  }
 }
 
 app.setName(APP_TITLE);

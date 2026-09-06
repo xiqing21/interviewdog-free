@@ -67,6 +67,7 @@ export interface InterviewState {
   isMerging: boolean;
   speechSupported: boolean;
   systemAudioReady: boolean;
+  isGenerationPaused: boolean;
   error: string | null;
 }
 
@@ -80,6 +81,7 @@ type InterviewAction =
   | { type: 'SET_PROCESSING'; payload: boolean }
   | { type: 'SET_MERGING'; payload: boolean }
   | { type: 'SET_SYSTEM_AUDIO_READY'; payload: boolean }
+  | { type: 'SET_GENERATION_PAUSED'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null };
 
 function getInitialState(): InterviewState {
@@ -92,6 +94,7 @@ function getInitialState(): InterviewState {
     isMerging: false,
     speechSupported: speechService.isSupported() || doubaoAsrService.isSupported(),
     systemAudioReady: systemAudioService.isActive(),
+    isGenerationPaused: storageService.get<boolean>(STORAGE_KEYS.GENERATION_PAUSED, false),
     error: null,
   };
 }
@@ -107,6 +110,7 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
     case 'SET_PROCESSING': return { ...state, isProcessing: action.payload };
     case 'SET_MERGING': return { ...state, isMerging: action.payload };
     case 'SET_SYSTEM_AUDIO_READY': return { ...state, systemAudioReady: action.payload };
+    case 'SET_GENERATION_PAUSED': return { ...state, isGenerationPaused: action.payload };
     case 'SET_ERROR': return { ...state, error: action.payload };
     default: return state;
   }
@@ -132,6 +136,8 @@ export interface InterviewContextValue extends InterviewState {
   prepareSystemAudioShare: () => Promise<boolean>;
   generateReview: () => Promise<void>;
   endInterview: () => Promise<void>;
+  toggleGenerationPause: () => boolean;
+  setGenerationPaused: (paused: boolean) => void;
   clearHistory: () => void;
 }
 
@@ -564,14 +570,59 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     return (2 * overlap) / (leftSet.size + rightSet.size);
   }
 
+  /**
+   * 面试官弱反馈/无意义短语气词黑名单
+   * 面试官说“嗯、好、可以、ok、不错”等仅作日常应答，不应作为面试提问触发 AI 生成答案
+   */
+  const WEAK_FEEDBACK_WORDS = new Set([
+    '嗯', '嗯嗯', '嗯嗯嗯', '噢', '哦', '哦哦', '好', '好的', '行', '行的',
+    '不错', '可以', '可以的', 'ok', 'okay', '对', '对的', '是的', '没错',
+    '没问题', '收到', '明白', '理解', '清楚', '原来如此', '这样啊', '好的好的',
+    '行行行', '了解', '了解了', '行吧', '好嘞', '得嘞',
+  ]);
+
+  /**
+   * 判断文本是否为弱反馈/简短语气词（非提问）
+   */
+  function isWeakFeedback(text: string): boolean {
+    const cleaned = text.trim().toLowerCase().replace(/[，。！？、,.!?;；:\s~～]/g, '');
+    if (!cleaned) return true;
+    if (WEAK_FEEDBACK_WORDS.has(cleaned)) return true;
+    // 字符极短 (< 5 字) 且由语气词、肯定词拼合
+    if (cleaned.length <= 4) {
+      const isAllFeedbackChars = /^[嗯噢哦好行对是不错可以ok呀呢吧嘛哈]+$/i.test(cleaned);
+      if (isAllFeedbackChars) return true;
+    }
+    return false;
+  }
+
+  /**
+   * 判定是否具备明确的提问特征
+   */
+  function hasExplicitQuestionSignal(text: string): boolean {
+    return /(吗|呢|么|什么|为什么|怎么|如何|介绍|讲讲|说说|讲一下|说一下|简述|谈谈|聊聊|项目|架构|实现|区别|原理|经历|方案|问题|请问|请问您|你觉得|对于|结合|深入|优化)/.test(text)
+      || /[?？]/.test(text);
+  }
+
   function isLikelyQuestionText(text: string): boolean {
+    // 优先过滤语气应答与反馈短语
+    if (isWeakFeedback(text)) {
+      return false;
+    }
+
     const normalized = normalizeTranscriptText(text);
-    if (normalized.length >= 8) return true;
-    return /(吗|呢|么|什么|为什么|怎么|如何|介绍|讲|说|项目|架构|实现|区别|原理|经历|方案|问题|请)/.test(text);
+    // 如果有明确的提问疑问词/句式，短句（如“说说这个项目？”、“为什么？”）也能识别为问题
+    if (hasExplicitQuestionSignal(text)) {
+      return normalized.length >= 3;
+    }
+
+    // 没有明显疑问词时，要求字数达到充实阈值（>= 9 个有效字），避免零散的句子碎片误触发
+    return normalized.length >= 9;
   }
 
   function buildTranscriptContext(): string {
-    const lines = transcriptRef.current.slice(-12);
+    // 裁剪转写上下文为最近 6 句，足够理解追问，同时防止 prompt 过长影响响应延迟
+    const lines = transcriptRef.current.slice(-6);
     if (lines.length === 0) return '';
     return lines
       .map((line) => `${line.speaker === 'interviewer' ? '面试官' : '我'}：${line.text}`)
@@ -644,15 +695,19 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     if (policy.includeHistory) {
       const allQA = sessionRef.current?.qaList ?? [];
       const itemIndex = allQA.findIndex((q) => q.id === id);
-      // 贴 JD 只保留上一轮，避免 Checkpoint/Watermark 等旧题把本题带跑；
-      // 追问仍能看到最近一题。普通生成继续用设置里的上下文窗口。
-      const historyWindow = mode === 'jd-align' ? 1 : settings.contextWindowSize;
-      const recentQA = allQA.slice(Math.max(0, itemIndex - historyWindow), itemIndex);
+      // 控制滑动窗口大小：最多只给最近 3 轮有效问答（且单轮回答裁剪），防止大模型上下文膨胀变慢
+      const maxHistoryCount = mode === 'jd-align' ? 1 : Math.min(3, settings.contextWindowSize || 3);
+      const recentQA = allQA.slice(Math.max(0, itemIndex - maxHistoryCount), itemIndex);
       for (const qa of recentQA) {
         messages.push({ role: 'user', content: qa.question });
-        if (qa.answer) messages.push({ role: 'assistant', content: qa.answer });
+        if (qa.answer) {
+          // 对历史长文本进行轻量压缩，只保留核心前 300 字符，杜绝越聊越慢
+          const compactedAnswer = qa.answer.length > 300 ? `${qa.answer.slice(0, 300)}...` : qa.answer;
+          messages.push({ role: 'assistant', content: compactedAnswer });
+        }
       }
     }
+    // 最近对话只给最近 4-6 句关键转写，保证轻快响应
     const transcriptContext = policy.includeTranscript ? buildTranscriptContext() : '';
     let searchResults: WebSearchResult[] = [];
     if (policy.includeSearch) {
@@ -718,6 +773,20 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const isGenerationPausedRef = useRef(state.isGenerationPaused);
+  isGenerationPausedRef.current = state.isGenerationPaused;
+
+  const setGenerationPaused = useCallback((paused: boolean) => {
+    storageService.set(STORAGE_KEYS.GENERATION_PAUSED, paused);
+    dispatch({ type: 'SET_GENERATION_PAUSED', payload: paused });
+  }, []);
+
+  const toggleGenerationPause = useCallback(() => {
+    const next = !isGenerationPausedRef.current;
+    setGenerationPaused(next);
+    return next;
+  }, [setGenerationPaused]);
+
   // ===== 问题合并逻辑 =====
   function flushMergeBuffer() {
     if (mergeBuffer.current.length > 0) {
@@ -725,6 +794,11 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       mergeBuffer.current = [];
       dispatch({ type: 'SET_MERGING', payload: false });
       dispatch({ type: 'SET_CURRENT_QUESTION', payload: merged });
+      // 如果用户开启了“暂停应答”（快捷键或按钮），仅落库文字，拦截大模型触发
+      if (isGenerationPausedRef.current) {
+        console.info('[flushMergeBuffer] 自动应答已暂停，拦截 AI 生成，文字已落库:', merged);
+        return;
+      }
       void sendQuestion(merged);
     }
   }
@@ -745,6 +819,11 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_INTERIM', payload: '' });
     addTranscriptLine({ id: generateId(), speaker: 'interviewer', text: question, timestamp: Date.now() });
     dispatch({ type: 'SET_MERGING', payload: false });
+    // 如果用户开启了“暂停应答”（快捷键或按钮），仅落库文字，拦截大模型触发
+    if (isGenerationPausedRef.current) {
+      console.info('[commitInterimQuestion] 自动应答已暂停，拦截 AI 生成，文字已落库:', question);
+      return question;
+    }
     void sendQuestion(question);
     return question;
   }
@@ -754,13 +833,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const normalized = normalizeTranscriptText(cleaned);
     if (!cleaned || !normalized || !isLikelyQuestionText(cleaned)) return;
 
-    if (normalized === pendingInterimNormalized.current) {
-      pendingInterimQuestion.current = cleaned;
-      return;
-    }
-
     pendingInterimQuestion.current = cleaned;
     pendingInterimNormalized.current = normalized;
+    // 持续收到增量语音文字时，立即重置静默倒计时；只有连续 1.5s 无新输入才触发
     clearInterimCommitTimer();
     interimCommitTimer.current = setTimeout(() => {
       commitInterimQuestion();
@@ -1469,6 +1544,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     prepareSystemAudioShare,
     generateReview,
     endInterview,
+    toggleGenerationPause,
+    setGenerationPaused,
     clearHistory,
   };
 
