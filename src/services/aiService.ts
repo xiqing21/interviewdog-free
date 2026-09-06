@@ -21,7 +21,6 @@ import { deobfuscate } from './cryptoService';
 import { API_TIMEOUT_MS, STREAM_TIMEOUT_MS } from '../constants';
 import { COMMERCIAL_MODE } from '../config/commercial';
 import { getApiUrl } from './apiHelper';
-import { extractTextFromImage } from './ocrService';
 
 /**
  * 从设置中解混淆 API Key
@@ -226,26 +225,7 @@ export async function visionChat(
     try {
       return await serverManagedChat(messages, settings.streaming, 'vision', onChunk);
     } catch (visionErr) {
-      console.warn('[aiService] 多模态视觉直连失败，尝试使用本地 OCR 降级重试:', visionErr);
-      try {
-        const recognizedText = await extractTextFromImage(imageBase64);
-        if (recognizedText) {
-          const fallbackPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}\n\n以下是从截图识别出的题目文字：\n${recognizedText}`;
-          return await serverManagedChat(
-            [
-              {
-                role: 'user',
-                content: fallbackPrompt,
-              },
-            ],
-            settings.streaming,
-            'text',
-            onChunk,
-          );
-        }
-      } catch (_) {
-        // ignore fallback error
-      }
+      console.error('[aiService] 多模态视觉直连失败:', visionErr);
       throw visionErr;
     }
   }
