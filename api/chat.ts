@@ -24,20 +24,44 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     return;
   }
 
-  const config = await loadAdminConfig<{ apiKey: string; baseUrl: string; textModel: string; visionModel: string }>('ai');
-  const apiKey = firstNonEmpty(config.apiKey, process.env.AI_API_KEY);
-  const baseUrl = firstNonEmpty(config.baseUrl, process.env.AI_BASE_URL, 'https://api.deepseek.com/v1').replace(/\/+$/, '');
-  const textModel = firstNonEmpty(config.textModel, process.env.AI_TEXT_MODEL, 'deepseek-chat');
-  const visionModel = firstNonEmpty(config.visionModel, process.env.AI_VISION_MODEL, textModel);
-  if (!apiKey) {
-    response.status(500).json({ error: 'Server AI API key is not configured.' });
-    return;
-  }
+  const config = await loadAdminConfig<{
+    apiKey?: string;
+    baseUrl?: string;
+    textApiKey?: string;
+    textBaseUrl?: string;
+    textModel?: string;
+    visionApiKey?: string;
+    visionBaseUrl?: string;
+    visionModel?: string;
+  }>('ai');
 
   const body = typeof request.body === 'string' ? JSON.parse(request.body) : request.body;
   const messages = body?.messages as ChatMessage[] | undefined;
   const stream = Boolean(body?.stream);
   const modelType = body?.modelType === 'vision' ? 'vision' : 'text';
+
+  // 区分通道获取配置：视觉通道与文本通道完全解耦
+  const isVision = modelType === 'vision';
+  const apiKey = isVision
+    ? firstNonEmpty(config.visionApiKey, config.apiKey, process.env.AI_VISION_API_KEY, process.env.AI_API_KEY)
+    : firstNonEmpty(config.textApiKey, config.apiKey, process.env.AI_TEXT_API_KEY, process.env.AI_API_KEY);
+
+  const baseUrl = (isVision
+    ? firstNonEmpty(config.visionBaseUrl, config.baseUrl, process.env.AI_VISION_BASE_URL, process.env.AI_BASE_URL, 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+    : firstNonEmpty(config.textBaseUrl, config.baseUrl, process.env.AI_TEXT_BASE_URL, process.env.AI_BASE_URL, 'https://api.deepseek.com/v1')
+  ).replace(/\/+$/, '');
+
+  const textModel = firstNonEmpty(config.textModel, process.env.AI_TEXT_MODEL, 'deepseek-chat');
+  const visionModel = firstNonEmpty(config.visionModel, process.env.AI_VISION_MODEL, 'qwen-vl-max');
+  const activeModel = isVision ? visionModel : textModel;
+
+  if (!apiKey) {
+    response.status(500).json({
+      error: isVision ? '笔试识图视觉模型 (Vision) 的 API Key 尚未配置。' : '面试文本大模型 (DeepSeek) 的 API Key 尚未配置。',
+    });
+    return;
+  }
+
   if (!Array.isArray(messages) || messages.length === 0) {
     response.status(400).json({ error: 'messages is required.' });
     return;
@@ -50,10 +74,10 @@ export default async function handler(request: ApiRequest, response: ApiResponse
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: modelType === 'vision' ? visionModel : textModel,
+      model: activeModel,
       messages,
       stream,
-      max_tokens: modelType === 'vision' ? 4096 : undefined,
+      max_tokens: isVision ? 4096 : undefined,
     }),
   });
 

@@ -2588,22 +2588,34 @@ function AiConfigConsole({
   textTestResult?: { ok: boolean; message: string };
   visionTestResult?: { ok: boolean; message: string };
 }) {
-  const [baseUrl, setBaseUrl] = useState(String(values.baseUrl ?? ''));
-  const [textModel, setTextModel] = useState(String(values.textModel ?? ''));
-  const [visionModel, setVisionModel] = useState(String(values.visionModel ?? ''));
-  const [apiKey, setApiKey] = useState(String(values.apiKey ?? ''));
+  // 文本通道状态（默认回退到通用配置或 DeepSeek）
+  const [textBaseUrl, setTextBaseUrl] = useState(String(values.textBaseUrl || values.baseUrl || 'https://api.deepseek.com/v1'));
+  const [textApiKey, setTextApiKey] = useState(String(values.textApiKey || values.apiKey || ''));
+  const [textModel, setTextModel] = useState(String(values.textModel || 'deepseek-chat'));
+
+  // 视觉通道状态（笔试截屏，默认回退到阿里百炼 Qwen-VL）
+  const [visionBaseUrl, setVisionBaseUrl] = useState(String(values.visionBaseUrl || values.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
+  const [visionApiKey, setVisionApiKey] = useState(String(values.visionApiKey || values.apiKey || ''));
+  const [visionModel, setVisionModel] = useState(String(values.visionModel || 'qwen-vl-max'));
 
   useEffect(() => {
-    setBaseUrl(String(values.baseUrl ?? ''));
-    setTextModel(String(values.textModel ?? ''));
-    setVisionModel(String(values.visionModel ?? ''));
-    setApiKey(String(values.apiKey ?? ''));
+    setTextBaseUrl(String(values.textBaseUrl || values.baseUrl || 'https://api.deepseek.com/v1'));
+    setTextApiKey(String(values.textApiKey || values.apiKey || ''));
+    setTextModel(String(values.textModel || 'deepseek-chat'));
+
+    setVisionBaseUrl(String(values.visionBaseUrl || values.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
+    setVisionApiKey(String(values.visionApiKey || values.apiKey || ''));
+    setVisionModel(String(values.visionModel || 'qwen-vl-max'));
   }, [values]);
 
-  const applyPreset = (preset: { baseUrl: string; textModel: string; visionModel: string }) => {
-    setBaseUrl(preset.baseUrl);
-    setTextModel(preset.textModel);
-    setVisionModel(preset.visionModel);
+  const applyTextPreset = (preset: { baseUrl: string; model: string }) => {
+    setTextBaseUrl(preset.baseUrl);
+    setTextModel(preset.model);
+  };
+
+  const applyVisionPreset = (preset: { baseUrl: string; model: string }) => {
+    setVisionBaseUrl(preset.baseUrl);
+    setVisionModel(preset.model);
   };
 
   return (
@@ -2618,161 +2630,221 @@ function AiConfigConsole({
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
         <SettingsSuggestIcon color="primary" />
         <Typography variant="h6" fontWeight={800}>
-          商业 AI 模型与多模态配置中心
+          商业 AI 模型双通道独立配置中心
         </Typography>
       </Stack>
 
-      <Alert severity="info" sx={{ mb: 2 }}>
-        💡 <strong>全端免配即用</strong>：此处为平台唯一的商业大模型配置。保存后，所有普通用户（<strong>Mac客户端、Windows客户端、网页端</strong>）在做题与面试时全部自动由本配置提供服务，<strong>普通用户无需自行填写任何 API Key</strong>。
+      <Alert severity="info" sx={{ mb: 2.5 }}>
+        💡 <strong>双通道完全解耦</strong>：你现在可以为<strong>「面试问答」</strong>和<strong>「笔试截屏」</strong>配置不同服务商和 API Key（例如：面试回答用 DeepSeek，笔试截图识图用通义千问 Qwen-VL 或 豆包 Vision）。保存后全端（Mac、Windows、网页端）用户免配即用！
       </Alert>
 
-      {/* 主流预设快捷选填 */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="caption" fontWeight={700} color="text.secondary" display="block" sx={{ mb: 0.8 }}>
-          主流模型一键预设（点击一键填入地址与模型名）：
-        </Typography>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
-          <Chip
-            label="🌟 阿里百炼 Qwen-VL (推荐首选)"
-            color="primary"
-            variant="outlined"
-            onClick={() =>
-              applyPreset({
-                baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-                textModel: 'qwen-plus',
-                visionModel: 'qwen-vl-max',
-              })
-            }
-            sx={{ cursor: 'pointer', fontWeight: 600 }}
-          />
-          <Chip
-            label="🌟 火山豆包 Vision (超高性价比)"
-            color="secondary"
-            variant="outlined"
-            onClick={() =>
-              applyPreset({
-                baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-                textModel: 'doubao-pro-32k',
-                visionModel: 'doubao-vision-pro-32k',
-              })
-            }
-            sx={{ cursor: 'pointer', fontWeight: 600 }}
-          />
-          <Chip
-            label="OpenAI (GPT-4o)"
-            variant="outlined"
-            onClick={() =>
-              applyPreset({
-                baseUrl: 'https://api.openai.com/v1',
-                textModel: 'gpt-4o',
-                visionModel: 'gpt-4o',
-              })
-            }
-            sx={{ cursor: 'pointer' }}
-          />
-          <Chip
-            label="DeepSeek 官方 (纯文本模式)"
-            variant="outlined"
-            onClick={() =>
-              applyPreset({
-                baseUrl: 'https://api.deepseek.com/v1',
-                textModel: 'deepseek-chat',
-                visionModel: 'deepseek-chat',
-              })
-            }
-            sx={{ cursor: 'pointer' }}
-          />
-        </Stack>
-      </Box>
+      <Grid container spacing={2.5}>
+        {/* 通道 1: 面试文本问答模型 (DeepSeek) */}
+        <Grid item xs={12} lg={6}>
+          <Paper variant="outlined" sx={{ p: 2, height: '100%', bgcolor: 'background.paper' }}>
+            <Stack spacing={1.5}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="subtitle1" fontWeight={700} color="primary.main">
+                  💬 通道一：面试辅助 / 文本问答
+                </Typography>
+                <Chip label="推荐 DeepSeek" size="small" color="primary" variant="outlined" />
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                专用于面试实时回答、追问建议与简历知识库对齐，要求逻辑严密、口语自然。
+              </Typography>
 
-      <Stack spacing={1.5}>
-        <TextField
-          name="baseUrl"
-          label="API Base URL"
-          fullWidth
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
-          helperText="兼容 OpenAI 标准格式的 API 基础端点地址"
-        />
+              <Box>
+                <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                  常用快捷预设：
+                </Typography>
+                <Stack direction="row" spacing={0.8} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
+                  <Chip
+                    label="DeepSeek 官方"
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    onClick={() => applyTextPreset({ baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' })}
+                    sx={{ cursor: 'pointer', fontWeight: 600 }}
+                  />
+                  <Chip
+                    label="阿里百炼 Qwen-Plus"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => applyTextPreset({ baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus' })}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                  <Chip
+                    label="OpenAI GPT-4o"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => applyTextPreset({ baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' })}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </Stack>
+              </Box>
 
-        <TextField
-          name="apiKey"
-          label="API Key"
-          type="password"
-          fullWidth
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder={apiKey ? '留空不改，填入新值后覆盖' : 'sk-...'}
-          helperText="平台调用服务商的私密密钥，仅安全保存在服务端数据库"
-        />
+              <TextField
+                name="textBaseUrl"
+                label="文本 API Base URL"
+                size="small"
+                fullWidth
+                value={textBaseUrl}
+                onChange={(e) => setTextBaseUrl(e.target.value)}
+                placeholder="https://api.deepseek.com/v1"
+              />
 
-        <Grid container spacing={1.5}>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              name="textModel"
-              label="文本模型 (面试辅导/文本问答)"
-              fullWidth
-              value={textModel}
-              onChange={(e) => setTextModel(e.target.value)}
-              placeholder="qwen-plus / deepseek-chat / gpt-4o"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <TextField
-              name="visionModel"
-              label="多模态视觉模型 (笔试截屏/抗干扰出题)"
-              fullWidth
-              value={visionModel}
-              onChange={(e) => setVisionModel(e.target.value)}
-              placeholder="qwen-vl-max / doubao-vision-pro-32k"
-              helperText="用于笔试截图直接看图解答"
-            />
-          </Grid>
+              <TextField
+                name="textApiKey"
+                label="文本 API Key"
+                size="small"
+                type="password"
+                fullWidth
+                value={textApiKey}
+                onChange={(e) => setTextApiKey(e.target.value)}
+                placeholder={textApiKey ? '留空不改，填入新值后覆盖' : 'sk-...'}
+                helperText="DeepSeek 或其他文本大模型的 API 密钥"
+              />
+
+              <TextField
+                name="textModel"
+                label="文本模型名称"
+                size="small"
+                fullWidth
+                value={textModel}
+                onChange={(e) => setTextModel(e.target.value)}
+                placeholder="deepseek-chat"
+              />
+
+              {textTestResult && (
+                <Alert severity={textTestResult.ok ? 'success' : 'error'} sx={{ py: 0.5 }}>
+                  {textTestResult.message}
+                </Alert>
+              )}
+
+              <Button
+                variant="outlined"
+                startIcon={<ScienceIcon />}
+                onClick={(event) => {
+                  const form = event.currentTarget.closest('form');
+                  if (form) void onTest(form, 'text');
+                }}
+                sx={{ mt: 'auto' }}
+              >
+                测试文本连接 (Ping)
+              </Button>
+            </Stack>
+          </Paper>
         </Grid>
 
-        {textTestResult && (
-          <Alert severity={textTestResult.ok ? 'success' : 'error'}>
-            <strong>文本模型测试：</strong> {textTestResult.message}
-          </Alert>
-        )}
+        {/* 通道 2: 笔试多模态识图解题 (Qwen-VL) */}
+        <Grid item xs={12} lg={6}>
+          <Paper variant="outlined" sx={{ p: 2, height: '100%', bgcolor: 'background.paper' }}>
+            <Stack spacing={1.5}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="subtitle1" fontWeight={700} color="secondary.main">
+                  📸 通道二：笔试辅助 / 截屏看图解题
+                </Typography>
+                <Chip label="推荐 Qwen-VL" size="small" color="secondary" variant="outlined" />
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                专用于一键截屏后直接看图解析，智能过滤桌面干扰，直接给出算法代码或选择题答案。
+              </Typography>
 
-        {visionTestResult && (
-          <Alert severity={visionTestResult.ok ? 'success' : 'error'}>
-            <strong>多模态视觉测试：</strong> {visionTestResult.message}
-          </Alert>
-        )}
+              <Box>
+                <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                  常用快捷预设：
+                </Typography>
+                <Stack direction="row" spacing={0.8} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
+                  <Chip
+                    label="🌟 阿里百炼 Qwen-VL (首选)"
+                    size="small"
+                    color="secondary"
+                    variant="outlined"
+                    onClick={() => applyVisionPreset({ baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-vl-max' })}
+                    sx={{ cursor: 'pointer', fontWeight: 600 }}
+                  />
+                  <Chip
+                    label="🌟 火山豆包 Vision"
+                    size="small"
+                    color="secondary"
+                    variant="outlined"
+                    onClick={() => applyVisionPreset({ baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: 'doubao-vision-pro-32k' })}
+                    sx={{ cursor: 'pointer', fontWeight: 600 }}
+                  />
+                  <Chip
+                    label="OpenAI GPT-4o"
+                    size="small"
+                    variant="outlined"
+                    onClick={() => applyVisionPreset({ baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o' })}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                </Stack>
+              </Box>
 
-        <Divider sx={{ my: 1 }} />
+              <TextField
+                name="visionBaseUrl"
+                label="视觉 API Base URL"
+                size="small"
+                fullWidth
+                value={visionBaseUrl}
+                onChange={(e) => setVisionBaseUrl(e.target.value)}
+                placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+              />
 
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-          <Button
-            variant="outlined"
-            startIcon={<ScienceIcon />}
-            onClick={(event) => {
-              const form = event.currentTarget.closest('form');
-              if (form) void onTest(form, 'text');
-            }}
-          >
-            测试文本连接 (Ping)
-          </Button>
+              <TextField
+                name="visionApiKey"
+                label="视觉 API Key"
+                size="small"
+                type="password"
+                fullWidth
+                value={visionApiKey}
+                onChange={(e) => setVisionApiKey(e.target.value)}
+                placeholder={visionApiKey ? '留空不改，填入新值后覆盖' : 'sk-...'}
+                helperText="阿里百炼 DashScope 或 火山引擎 的 API 密钥"
+              />
 
-          <Button
-            variant="outlined"
-            color="secondary"
-            startIcon={<ScienceIcon />}
-            onClick={(event) => {
-              const form = event.currentTarget.closest('form');
-              if (form) void onTest(form, 'vision');
-            }}
-          >
-            测试视觉识图 (Vision Test)
-          </Button>
+              <TextField
+                name="visionModel"
+                label="多模态视觉模型名称"
+                size="small"
+                fullWidth
+                value={visionModel}
+                onChange={(e) => setVisionModel(e.target.value)}
+                placeholder="qwen-vl-max / doubao-vision-pro-32k"
+              />
 
-          <Button type="submit" variant="contained" color="primary" sx={{ ml: { sm: 'auto' } }}>
-            保存模型配置
-          </Button>
-        </Stack>
+              {visionTestResult && (
+                <Alert severity={visionTestResult.ok ? 'success' : 'error'} sx={{ py: 0.5 }}>
+                  {visionTestResult.message}
+                </Alert>
+              )}
+
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={<ScienceIcon />}
+                onClick={(event) => {
+                  const form = event.currentTarget.closest('form');
+                  if (form) void onTest(form, 'vision');
+                }}
+                sx={{ mt: 'auto' }}
+              >
+                测试视觉识图 (Vision Test)
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
+      </Grid>
+
+      <Divider sx={{ my: 2 }} />
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems="center">
+        <Typography variant="caption" color="text.secondary">
+          点击保存后，双通道配置将立即存入服务端并同步生效给所有客户端与网页端用户。
+        </Typography>
+        <Button type="submit" variant="contained" color="primary" size="large" sx={{ ml: { sm: 'auto' }, px: 4 }}>
+          保存全站模型配置
+        </Button>
       </Stack>
     </Paper>
   );

@@ -488,17 +488,27 @@ async function testSeoConfig(config: Record<string, unknown>): Promise<ConfigTes
 }
 
 async function testAiConfig(config: Record<string, unknown>, testType?: string): Promise<ConfigTestResult> {
-  const apiKey = str(config.apiKey);
-  const baseUrl = (str(config.baseUrl) || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+  const isVision = testType === 'vision';
+
+  // 视觉通道优先使用 visionApiKey/visionBaseUrl，若未填则平滑回退至通用 apiKey/baseUrl
+  const apiKey = isVision
+    ? (str(config.visionApiKey) || str(config.apiKey))
+    : (str(config.textApiKey) || str(config.apiKey));
+  const baseUrl = (isVision
+    ? (str(config.visionBaseUrl) || str(config.baseUrl) || 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+    : (str(config.textBaseUrl) || str(config.baseUrl) || 'https://api.deepseek.com/v1')).replace(/\/+$/, '');
   const textModel = str(config.textModel) || 'deepseek-chat';
-  const visionModel = str(config.visionModel) || str(config.textModel) || 'gpt-4o';
-  if (!apiKey) return { ok: false, message: '未配置 AI API Key。' };
+  const visionModel = str(config.visionModel) || 'qwen-vl-max';
+
+  if (!apiKey) {
+    return { ok: false, message: isVision ? '未配置笔试截图视觉通道的 API Key。' : '未配置面试文本通道的 API Key。' };
+  }
 
   // 1x1 透明 PNG 用于快速测试多模态图像接收能力
   const TINY_PNG_DATA_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
-  // 仅测试视觉模型
-  if (testType === 'vision') {
+  // 测试视觉模型
+  if (isVision) {
     const startedAt = Date.now();
     try {
       const upstream = await fetch(`${baseUrl}/chat/completions`, {
@@ -525,7 +535,7 @@ async function testAiConfig(config: Record<string, unknown>, testType?: string):
       });
       const latencyMs = Date.now() - startedAt;
       if (upstream.ok) {
-        return { ok: true, message: `视觉模型 (${visionModel}) 测试成功！识图响应正常，延迟 ${latencyMs}ms。`, latencyMs };
+        return { ok: true, message: `多模态视觉模型 (${visionModel}) 测试成功！端点: ${baseUrl}，响应正常，延迟 ${latencyMs}ms。`, latencyMs };
       }
       const text = await upstream.text().catch(() => '');
       return { ok: false, message: `视觉模型 (${visionModel}) 报错：HTTP ${upstream.status} ${text}`, latencyMs };
@@ -534,28 +544,32 @@ async function testAiConfig(config: Record<string, unknown>, testType?: string):
     }
   }
 
-  // 默认或文本测试
+  // 测试文本模型
   const startedAt = Date.now();
-  const upstream = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: textModel,
-      messages: [{ role: 'user', content: 'Hi' }],
-      max_tokens: 5,
-      stream: false,
-    }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const latencyMs = Date.now() - startedAt;
-  if (upstream.ok) {
-    return { ok: true, message: `文本模型 (${textModel}) 连接成功，延迟 ${latencyMs}ms。`, latencyMs };
+  try {
+    const upstream = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: textModel,
+        messages: [{ role: 'user', content: 'Hi' }],
+        max_tokens: 5,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const latencyMs = Date.now() - startedAt;
+    if (upstream.ok) {
+      return { ok: true, message: `文本问答模型 (${textModel}) 连接成功！端点: ${baseUrl}，延迟 ${latencyMs}ms。`, latencyMs };
+    }
+    const text = await upstream.text().catch(() => '');
+    return { ok: false, message: text || `文本模型测试失败：HTTP ${upstream.status}`, latencyMs };
+  } catch (err) {
+    return { ok: false, message: `文本模型连接失败：${err instanceof Error ? err.message : '网络错误'}` };
   }
-  const text = await upstream.text().catch(() => '');
-  return { ok: false, message: text || `文本模型测试失败：HTTP ${upstream.status}`, latencyMs };
 }
 
 async function testAsrConfig(config: Record<string, unknown>): Promise<ConfigTestResult> {
@@ -1549,7 +1563,7 @@ function mergeConfig(current: unknown, patch: Record<string, unknown>) {
 
 function maskSecrets(key: string, value: Record<string, unknown>) {
   const secretKeys = key === 'ai'
-    ? ['apiKey']
+    ? ['apiKey', 'textApiKey', 'visionApiKey']
     : key === 'asr'
       ? ['doubaoAccessToken', 'iflytekApiKey', 'iflytekApiSecret', 'alibabaToken']
       : key === 'seo'
