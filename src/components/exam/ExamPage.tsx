@@ -6,7 +6,6 @@
 
 import { Box, Alert, Button } from '@mui/material';
 import { Link } from 'react-router-dom';
-import { ExamTypeSelector } from './ExamTypeSelector';
 import { ImageUploader } from './ImageUploader';
 import { ExamAnswer } from './ExamAnswer';
 import { ExamHistory } from './ExamHistory';
@@ -41,8 +40,7 @@ export function ExamPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      <ExamTypeSelector />
+    <Box sx={{ maxWidth: 960, mx: 'auto' }}>
       <ImageUploader />
       <ExamAnswer />
       <ExamHistory />

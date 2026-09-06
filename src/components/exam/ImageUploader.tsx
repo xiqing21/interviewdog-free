@@ -21,7 +21,6 @@ export function ImageUploader() {
     captureSupported,
     isProcessing,
   } = useExam();
-  const [dragOver, setDragOver] = useState(false);
   const [userExpanded, setUserExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -75,14 +74,6 @@ export function ImageUploader() {
     return () => window.removeEventListener('paste', handlePaste);
   }, [handlePaste]);
 
-  const handleDrop = (e: React.DragEvent): void => {
-    e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      handleFile(file);
-    }
-  };
 
   const handleFileInputChange = (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -101,14 +92,16 @@ export function ImageUploader() {
 
   return (
     <Box>
-      {/* Action buttons */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+      {/* 顶部极简快捷操作栏 */}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
         {captureSupported && (
           <Button
             variant="contained"
+            color="primary"
             onClick={() => void captureScreen()}
             disabled={isProcessing}
             startIcon={<ScreenshotMonitorIcon />}
+            sx={{ fontWeight: 700 }}
           >
             {desktop ? '一键截屏' : '屏幕截图'}
           </Button>
@@ -127,7 +120,7 @@ export function ImageUploader() {
           onClick={() => fileInputRef.current?.click()}
           startIcon={<UploadFileIcon />}
         >
-          上传图片
+          上传试题图
         </Button>
         {desktop && (
           <Chip
@@ -157,101 +150,84 @@ export function ImageUploader() {
         onChange={handleFileInputChange}
       />
 
-      {/* Drop zone / Preview */}
-      {currentImage && isCollapsed ? (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            p: 1,
-            px: 1.5,
-            bgcolor: 'action.hover',
-            border: '1px solid',
-            borderColor: 'divider',
-            borderRadius: 1.5,
-            transition: 'all 0.2s ease',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden' }}>
-            <Box
-              component="img"
-              src={`data:image/png;base64,${currentImage}`}
-              alt="缩略图"
-              sx={{
-                width: 44,
-                height: 32,
-                objectFit: 'cover',
-                borderRadius: 0.8,
-                border: '1px solid',
-                borderColor: 'divider',
-              }}
-            />
-            <Typography variant="caption" color="text.secondary" noWrap>
-              ✅ 题目已识别锁定，截图已自动折叠（无需向下滚动，直接专注看答案）
-            </Typography>
-          </Box>
-          <Button
-            size="small"
-            variant="text"
-            onClick={() => setUserExpanded(true)}
-            sx={{ flexShrink: 0, ml: 1, fontSize: '0.75rem' }}
+      {/* 仅在有截图时展示极简预览条，绝不占用下方答案空间 */}
+      {currentImage && (
+        isCollapsed ? (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              p: 1,
+              px: 1.5,
+              mb: 1.5,
+              bgcolor: 'action.hover',
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 1.5,
+            }}
           >
-            展开原图
-          </Button>
-        </Box>
-      ) : (
-        <Box
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOver(true);
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={handleDrop}
-          sx={{
-            position: 'relative',
-            border: '2px dashed',
-            borderColor: dragOver ? 'primary.main' : 'divider',
-            borderRadius: 2,
-            p: 2,
-            minHeight: currentImage ? 120 : 180,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: dragOver ? 'action.hover' : 'background.default',
-            transition: 'all 0.2s ease',
-          }}
-        >
-          {currentImage ? (
-            <Box sx={{ position: 'relative', textAlign: 'center', width: '100%' }}>
-              {Boolean(currentAnswer) && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  onClick={() => setUserExpanded(false)}
-                  sx={{ position: 'absolute', top: -8, right: 0, bgcolor: 'background.paper', zIndex: 1, fontSize: '0.75rem' }}
-                >
-                  收起原图
-                </Button>
-              )}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden' }}>
               <Box
                 component="img"
                 src={`data:image/png;base64,${currentImage}`}
-                alt="题目截图"
+                alt="缩略图"
                 sx={{
-                  maxWidth: '100%',
-                  maxHeight: 320,
-                  borderRadius: 1,
-                  objectFit: 'contain',
+                  width: 44,
+                  height: 32,
+                  objectFit: 'cover',
+                  borderRadius: 0.8,
+                  border: '1px solid',
+                  borderColor: 'divider',
                 }}
               />
+              <Typography variant="caption" color="text.secondary" noWrap>
+                🎯 截图已送达大模型（已智能忽略桌面干扰背景）
+              </Typography>
             </Box>
-          ) : (
-            <Typography color="text.secondary" variant="body2">
-              拖拽图片到此处、粘贴（Ctrl+V / Cmd+V）或点击上方按钮上传
-            </Typography>
-          )}
-        </Box>
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => setUserExpanded(true)}
+              sx={{ flexShrink: 0, ml: 1, fontSize: '0.75rem' }}
+            >
+              查看原图
+            </Button>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              position: 'relative',
+              p: 1.5,
+              mb: 1.5,
+              border: '1px solid',
+              borderColor: 'divider',
+              borderRadius: 2,
+              bgcolor: 'background.paper',
+              textAlign: 'center',
+            }}
+          >
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => setUserExpanded(false)}
+              sx={{ position: 'absolute', top: 8, right: 8, fontSize: '0.75rem', zIndex: 2 }}
+            >
+              收起图片
+            </Button>
+            <Box
+              component="img"
+              src={`data:image/png;base64,${currentImage}`}
+              alt="题目截图"
+              sx={{
+                maxWidth: '100%',
+                maxHeight: 260,
+                borderRadius: 1,
+                objectFit: 'contain',
+              }}
+            />
+          </Box>
+        )
       )}
     </Box>
   );
