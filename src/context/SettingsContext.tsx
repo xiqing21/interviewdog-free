@@ -79,7 +79,7 @@ function getInitialState(): SettingsState {
     ...DEFAULT_APP_SETTINGS,
     ...storageService.get<AppSettings>(STORAGE_KEYS.APP_SETTINGS, DEFAULT_APP_SETTINGS),
   };
-  if (!appSettings.mergeTimeoutMs || appSettings.mergeTimeoutMs < 2200) {
+  if (!appSettings.mergeTimeoutMs || appSettings.mergeTimeoutMs < 1000 || appSettings.mergeTimeoutMs === 1500) {
     appSettings.mergeTimeoutMs = DEFAULT_APP_SETTINGS.mergeTimeoutMs;
   }
   Object.assign(appSettings, normalizeAppSettings(appSettings));

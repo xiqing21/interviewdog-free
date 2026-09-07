@@ -67,7 +67,7 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     }
 
     if (action === 'consume') {
-      const seconds = Math.max(0, Math.min(60, Math.floor(Number(body.seconds ?? 0))));
+      const seconds = Math.max(0, Math.min(1800, Math.floor(Number(body.seconds ?? 0))));
       const totalSeconds = entitlementTotalSeconds(current);
       const nextUsedSeconds = Math.min(totalSeconds, Number(current.used_seconds ?? 0) + seconds);
       const { data: updated, error: updateError } = await supabase

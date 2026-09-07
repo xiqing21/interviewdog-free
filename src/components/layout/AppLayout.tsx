@@ -4,13 +4,14 @@
  */
 
 import { useRef, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Box } from '@mui/material';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { BottomBar } from './BottomBar';
 import { PrivacyDialog } from '../common/PrivacyDialog';
 import { OnboardingGuide } from '../common/OnboardingGuide';
+import { ExamFastModal } from '../common/ExamFastModal';
 import { useSettings } from '../../hooks/useSettings';
 import { useExam } from '../../hooks/useExam';
 import { useInterview } from '../../hooks/useInterview';
@@ -24,7 +25,7 @@ export function AppLayout() {
   const { captureAndSolve } = useExam();
   const { toggleGenerationPause } = useInterview();
   const { toggleTheme } = useTheme();
-  const navigate = useNavigate();
+  const location = useLocation();
   const mainRef = useRef<HTMLDivElement>(null);
 
   // 监听原生全局快捷键（Cmd+Shift+A / Ctrl+Shift+A）
@@ -39,8 +40,12 @@ export function AppLayout() {
 
   useHotkeys({
     onScreenshot: () => {
-      navigate('/exam');
-      void captureAndSolve();
+      // 若当前不在 /exam（例如在 /interview 页面），无需跳转，直接在当前页面无缝弹出快答浮窗
+      if (location.pathname === '/exam') {
+        void captureAndSolve(undefined, { showModal: false });
+      } else {
+        void captureAndSolve(undefined, { showModal: true });
+      }
     },
     onToggleAnswerPause: () => {
       toggleGenerationPause();
@@ -102,6 +107,7 @@ export function AppLayout() {
         open={!appSettings.privacyAcknowledged}
         onConfirm={acknowledgePrivacy}
       />
+      <ExamFastModal />
       <OnboardingGuide />
     </Box>
   );

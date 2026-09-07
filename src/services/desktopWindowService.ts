@@ -109,6 +109,27 @@ export function onGlobalScreenshot(callback: () => void): () => void {
   return window.desktopWindow.onGlobalScreenshot(callback);
 }
 
+export function onGlobalAppendScreenshot(callback: () => void): () => void {
+  if (!isDesktopApp() || !window.desktopWindow?.onGlobalAppendScreenshot) {
+    return () => {};
+  }
+  return window.desktopWindow.onGlobalAppendScreenshot(callback);
+}
+
+export function onGlobalSubmitExam(callback: () => void): () => void {
+  if (!isDesktopApp() || !window.desktopWindow?.onGlobalSubmitExam) {
+    return () => {};
+  }
+  return window.desktopWindow.onGlobalSubmitExam(callback);
+}
+
+export function onGlobalResetExam(callback: () => void): () => void {
+  if (!isDesktopApp() || !window.desktopWindow?.onGlobalResetExam) {
+    return () => {};
+  }
+  return window.desktopWindow.onGlobalResetExam(callback);
+}
+
 export function onGlobalToggleIgnoreMouse(callback: () => void): () => void {
   if (!isDesktopApp() || !window.desktopWindow?.onGlobalToggleIgnoreMouse) {
     return () => {};

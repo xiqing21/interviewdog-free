@@ -68,6 +68,7 @@ export interface InterviewState {
   speechSupported: boolean;
   systemAudioReady: boolean;
   isGenerationPaused: boolean;
+  audioLevel: number;
   error: string | null;
 }
 
@@ -82,6 +83,7 @@ type InterviewAction =
   | { type: 'SET_MERGING'; payload: boolean }
   | { type: 'SET_SYSTEM_AUDIO_READY'; payload: boolean }
   | { type: 'SET_GENERATION_PAUSED'; payload: boolean }
+  | { type: 'SET_AUDIO_LEVEL'; payload: number }
   | { type: 'SET_ERROR'; payload: string | null };
 
 function getInitialState(): InterviewState {
@@ -95,6 +97,7 @@ function getInitialState(): InterviewState {
     speechSupported: speechService.isSupported() || doubaoAsrService.isSupported(),
     systemAudioReady: systemAudioService.isActive(),
     isGenerationPaused: storageService.get<boolean>(STORAGE_KEYS.GENERATION_PAUSED, false),
+    audioLevel: 0,
     error: null,
   };
 }
@@ -111,6 +114,7 @@ function interviewReducer(state: InterviewState, action: InterviewAction): Inter
     case 'SET_MERGING': return { ...state, isMerging: action.payload };
     case 'SET_SYSTEM_AUDIO_READY': return { ...state, systemAudioReady: action.payload };
     case 'SET_GENERATION_PAUSED': return { ...state, isGenerationPaused: action.payload };
+    case 'SET_AUDIO_LEVEL': return { ...state, audioLevel: action.payload };
     case 'SET_ERROR': return { ...state, error: action.payload };
     default: return state;
   }
@@ -515,33 +519,26 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   function cleanupInterimText(text: string): string {
     let current = text.trim();
     current = current.replace(/(?:热词|关键词)[：:][\s\S]*$/g, '').trim();
-    for (const previous of [...committedInterviewerQuestions.current].reverse()) {
-      const normalizedCurrent = normalizeTranscriptText(current);
-      const normalizedPrevious = normalizeTranscriptText(previous);
-      if (!normalizedCurrent || !normalizedPrevious) continue;
 
+    // 只与【最近一条】已提交的问题比对，且仅当当前文本以该问题开头（前缀）时才去除前缀，严禁在句子中间使用 indexOf 截断！
+    const lastCommitted = committedInterviewerQuestions.current[committedInterviewerQuestions.current.length - 1];
+    if (lastCommitted) {
+      const normalizedCurrent = normalizeTranscriptText(current);
+      const normalizedPrevious = normalizeTranscriptText(lastCommitted);
+
+      // 完全相同，说明整句话已经提交过了
       if (normalizedCurrent === normalizedPrevious) {
         return '';
       }
 
-      if (current.startsWith(previous)) {
-        current = current.slice(previous.length).trim();
-        continue;
-      }
-
-      const previousIndex = current.indexOf(previous);
-      if (previousIndex >= 0) {
-        current = current.slice(previousIndex + previous.length).trim();
-        continue;
-      }
-
-      if (normalizedCurrent.startsWith(normalizedPrevious) && normalizedPrevious.length > 8) {
-        const ratio = normalizedPrevious.length / normalizedCurrent.length;
-        if (ratio > 0.35) {
-          return current.slice(Math.min(previous.length, current.length)).trim();
-        }
+      // 仅当是以该句子为开头（前缀重叠）时，才剥离前缀
+      if (current.startsWith(lastCommitted)) {
+        current = current.slice(lastCommitted.length).trim();
+      } else if (normalizedPrevious.length >= 4 && normalizedCurrent.startsWith(normalizedPrevious)) {
+        current = current.slice(Math.min(lastCommitted.length, current.length)).trim();
       }
     }
+
     return current.replace(/^[，。！？、,.!?;；:\s]+/, '').trim();
   }
 
@@ -812,13 +809,22 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
   function commitInterimQuestion(): string {
     const question = cleanupInterimText(pendingInterimQuestion.current);
-    if (!question || !isLikelyQuestionText(question)) return '';
     pendingInterimQuestion.current = '';
     pendingInterimNormalized.current = '';
     clearInterimCommitTimer();
     dispatch({ type: 'SET_INTERIM', payload: '' });
-    addTranscriptLine({ id: generateId(), speaker: 'interviewer', text: question, timestamp: Date.now() });
     dispatch({ type: 'SET_MERGING', payload: false });
+
+    if (!question) return '';
+    addTranscriptLine({ id: generateId(), speaker: 'interviewer', text: question, timestamp: Date.now() });
+
+    if (!isLikelyQuestionText(question)) {
+      console.info('[commitInterimQuestion] 文字已落库双方对话，非典型提问，不触发 AI 回答:', question);
+      return question;
+    }
+
+    dispatch({ type: 'SET_CURRENT_QUESTION', payload: question });
+
     // 如果用户开启了“暂停应答”（快捷键或按钮），仅落库文字，拦截大模型触发
     if (isGenerationPausedRef.current) {
       console.info('[commitInterimQuestion] 自动应答已暂停，拦截 AI 生成，文字已落库:', question);
@@ -831,11 +837,17 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   function scheduleInterimQuestionCommit(text: string): void {
     const cleaned = cleanupInterimText(text);
     const normalized = normalizeTranscriptText(cleaned);
-    if (!cleaned || !normalized || !isLikelyQuestionText(cleaned)) return;
+    if (!cleaned || !normalized) return;
+
+    // 核心修复：如果当前文本与正在倒计时的文本一致，说明说话人已经停顿，
+    // 后台持续发送的系统音频/环境音仍会返回相同文本；绝不能重置倒计时！
+    if (normalized === pendingInterimNormalized.current && interimCommitTimer.current !== null) {
+      return;
+    }
 
     pendingInterimQuestion.current = cleaned;
     pendingInterimNormalized.current = normalized;
-    // 持续收到增量语音文字时，立即重置静默倒计时；只有连续 1.5s 无新输入才触发
+    // 只有收到新的有效增量文字时，才重置静默倒计时；停顿达到容忍时长（默认 1.5s）自动提交并触发 AI 回答
     clearInterimCommitTimer();
     interimCommitTimer.current = setTimeout(() => {
       commitInterimQuestion();
@@ -877,6 +889,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     isFinal: boolean,
     speaker: 'interviewer' | 'me' = 'interviewer',
   ) {
+    console.info('[InterviewContext] handleRecognitionResult:', { text, isFinal, speaker });
     const labeledText = `${speaker === 'interviewer' ? '面试官' : '我'}：${text}`;
     if (isFinal) {
       if (speaker === 'interviewer') {
@@ -914,7 +927,12 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     } else {
       if (speaker === 'interviewer') {
         const cleaned = cleanupInterimText(text);
-        if (!cleaned) return;
+        if (!cleaned) {
+          if (stateRef.current.interimText) {
+            dispatch({ type: 'SET_INTERIM', payload: '' });
+          }
+          return;
+        }
         dispatch({ type: 'SET_INTERIM', payload: `面试官：${cleaned}` });
         scheduleInterimQuestionCommit(cleaned);
       } else {
@@ -1190,8 +1208,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
       void systemAudioService.start({
         onPcmData: (pcm) => mimoAsrService.sendAudio(pcm),
-        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); mimoAsrService.stop(); setListeningFromActiveSources(); },
-        onEnd: () => { mimoAsrService.stop(); setListeningFromActiveSources(); },
+        onAudioLevel: (lvl) => dispatch({ type: 'SET_AUDIO_LEVEL', payload: lvl }),
+        onError: (e) => { dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 }); dispatch({ type: 'SET_ERROR', payload: e }); mimoAsrService.stop(); setListeningFromActiveSources(); },
+        onEnd: () => { dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 }); mimoAsrService.stop(); setListeningFromActiveSources(); },
       });
       setListeningFromActiveSources();
       return true;
@@ -1216,8 +1235,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       });
       void systemAudioService.start({
         onPcmData: (pcm) => cloudAsrService.sendAudio(pcm),
-        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); cloudAsrService.stop(); setListeningFromActiveSources(); },
-        onEnd: () => { cloudAsrService.stop(); setListeningFromActiveSources(); },
+        onAudioLevel: (lvl) => dispatch({ type: 'SET_AUDIO_LEVEL', payload: lvl }),
+        onError: (e) => { dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 }); dispatch({ type: 'SET_ERROR', payload: e }); cloudAsrService.stop(); setListeningFromActiveSources(); },
+        onEnd: () => { dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 }); cloudAsrService.stop(); setListeningFromActiveSources(); },
       });
       setListeningFromActiveSources();
       return true;
@@ -1251,8 +1271,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       // Mac 原生采集不依赖 Gateway 先握手成功；连接恢复后，Gateway 会发送队列中的 PCM。
       void systemAudioService.start({
         onPcmData: (pcm) => asrGatewayService.sendAudio(pcm),
-        onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
+        onAudioLevel: (lvl) => dispatch({ type: 'SET_AUDIO_LEVEL', payload: lvl }),
+        onError: (e) => { dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 }); dispatch({ type: 'SET_ERROR', payload: e }); asrGatewayService.stop(); setListeningFromActiveSources(); },
         onEnd: () => {
+          dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 });
           dispatch({ type: 'SET_ERROR', payload: '系统音频捕获已结束，听音已停止。' });
           asrGatewayService.stop();
           setListeningFromActiveSources();
@@ -1285,8 +1307,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_ERROR', payload: null });
         void systemAudioService.start({
           onPcmData: (pcm) => doubaoAsrService.sendAudio(pcm),
-          onError: (e) => { dispatch({ type: 'SET_ERROR', payload: e }); doubaoAsrService.stop(); setListeningFromActiveSources(); },
+          onAudioLevel: (lvl) => dispatch({ type: 'SET_AUDIO_LEVEL', payload: lvl }),
+          onError: (e) => { dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 }); dispatch({ type: 'SET_ERROR', payload: e }); doubaoAsrService.stop(); setListeningFromActiveSources(); },
           onEnd: () => {
+            dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 });
             dispatch({ type: 'SET_ERROR', payload: '系统音频捕获已结束，听音已停止。请重新选择面试窗口后再开始。' });
             doubaoAsrService.stop();
             setListeningFromActiveSources();
@@ -1478,6 +1502,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     mimoAsrService.stop();
     cloudAsrService.stop();
     asrGatewayService.stop();
+    dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 });
     dispatch({ type: 'SET_LISTENING', payload: false });
     // 立即 flush 合并缓冲区
     commitInterimQuestion();

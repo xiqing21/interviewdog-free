@@ -68,20 +68,33 @@ export async function capture(sourceId?: string): Promise<string> {
     // Wait one frame to ensure the video is rendering
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
-    // Draw the current frame to a canvas
+    // 限制截图最大尺寸为 1440px，兼顾高清文字与微秒级传输
+    const MAX_DIM = 1440;
+    let targetW = video.videoWidth || 1440;
+    let targetH = video.videoHeight || 900;
+    if (targetW > MAX_DIM || targetH > MAX_DIM) {
+      if (targetW >= targetH) {
+        targetH = Math.round((targetH * MAX_DIM) / targetW);
+        targetW = MAX_DIM;
+      } else {
+        targetW = Math.round((targetW * MAX_DIM) / targetH);
+        targetH = MAX_DIM;
+      }
+    }
+
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width = targetW;
+    canvas.height = targetH;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       throw new Error('无法创建画布上下文。');
     }
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, targetW, targetH);
 
-    // Convert to base64 PNG (strip the "data:image/png;base64," prefix)
-    const dataUrl = canvas.toDataURL('image/png');
+    // 采用 JPEG 0.85 高清压缩，体积从 10MB 降低到 200KB
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
     const base64 = dataUrl.split(',')[1];
 
     if (!base64) {

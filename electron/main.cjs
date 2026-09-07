@@ -96,6 +96,13 @@ function resolveAudioHelperPath() {
   return candidates[0];
 }
 
+const LOG_FILE = '/tmp/mianshizhu-debug.log';
+function logDebug(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  try { fs.appendFileSync(LOG_FILE, line); } catch {}
+  console.log(msg);
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1180,
@@ -122,20 +129,23 @@ function createWindow() {
   if (!DEBUG_VISIBLE) {
     mainWindow.setContentProtection(true);
   }
+  if (isAlwaysOnTop) {
+    applyAlwaysOnTop(mainWindow, true);
+  }
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
     const rendererHtml = resolveRendererHtml();
-    console.log('[main] loading renderer', rendererHtml);
+    logDebug(`[main] loading renderer: ${rendererHtml}`);
     mainWindow.loadFile(rendererHtml).catch((err) => {
-      console.error('[main] failed to load renderer', rendererHtml, err);
+      logDebug(`[main] failed to load renderer: ${err}`);
     });
   }
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    console.error('[main] did-fail-load', { errorCode, errorDescription, validatedURL });
+    logDebug(`[main] did-fail-load: ${JSON.stringify({ errorCode, errorDescription, validatedURL })}`);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -143,11 +153,9 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  // Forward renderer diagnostics to the packaged-app stdout while debugging
-  // the native audio path. This is intentionally low-volume and harmless in
-  // normal runs, but makes PCM/Gateway failures observable from a DMG build.
+  // Forward renderer diagnostics to debug log
   mainWindow.webContents.on('console-message', (_event, level, message) => {
-    console.log(`[renderer:${level}] ${message}`);
+    logDebug(`[renderer:${level}] ${message}`);
   });
 
   mainWindow.on('closed', () => {
@@ -159,6 +167,14 @@ function registerGlobalShortcuts() {
   const isMac = process.platform === 'darwin';
   const screenshotKey = isMac ? 'Command+Shift+S' : 'Ctrl+Shift+S';
   const passthroughKey = isMac ? 'Command+Shift+P' : 'Ctrl+Shift+P';
+
+  try {
+    globalShortcut.register('CommandOrControl+Shift+I', () => {
+      mainWindow?.webContents.openDevTools({ mode: 'detach' });
+    });
+  } catch (err) {
+    console.error('[main] Failed to register devtools shortcut:', err);
+  }
 
   try {
     globalShortcut.register(screenshotKey, () => {
@@ -189,6 +205,42 @@ function registerGlobalShortcuts() {
   } catch (err) {
     console.error(`[main] Failed to register shortcut ${toggleAnswerKey}:`, err);
   }
+
+  // ===== 笔试答题快捷键（防鼠标移出监控） =====
+  // 1. 向下滑动追加截屏（长图拼合，不触发AI、不扣费）
+  const appendKey = isMac ? 'Command+Shift+Down' : 'Ctrl+Shift+Down';
+  try {
+    globalShortcut.register(appendKey, () => {
+      console.log(`[main] Global shortcut triggered: ${appendKey}`);
+      mainWindow?.webContents.send('desktop-shortcut:append-screenshot');
+    });
+  } catch (err) {
+    console.error(`[main] Failed to register shortcut ${appendKey}:`, err);
+  }
+
+  // 2. 快捷提交解答（拼合完成后一键提交，扣除5分钟）
+  const submitKeys = isMac ? ['Command+Shift+Return', 'Command+Shift+Enter'] : ['Ctrl+Shift+Enter'];
+  for (const sKey of submitKeys) {
+    try {
+      globalShortcut.register(sKey, () => {
+        console.log(`[main] Global shortcut triggered: ${sKey}`);
+        mainWindow?.webContents.send('desktop-shortcut:submit-exam');
+      });
+    } catch (err) {
+      console.error(`[main] Failed to register shortcut ${sKey}:`, err);
+    }
+  }
+
+  // 3. 重置/放弃当前截图切片
+  const resetKey = isMac ? 'Command+Shift+Backspace' : 'Ctrl+Shift+Backspace';
+  try {
+    globalShortcut.register(resetKey, () => {
+      console.log(`[main] Global shortcut triggered: ${resetKey}`);
+      mainWindow?.webContents.send('desktop-shortcut:reset-exam');
+    });
+  } catch (err) {
+    console.error(`[main] Failed to register shortcut ${resetKey}:`, err);
+  }
 }
 
 app.setName(APP_TITLE);
@@ -196,6 +248,17 @@ app.setName(APP_TITLE);
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   registerDisplayMediaHandler();
+
+  // Ensure WebSocket requests from local file:// origin pass CORS/Origin checks
+  session.defaultSession.webRequest.onBeforeSendHeaders(
+    { urls: ['wss://*/*', 'ws://*/*'] },
+    (details, callback) => {
+      logDebug(`[main] ws onBeforeSendHeaders for ${details.url}, Origin=${details.requestHeaders['Origin']}`);
+      details.requestHeaders['Origin'] = 'https://mianshizhu.xyz';
+      callback({ requestHeaders: details.requestHeaders });
+    },
+  );
+
   // The desktop app is system-audio-only. Permissions are requested only when
   // the user clicks “开始听音”, preventing two startup authorization prompts.
   if (process.platform === 'darwin' && !DEBUG_VISIBLE) {
@@ -243,6 +306,15 @@ ipcMain.handle('desktop-window:set-content-protection', (_event, enabled) => {
   return isContentProtected;
 });
 
+function applyAlwaysOnTop(targetWindow, flag) {
+  if (!targetWindow) return;
+  if (process.platform === 'darwin') {
+    // 允许穿透 macOS 独立全屏虚拟桌面（Spaces），如全屏浏览器、牛客/赛码在线全屏考试
+    targetWindow.setVisibleOnAllWorkspaces(flag, { visibleOnFullScreen: true, skipTransformProcessType: true });
+  }
+  targetWindow.setAlwaysOnTop(flag, 'screen-saver', 1);
+}
+
 ipcMain.handle('desktop-window:get-always-on-top', () => {
   return mainWindow ? mainWindow.isAlwaysOnTop() : isAlwaysOnTop;
 });
@@ -250,7 +322,7 @@ ipcMain.handle('desktop-window:get-always-on-top', () => {
 ipcMain.handle('desktop-window:set-always-on-top', (_event, flag) => {
   isAlwaysOnTop = Boolean(flag);
   if (mainWindow) {
-    mainWindow.setAlwaysOnTop(isAlwaysOnTop, 'screen-saver');
+    applyAlwaysOnTop(mainWindow, isAlwaysOnTop);
   }
   return isAlwaysOnTop;
 });
@@ -287,13 +359,21 @@ ipcMain.handle('desktop-screen:get-sources', async (_event, opts) => {
 ipcMain.handle('desktop-screen:capture-screen', async (_event, sourceId) => {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width, height } = primaryDisplay.size;
-  const scale = primaryDisplay.scaleFactor || 2;
-  const captureWidth = Math.min(3840, Math.round(width * scale));
-  const captureHeight = Math.min(2160, Math.round(height * scale));
+  // 视觉大模型（Qwen-VL-Max / GPT-4o）最优长边为 1440px：字迹清晰，体积从 10MB 缩减至 200KB，传输与出题速度大幅提升
+  const MAX_DIM = 1440;
+  const aspect = (width && height) ? (width / height) : (16 / 9);
+  let targetW, targetH;
+  if (width >= height) {
+    targetW = Math.min(width || 1440, MAX_DIM);
+    targetH = Math.round(targetW / aspect);
+  } else {
+    targetH = Math.min(height || 900, MAX_DIM);
+    targetW = Math.round(targetH * aspect);
+  }
 
   const sources = await desktopCapturer.getSources({
     types: ['screen', 'window'],
-    thumbnailSize: { width: captureWidth, height: captureHeight },
+    thumbnailSize: { width: targetW * 2, height: targetH * 2 },
   });
 
   let target = null;
@@ -307,8 +387,9 @@ ipcMain.handle('desktop-screen:capture-screen', async (_event, sourceId) => {
     throw new Error('未找到可用的屏幕或窗口进行截图');
   }
 
-  const pngBuffer = target.thumbnail.toPNG();
-  return pngBuffer.toString('base64');
+  const resized = target.thumbnail.resize({ width: targetW, height: targetH, quality: 'better' });
+  const jpegBuffer = resized.toJPEG(85);
+  return jpegBuffer.toString('base64');
 });
 
 ipcMain.handle('desktop-window:hide', () => {
@@ -351,7 +432,7 @@ ipcMain.handle('desktop-audio:start', async () => {
     }
   }
 
-  console.log('[main] Spawning audio helper at:', helperPath);
+  logDebug(`[main] Spawning audio helper at: ${helperPath}`);
   try {
     audioStopRequested = false;
     audioProcess = spawn(helperPath, [], {
@@ -359,12 +440,12 @@ ipcMain.handle('desktop-audio:start', async () => {
       env: process.env,
     });
   } catch (err) {
-    console.error('[main] Failed to spawn audio helper:', err);
+    logDebug(`[main] Failed to spawn audio helper: ${err}`);
     throw new Error('无法启动原生声音捕捉助手，请检查权限设置。');
   }
 
   audioProcess.on('error', (err) => {
-    console.error('[main] audio helper process error:', err);
+    logDebug(`[main] audio helper process error: ${err}`);
     audioProcess = null;
     mainWindow?.webContents.send(
       'desktop-audio:error',
@@ -372,11 +453,11 @@ ipcMain.handle('desktop-audio:start', async () => {
     );
   });
 
-  let loggedFirstChunk = false;
+  let audioChunkCount = 0;
   audioProcess.stdout.on('data', (chunk) => {
-    if (!loggedFirstChunk) {
-      loggedFirstChunk = true;
-      console.log('[main] first audio chunk bytes:', chunk?.length || 0);
+    audioChunkCount++;
+    if (audioChunkCount <= 5 || audioChunkCount % 100 === 0) {
+      logDebug(`[main] audio chunk #${audioChunkCount} bytes=${chunk?.length || 0}`);
     }
     // Explicit Uint8Array avoids structured-clone issues with Node Buffer in some Electron versions.
     const payload = chunk instanceof Uint8Array
@@ -390,8 +471,12 @@ ipcMain.handle('desktop-audio:start', async () => {
 
   audioProcess.stderr.on('data', (data) => {
     const text = data.toString().trim();
-    console.warn(`[mac-audio-helper]: ${text}`);
-    if (/not authorized|Error:/i.test(text)) {
+    logDebug(`[mac-audio-helper]: ${text}`);
+    // 忽略诊断日志与状态信息（@AUTH 包含 (0=authorized 1=denied 2=undetermined) 解释文本，绝不能误判为 error）
+    if (text.startsWith('@AUTH') || text.startsWith('FORMAT:') || text.startsWith('SUCCESS:')) {
+      return;
+    }
+    if (/not authorized|kTCCServiceAudioCapture denied/i.test(text)) {
       openScreenRecordingSettings();
       mainWindow?.webContents.send(
         'desktop-audio:error',
@@ -399,7 +484,7 @@ ipcMain.handle('desktop-audio:start', async () => {
       );
       return;
     }
-    if (/error|denied|fail/i.test(text) && !/SUCCESS/i.test(text)) {
+    if (/^Error:|^FATAL:/i.test(text)) {
       mainWindow?.webContents.send('desktop-audio:error', text);
     }
   });
@@ -441,4 +526,91 @@ ipcMain.handle('desktop-audio:stop', () => {
       }
     }, 800);
   }
+});
+
+// ===== 原生 Node.js ASR WebSocket 网关代理（彻底解决 Electron file:// 协议 Origin 1008/1005 拦截） =====
+const WebSocketClient = require('ws');
+let asrSocket = null;
+
+ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
+  logDebug(`[main-asr] connecting to ${url}`);
+  if (asrSocket) {
+    try { asrSocket.close(1000, 'reconnecting'); } catch {}
+    asrSocket = null;
+  }
+
+  try {
+    const ws = new WebSocketClient(url, {
+      headers: {
+        'Origin': 'https://mianshizhu.xyz',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) MianshiZhu/1.0.8 Chrome/130.0.0.0 Electron/43.0.0 Safari/537.36'
+      }
+    });
+    asrSocket = ws;
+
+    ws.on('open', () => {
+      logDebug(`[main-asr] WebSocket connected to ${url}, sending start payload`);
+      if (startPayload) {
+        try {
+          ws.send(JSON.stringify(startPayload));
+        } catch (e) {
+          logDebug(`[main-asr] send startPayload error: ${e.message}`);
+        }
+      }
+      mainWindow?.webContents.send('desktop-asr:open');
+    });
+
+    ws.on('message', (data) => {
+      const str = data.toString();
+      if (!str.includes('voiceRecBase64') && str.length < 200) {
+        logDebug(`[main-asr] message: ${str}`);
+      }
+      mainWindow?.webContents.send('desktop-asr:message', str);
+    });
+
+    ws.on('error', (err) => {
+      logDebug(`[main-asr] WebSocket error: ${err.message}`);
+      mainWindow?.webContents.send('desktop-asr:error', err.message);
+    });
+
+    ws.on('close', (code, reason) => {
+      logDebug(`[main-asr] WebSocket closed: code=${code}, reason=${reason}`);
+      mainWindow?.webContents.send('desktop-asr:close', { code, reason: reason ? reason.toString() : '' });
+      if (asrSocket === ws) asrSocket = null;
+    });
+
+    return { ok: true };
+  } catch (err) {
+    logDebug(`[main-asr] failed to create WebSocketClient: ${err.message}`);
+    return { ok: false, error: err.message };
+  }
+});
+
+let asrSendCount = 0;
+ipcMain.handle('desktop-asr:send', (_event, payload) => {
+  if (asrSocket && asrSocket.readyState === WebSocketClient.OPEN) {
+    try {
+      asrSendCount++;
+      if (asrSendCount <= 3 || asrSendCount % 50 === 0) {
+        logDebug(`[main-asr] sent payload #${asrSendCount}`);
+      }
+      asrSocket.send(payload);
+      return true;
+    } catch (err) {
+      logDebug(`[main-asr] send error: ${err.message}`);
+      return false;
+    }
+  }
+  return false;
+});
+
+ipcMain.handle('desktop-asr:close', () => {
+  if (asrSocket) {
+    try {
+      asrSocket.send(JSON.stringify({ type: 'stop' }));
+      asrSocket.close(1000, 'user stop');
+    } catch {}
+    asrSocket = null;
+  }
+  return true;
 });

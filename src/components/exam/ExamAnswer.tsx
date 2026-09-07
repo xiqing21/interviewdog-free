@@ -14,7 +14,10 @@ import {
   Typography,
 } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import { useNavigate } from 'react-router-dom';
 import { useExam } from '../../hooks/useExam';
+import { useBilling } from '../../hooks/useBilling';
+import { COMMERCIAL_MODE } from '../../config/commercial';
 import { MarkdownRenderer } from '../common/MarkdownRenderer';
 import { CopyButton } from '../common/CopyButton';
 
@@ -28,14 +31,19 @@ export function ExamAnswer() {
     error,
   } = useExam();
 
+  const { remainingSeconds } = useBilling();
+  const navigate = useNavigate();
+  const remainingMinutes = Math.floor(remainingSeconds / 60);
+  const hasEnoughBalance = !COMMERCIAL_MODE || remainingSeconds >= 300;
+
   return (
     <Box sx={{ mt: 2 }}>
       {/* Action row */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center', flexWrap: 'wrap' }}>
         <Button
           variant="contained"
           onClick={() => void solve()}
-          disabled={!currentImage || isProcessing}
+          disabled={!currentImage || isProcessing || !hasEnoughBalance}
           startIcon={
             isProcessing ? (
               <CircularProgress size={16} color="inherit" />
@@ -46,16 +54,38 @@ export function ExamAnswer() {
         >
           {isProcessing
             ? '解答中...'
-            : currentAnswer
-              ? '重新生成'
-              : '开始解答'}
+            : COMMERCIAL_MODE
+              ? currentAnswer
+                ? '重新生成 (消耗5分钟)'
+                : '开始解答 (消耗5分钟)'
+              : currentAnswer
+                ? '重新生成'
+                : '开始解答'}
         </Button>
+        {COMMERCIAL_MODE && (
+          <Chip
+            size="small"
+            variant="outlined"
+            color={hasEnoughBalance ? 'default' : 'error'}
+            label={`账户可用: ${remainingMinutes} 分钟 (每次消耗 5 分钟)`}
+          />
+        )}
         {currentAnswer && !isStreaming && <CopyButton text={currentAnswer} />}
       </Box>
 
-      {/* Error display (仅在未产生有效答案时显示错误提示，避免因为流结束断开而把已生成的答案标记为错误) */}
+      {/* Error display */}
       {error && !currentAnswer && (
-        <Alert severity="error" sx={{ mb: 1 }}>
+        <Alert
+          severity="error"
+          sx={{ mb: 1 }}
+          action={
+            error.includes('可用时长不足') ? (
+              <Button color="inherit" size="small" onClick={() => navigate('/billing')}>
+                前往充值
+              </Button>
+            ) : undefined
+          }
+        >
           {error}
         </Alert>
       )}

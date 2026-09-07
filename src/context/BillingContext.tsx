@@ -56,6 +56,15 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 
   const consumeSeconds = useCallback(async (seconds: number) => {
     if (!COMMERCIAL_MODE || !user || seconds <= 0) return;
+    // 立即乐观更新本地状态，让用户在界面上瞬间看到扣除 5 分钟，消除网络延时带来的“没扣费”疑惑
+    setEntitlement((prev) => {
+      if (!prev) return prev;
+      const totalSec = (prev.freeTrialMinutes + prev.purchasedMinutes) * 60;
+      return {
+        ...prev,
+        usedSeconds: Math.min(totalSec, prev.usedSeconds + seconds),
+      };
+    });
     try {
       const updated = await billingService.consumeSeconds(seconds);
       if (updated) setEntitlement(updated);

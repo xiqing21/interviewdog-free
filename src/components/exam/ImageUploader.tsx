@@ -17,6 +17,9 @@ export function ImageUploader() {
     currentImage,
     currentAnswer,
     captureScreen,
+    appendCaptureOnly,
+    capturedSlices,
+    resetCaptures,
     setImageFromUpload,
     captureSupported,
     isProcessing,
@@ -106,6 +109,32 @@ export function ImageUploader() {
             {desktop ? '一键截屏' : '屏幕截图'}
           </Button>
         )}
+        {captureSupported && currentImage && (
+          <Button
+            variant="outlined"
+            color="primary"
+            onClick={() => void appendCaptureOnly()}
+            disabled={isProcessing}
+            startIcon={<ScreenshotMonitorIcon />}
+            sx={{ fontWeight: 600 }}
+          >
+            {capturedSlices.length > 1
+              ? `追加下一屏 (已拼${capturedSlices.length}屏)`
+              : '长题向下滑动追加'}
+          </Button>
+        )}
+        {capturedSlices.length > 1 && (
+          <Button
+            size="small"
+            variant="text"
+            color="inherit"
+            onClick={resetCaptures}
+            disabled={isProcessing}
+            sx={{ color: 'text.secondary' }}
+          >
+            重置长图
+          </Button>
+        )}
         {desktop && (
           <Button
             variant="outlined"
@@ -151,8 +180,13 @@ export function ImageUploader() {
       />
 
       {/* 仅在有截图时展示极简预览条，绝不占用下方答案空间 */}
-      {currentImage && (
-        isCollapsed ? (
+      {currentImage && (() => {
+        const imageSrc =
+          currentImage.startsWith('http') || currentImage.startsWith('data:')
+            ? currentImage
+            : `data:image/png;base64,${currentImage}`;
+
+        return isCollapsed ? (
           <Box
             sx={{
               display: 'flex',
@@ -170,7 +204,7 @@ export function ImageUploader() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, overflow: 'hidden' }}>
               <Box
                 component="img"
-                src={`data:image/png;base64,${currentImage}`}
+                src={imageSrc}
                 alt="缩略图"
                 sx={{
                   width: 44,
@@ -217,7 +251,7 @@ export function ImageUploader() {
             </Button>
             <Box
               component="img"
-              src={`data:image/png;base64,${currentImage}`}
+              src={imageSrc}
               alt="题目截图"
               sx={{
                 maxWidth: '100%',
@@ -227,8 +261,8 @@ export function ImageUploader() {
               }}
             />
           </Box>
-        )
-      )}
+        );
+      })()}
     </Box>
   );
 }

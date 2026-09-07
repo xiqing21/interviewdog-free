@@ -120,7 +120,7 @@ export function DesktopWindowSettings() {
               窗口置顶
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              始终保持在其他所有软件最上层
+              保持在所有软件最前，支持穿透牛客/赛码等在线笔试全屏 (Spaces) 模式
             </Typography>
           </Box>
           <Switch

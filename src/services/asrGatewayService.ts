@@ -46,13 +46,25 @@ let source: MediaStreamAudioSourceNode | null = null;
 let processor: ScriptProcessorNode | null = null;
 let silentGain: GainNode | null = null;
 
+let desktopGatewayUnsubs: Array<() => void> = [];
+let isDesktopGatewayActive = false;
+
+function cleanupDesktopGateway(): void {
+  desktopGatewayUnsubs.forEach((unsub) => {
+    try { unsub(); } catch {}
+  });
+  desktopGatewayUnsubs = [];
+  isDesktopGatewayActive = false;
+}
+
 export function isSupported(): boolean {
-  return typeof WebSocket !== 'undefined';
+  return typeof WebSocket !== 'undefined' || Boolean(typeof window !== 'undefined' && window.desktopWindow?.asrGateway);
 }
 
 export function isActive(): boolean {
   return Boolean(currentSession && !manuallyStopped)
-    || (ws !== null && ws.readyState === WebSocket.OPEN);
+    || (ws !== null && ws.readyState === WebSocket.OPEN)
+    || isDesktopGatewayActive;
 }
 
 export function start(
@@ -79,20 +91,118 @@ function connectGateway(session: GatewaySession): void {
     ws = null;
     try { previousSocket.close(1000, 'reconnecting'); } catch {}
   }
-  const socket = new WebSocket(buildGatewayUrl());
+  cleanupDesktopGateway();
+
+  const url = buildGatewayUrl();
+  console.info('[ASR Gateway] connecting to:', url, 'provider:', session.provider);
+
+  const startPayload = {
+    type: 'start',
+    provider: session.provider,
+    speaker: session.speaker,
+    asrEndWindowSize: session.config.asrEndWindowSize,
+    config: {
+      ...buildProviderConfig(session.provider, session.config),
+      hotwords: session.config.hotwords ?? '',
+    },
+  };
+
+  // Electron 桌面客户端环境下，优先使用主进程 Node.js 原生 WebSocket（彻底规避 Chromium file:// Origin 保护拦截）
+  if (typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
+    console.info('[ASR Gateway] Using desktop native ASR bridge for:', url, 'provider:', session.provider);
+    isDesktopGatewayActive = true;
+    const bridge = window.desktopWindow.asrGateway;
+
+    const unsubs = [
+      bridge.onOpen(() => {
+        console.info('[ASR Gateway Bridge] connected, starting heartbeat');
+        startClientHeartbeatBridge();
+      }),
+      bridge.onMessage((raw) => {
+        if (!currentSession) return;
+        let data: { type?: string; message?: string; text?: string; isFinal?: boolean };
+        try {
+          data = JSON.parse(String(raw || '{}'));
+        } catch {
+          session.callbacks.onError('ASR Gateway 返回了无法解析的数据。');
+          scheduleReconnect('invalid gateway message');
+          return;
+        }
+        if (data.type === 'ready') {
+          ready = true;
+          reconnectAttempts = 0;
+          console.info('[ASR Gateway Bridge] ready received from gateway');
+          session.callbacks.onReady?.();
+          flushQueue();
+          return;
+        }
+        if (data.type === 'pong') return;
+        if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
+          console.info('[ASR Gateway Bridge] VoiceMessage:', data.text.trim(), 'isFinal:', data.isFinal);
+          session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
+          return;
+        }
+        if (data.type === 'error') {
+          const message = data.message || 'ASR Gateway 错误';
+          console.error('[ASR Gateway Bridge] received error:', message);
+          if (isNonRetryableError(message)) {
+            stopAfterRemoteError(session, normalizeNonRetryableError(message));
+          } else {
+            session.callbacks.onError(message);
+          }
+          return;
+        }
+        if (data.type === 'end') {
+          console.info('[ASR Gateway Bridge] received end, manuallyStopped:', manuallyStopped);
+          if (manuallyStopped) {
+            session.callbacks.onEnd();
+          } else {
+            scheduleReconnect('gateway end');
+          }
+        }
+      }),
+      bridge.onError((err) => {
+        console.warn('[ASR Gateway Bridge] socket error:', err);
+        if (!manuallyStopped) scheduleReconnect('gateway error');
+      }),
+      bridge.onClose((info) => {
+        console.warn('[ASR Gateway Bridge] closed', info);
+        stopClientHeartbeat();
+        ready = false;
+        cleanupDesktopGateway();
+        if (manuallyStopped || !currentSession) {
+          callbacksRef?.onEnd();
+          return;
+        }
+        const closeDetail = info.reason
+          ? `关闭码 ${info.code}：${info.reason}`
+          : `关闭码 ${info.code}`;
+        if (info.code === 1008) {
+          stopAfterRemoteError(session, `实时识别服务拒绝了此来源（${closeDetail}）。`);
+          return;
+        }
+        if (info.code === 1013) {
+          scheduleReconnect('gateway at capacity', `实时识别服务当前繁忙（${closeDetail}）`);
+          return;
+        }
+        scheduleReconnect('gateway close', `实时识别连接已断开（${closeDetail}）`);
+      }),
+    ];
+    desktopGatewayUnsubs = unsubs;
+
+    bridge.connect(url, startPayload).catch((err) => {
+      console.warn('[ASR Gateway Bridge] connect failed:', err);
+      scheduleReconnect('bridge connect failed');
+    });
+    return;
+  }
+
+  const socket = new WebSocket(url);
   ws = socket;
   socket.onopen = () => {
+    console.info('[ASR Gateway] connected to WebSocket, sending start');
     startClientHeartbeat(socket);
-    socket.send(JSON.stringify({
-      type: 'start',
-      provider: session.provider,
-      speaker: session.speaker,
-      asrEndWindowSize: session.config.asrEndWindowSize,
-      config: {
-        ...buildProviderConfig(session.provider, session.config),
-        hotwords: session.config.hotwords ?? '',
-      },
-    }));
+    socket.send(JSON.stringify(startPayload));
   };
   socket.onmessage = (event) => {
     if (ws !== socket || !currentSession) return;
@@ -107,18 +217,20 @@ function connectGateway(session: GatewaySession): void {
     if (data.type === 'ready') {
       ready = true;
       reconnectAttempts = 0;
-      console.info('[ASR Gateway] connected');
+      console.info('[ASR Gateway] ready received from gateway');
       session.callbacks.onReady?.();
       flushQueue();
       return;
     }
     if (data.type === 'pong') return;
     if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
+      console.info('[ASR Gateway] VoiceMessage:', data.text.trim(), 'isFinal:', data.isFinal);
       session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
       return;
     }
     if (data.type === 'error') {
       const message = data.message || 'ASR Gateway 错误';
+      console.error('[ASR Gateway] received error:', message);
       if (isNonRetryableError(message)) {
         stopAfterRemoteError(session, normalizeNonRetryableError(message));
       } else {
@@ -127,6 +239,7 @@ function connectGateway(session: GatewaySession): void {
       return;
     }
     if (data.type === 'end') {
+      console.info('[ASR Gateway] received end, manuallyStopped:', manuallyStopped);
       if (manuallyStopped) {
         session.callbacks.onEnd();
       } else {
@@ -134,9 +247,9 @@ function connectGateway(session: GatewaySession): void {
       }
     }
   };
-  socket.onerror = () => {
+  socket.onerror = (err) => {
     if (ws !== socket) return;
-    console.warn('[ASR Gateway] socket error');
+    console.warn('[ASR Gateway] socket error:', err);
     if (!manuallyStopped) scheduleReconnect('gateway error');
   };
   socket.onclose = (event) => {
@@ -195,6 +308,23 @@ export async function startMicrophone(
 }
 
 export function sendAudio(pcm: Int16Array): void {
+  if (isDesktopGatewayActive && typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
+    if (!ready) {
+      queueAudio(pcm);
+      return;
+    }
+    try {
+      window.desktopWindow.asrGateway.send(JSON.stringify({
+        type: 'audio',
+        voiceRecBase64: pcmToBase64(pcm),
+      }));
+    } catch {
+      queueAudio(pcm);
+      scheduleReconnect('audio send failed');
+    }
+    return;
+  }
+
   if (!ws) {
     if (currentSession && !manuallyStopped) {
       queueAudio(pcm);
@@ -243,6 +373,10 @@ export function stop(): void {
     ownedStream.getTracks().forEach((track) => track.stop());
     ownedStream = null;
   }
+  if (isDesktopGatewayActive && typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
+    try { window.desktopWindow.asrGateway.close(); } catch {}
+  }
+  cleanupDesktopGateway();
   if (ws) {
     try { ws.send(JSON.stringify({ type: 'stop' })); } catch {}
     ws.close(1000, 'user stop');
@@ -263,7 +397,10 @@ function queueAudio(pcm: Int16Array): void {
 function scheduleReconnect(reason: string, messagePrefix?: string): void {
   if (!currentSession || manuallyStopped || reconnectTimer !== null) return;
 
-  reconnectAttempts += 1;
+  const isNormalSlice = reason === 'gateway end';
+  if (!isNormalSlice) {
+    reconnectAttempts += 1;
+  }
   if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
     const callbacks = currentSession.callbacks;
     currentSession = null;
@@ -273,8 +410,8 @@ function scheduleReconnect(reason: string, messagePrefix?: string): void {
     return;
   }
 
-  const delay = Math.min(2500, 250 * reconnectAttempts);
-  if (reconnectAttempts === 1) {
+  const delay = isNormalSlice ? 100 : Math.min(2500, 250 * reconnectAttempts);
+  if (reconnectAttempts === 1 && !isNormalSlice) {
     currentSession.callbacks.onError(`${messagePrefix ?? '识别连接暂时中断'}，正在自动恢复。`);
   }
   console.warn('[ASR Gateway] reconnect scheduled', {
@@ -301,6 +438,18 @@ function startClientHeartbeat(socket: WebSocket): void {
   }, CLIENT_HEARTBEAT_INTERVAL_MS);
 }
 
+function startClientHeartbeatBridge(): void {
+  stopClientHeartbeat();
+  clientHeartbeatTimer = window.setInterval(() => {
+    if (!isDesktopGatewayActive || typeof window === 'undefined' || !window.desktopWindow?.asrGateway) return;
+    try {
+      window.desktopWindow.asrGateway.send(JSON.stringify({ type: 'keepalive' }));
+    } catch {
+      scheduleReconnect('keepalive send failed');
+    }
+  }, CLIENT_HEARTBEAT_INTERVAL_MS);
+}
+
 function stopClientHeartbeat(): void {
   if (clientHeartbeatTimer !== null) {
     window.clearInterval(clientHeartbeatTimer);
@@ -319,6 +468,10 @@ function stopAfterRemoteError(session: GatewaySession, message: string): void {
     ownedStream.getTracks().forEach((track) => track.stop());
     ownedStream = null;
   }
+  if (isDesktopGatewayActive && typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
+    try { window.desktopWindow.asrGateway.close(); } catch {}
+  }
+  cleanupDesktopGateway();
   const socket = ws;
   ws = null;
   currentSession = null;

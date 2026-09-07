@@ -21,6 +21,7 @@ import { deobfuscate } from './cryptoService';
 import { API_TIMEOUT_MS, STREAM_TIMEOUT_MS } from '../constants';
 import { COMMERCIAL_MODE } from '../config/commercial';
 import { getApiUrl } from './apiHelper';
+import { compressImageBase64 } from './imageUploadService';
 
 /**
  * 从设置中解混淆 API Key
@@ -212,14 +213,27 @@ export async function visionChat(
   examType: ExamType,
   settings: AISettings,
   onChunk?: (text: string) => void,
+  extraInstruction?: string,
 ): Promise<string> {
+  // 若图片大于 500KB，自动在前端缩放到 1440px JPEG 格式，秒级完成上传，极大提升识别出答速度
+  let processedBase64 = imageBase64;
+  if (processedBase64.length > 500_000) {
+    try {
+      processedBase64 = await compressImageBase64(processedBase64, 1440, 0.85);
+    } catch {
+      // ignore
+    }
+  }
+  const dataUrl = processedBase64.startsWith('http') || processedBase64.startsWith('data:')
+    ? processedBase64
+    : `data:image/jpeg;base64,${processedBase64}`;
+
   if (COMMERCIAL_MODE) {
     const examConfig = EXAM_TYPES.find((e) => e.key === examType);
     if (!examConfig) {
       throw new Error(`未知的题型：${examType}`);
     }
-    const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}`;
-    const dataUrl = `data:image/png;base64,${imageBase64}`;
+    const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}${extraInstruction ? `\n\n${extraInstruction}` : ''}`;
 
     const messages: ChatMessage[] = [
       {
@@ -251,8 +265,7 @@ export async function visionChat(
   }
 
   // 构建用户消息：系统提示词 + 题型提示词 + 图片
-  const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}`;
-  const dataUrl = `data:image/png;base64,${imageBase64}`;
+  const userPrompt = `${settings.examSystemPrompt}\n\n${examConfig.prompt}${extraInstruction ? `\n\n${extraInstruction}` : ''}`;
 
   const messages: ChatMessage[] = [
     {
@@ -288,8 +301,8 @@ export async function visionChat(
       ),
     });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'TimeoutError') {
-      throw new Error('请求超时，请检查网络连接或稍后重试。');
+    if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError' || error.message?.includes('timed out'))) {
+      throw new Error('AI 服务响应超时，请检查网络连接或稍后重试。');
     }
     throw new Error(
       `网络请求失败：${error instanceof Error ? error.message : '未知错误'}`,
@@ -341,12 +354,20 @@ async function serverManagedChat(
   signal?: AbortSignal,
 ): Promise<string> {
   const useStreaming = stream && typeof onChunk === 'function';
-  const response = await fetch(getApiUrl('/api/chat'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages, stream: useStreaming, modelType }),
-    signal: signal ?? AbortSignal.timeout(useStreaming ? STREAM_TIMEOUT_MS : API_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetch(getApiUrl('/api/chat'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, stream: useStreaming, modelType }),
+      signal: signal ?? AbortSignal.timeout(useStreaming ? STREAM_TIMEOUT_MS : API_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === 'TimeoutError' || error.name === 'AbortError' || error.message?.includes('timed out'))) {
+      throw new Error('AI 服务响应超时，请检查网络连接或点击“重新生成”。');
+    }
+    throw new Error(`网络请求失败：${error instanceof Error ? error.message : '未知错误'}`);
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);

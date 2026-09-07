@@ -83,6 +83,42 @@ export async function loadEntitlement(): Promise<BillingEntitlement | null> {
 
 export async function consumeSeconds(seconds: number): Promise<BillingEntitlement | null> {
   if (!supabase || seconds <= 0) return null;
+
+  // 1. 优先直连 Supabase 更新，保证 300 秒（5分钟）足额实时扣除，不受第三方 API 缓存或旧代码限制
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData?.user) {
+      const { data: cur } = await supabase
+        .from('user_entitlements')
+        .select('*')
+        .eq('user_id', userData.user.id)
+        .maybeSingle();
+
+      if (cur) {
+        const totalSecs = (Number(cur.free_trial_minutes || 0) + Number(cur.purchased_minutes || 0)) * 60;
+        const nextUsed = Math.min(totalSecs, Number(cur.used_seconds || 0) + seconds);
+        const { data: updated, error } = await supabase
+          .from('user_entitlements')
+          .update({
+            used_seconds: nextUsed,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userData.user.id)
+          .select('*')
+          .single();
+
+        if (!error && updated) {
+          // 异步通知后台记账
+          void billingRequest('consume', { seconds }).catch(() => {});
+          return rowToEntitlement(updated as EntitlementRow);
+        }
+      }
+    }
+  } catch (directErr) {
+    console.warn('[billingService] direct supabase consume error, falling back to billingRequest:', directErr);
+  }
+
+  // 2. 备用兜底：请求服务端计费接口
   const server = await billingRequest('consume', { seconds });
   return server?.entitlement ?? null;
 }

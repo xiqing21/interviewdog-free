@@ -298,6 +298,7 @@ export interface InterviewReview {
 export interface ExamRecord {
   id: string;
   imageBase64: string;
+  imageUrl?: string;
   examType: ExamType;
   answer: string;
   timestamp: number;

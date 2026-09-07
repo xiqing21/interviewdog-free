@@ -23,6 +23,7 @@ export interface SystemAudioCallbacks {
   onPcmData: (pcm: Int16Array) => void;
   onError: (error: string) => void;
   onEnd: () => void;
+  onAudioLevel?: (level: number) => void;
 }
 
 /**
@@ -57,30 +58,37 @@ export async function start(
       currentCallbacks = callbacks;
 
       let totalSamples = 0;
-      let peakAbs = 0;
-      let silenceWarned = false;
-      const silenceTimer = window.setTimeout(() => {
-        if (generation !== desktopGeneration || silenceWarned) return;
-        if (totalSamples > 8000 && peakAbs < 80) {
-          silenceWarned = true;
+      let zeroPacketTimer: number | null = window.setTimeout(() => {
+        if (generation !== desktopGeneration) return;
+        if (totalSamples === 0) {
           callbacks.onError(
-            '已开始系统音频捕获，但几乎听不到声音。请确认：1) 系统设置→隐私与安全性→屏幕录制 已勾选 MianshiZhu Pro；2) 微信语音在本机扬声器/耳机播放（手机外放无效）；3) 系统音量未静音。可点「开始听音」重试。',
-          );
-        } else if (totalSamples === 0) {
-          silenceWarned = true;
-          callbacks.onError(
-            '未收到系统音频数据。请在「屏幕录制」权限中允许本应用，并完全退出后重开 App。',
+            '未收到系统音频数据流。请在系统设置「屏幕录制」和「仅系统录音」中允许 MianshiZhu Pro，并完全退出后重开 App。',
           );
         }
-      }, 3500);
+      }, 6000);
 
       const unsubscribeData = bridge.onSystemAudioData((pcm) => {
         if (generation !== desktopGeneration) return;
         totalSamples += pcm.length;
-        for (let i = 0; i < pcm.length; i += 32) {
-          const v = Math.abs(pcm[i] || 0);
-          if (v > peakAbs) peakAbs = v;
+        if (zeroPacketTimer) {
+          window.clearTimeout(zeroPacketTimer);
+          zeroPacketTimer = null;
         }
+
+        // 计算实时电平 (RMS 归一化为 0~100)
+        let sumSq = 0;
+        const step = Math.max(1, Math.floor(pcm.length / 128));
+        let count = 0;
+        for (let i = 0; i < pcm.length; i += step) {
+          const v = (pcm[i] || 0) / 32768;
+          sumSq += v * v;
+          count++;
+        }
+        const rms = count > 0 ? Math.sqrt(sumSq / count) : 0;
+        // 适当放大对微弱语音的敏感度
+        const level = Math.min(100, Math.round(Math.pow(rms, 0.6) * 120));
+        callbacks.onAudioLevel?.(level);
+
         callbacks.onPcmData(pcm);
         desktopPcmCount += 1;
         if (desktopPcmCount <= 3) console.info('[SystemAudio] PCM received', desktopPcmCount, pcm.length);
@@ -88,19 +96,22 @@ export async function start(
 
       const unsubscribeEnded = bridge.onSystemAudioEnded(() => {
         if (generation !== desktopGeneration) return;
-        window.clearTimeout(silenceTimer);
+        if (zeroPacketTimer) window.clearTimeout(zeroPacketTimer);
+        callbacks.onAudioLevel?.(0);
         callbacks.onEnd();
         cleanup();
       });
 
       const unsubscribeError = bridge.onSystemAudioError?.((message) => {
         if (generation !== desktopGeneration) return;
-        window.clearTimeout(silenceTimer);
+        if (zeroPacketTimer) window.clearTimeout(zeroPacketTimer);
+        callbacks.onAudioLevel?.(0);
         callbacks.onError(message);
       });
 
       desktopCleanup = () => {
-        window.clearTimeout(silenceTimer);
+        if (zeroPacketTimer) window.clearTimeout(zeroPacketTimer);
+        callbacks.onAudioLevel?.(0);
         unsubscribeData();
         unsubscribeEnded();
         unsubscribeError?.();
@@ -135,6 +146,15 @@ export async function start(
     processor = audioContext.createScriptProcessor(1024, 1, 1);
     processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
+      let sumSq = 0;
+      for (let i = 0; i < input.length; i += 8) {
+        const v = input[i] || 0;
+        sumSq += v * v;
+      }
+      const rms = Math.sqrt(sumSq / (input.length / 8));
+      const level = Math.min(100, Math.round(Math.pow(rms, 0.6) * 120));
+      callbacks.onAudioLevel?.(level);
+
       const pcm = resampler.toPcm(input);
       if (pcm.length > 0) callbacks.onPcmData(pcm);
     };

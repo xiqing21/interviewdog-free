@@ -61,6 +61,12 @@ export const DEFAULT_EXAM_PROMPT = `
 - **解题思路与分析**：简明扼要讲解破题核心思想与逻辑步骤（例如 SQL 的关联过滤条件、算法的数据结构选择等）。
 - **关键细节与易错点**：指出边界情况或陷阱（例如 NULL 值处理、日期边界、去重等）。
 - **选项解析（若为选择题）**：逐项说明各选项为什么正确或错误。
+
+【数据库与 SQL 题目识别绝对铁律（极重要，严防误出 Python）】
+1. 凡截图中出现数据库表结构、字段列表、二维数据表样例、CREATE TABLE 语句、或者题目要求从表中查询/筛选/计算业务指标（如留存率、GMV、连续活跃天数、窗口排名、分组聚合等）：
+   **必须 100% 优先默认使用标准 SQL（MySQL 8.0+ / PostgreSQL / SparkSQL）进行解答！**
+   **绝对严禁默认输出 Python 或 Pandas 代码，除非题干文字中明确且直接写明“请用 Python 编写”！**
+2. 若题目文字跨页，截图仅出现数据表和字段定义，请基于常见数仓与业务指标推导最可能的解法并给出标准 SQL，绝不能因为缺失下半页而误判为 Python。
 `.trim();
 
 // v2 兼容旧常量
@@ -99,7 +105,7 @@ JD 职责/要求短句：
 
 // ===== 题型配置 =====
 export const EXAM_TYPES: ExamTypeConfig[] = [
-  { key: 'coding', label: '代码题', icon: 'Code', prompt: '第一部分先给出最优解法的完整可运行代码（包含时空复杂度），第二部分给出详细解题思路、步骤拆解与关键边界。', color: '#6c63ff' },
+  { key: 'coding', label: '代码/SQL题', icon: 'Code', prompt: '第一部分先给出最优解法的完整可运行代码（包含时空复杂度；若题目包含数据表/字段，务必默认优先输出标准SQL；若为算法题则按题意使用指定语言），第二部分给出详细解题思路、步骤拆解与关键边界。', color: '#6c63ff' },
   { key: 'choice', label: '选择题', icon: 'CheckCircle', prompt: '第一行必须直接给出最终答案（如【正确答案】：B），第二部分逐项分析各选项正误原因与考察考点。', color: '#00d4ff' },
   { key: 'chart', label: '读图题', icon: 'BarChart', prompt: '第一部分直接给出核心结论/关键计算结果，第二部分逐步展开拓扑关系与推导步骤分析。', color: '#4caf50' },
   { key: 'logic', label: '逻辑推理', icon: 'Psychology', prompt: '第一行直接给出最终结论或数字答案，第二部分给出严密的推理解题步骤。', color: '#ff9800' },
@@ -266,7 +272,7 @@ export const THEME_OPTIONS: Array<{ key: ThemeMode; label: string; desc: string 
 // ===== 业务常量 =====
 export const MAX_EXAM_RECORDS = 50;
 export const STREAM_TIMEOUT_MS = 120_000;
-export const API_TIMEOUT_MS = 30_000;
+export const API_TIMEOUT_MS = 60_000;
 // Project history is lightweight and is also persisted remotely. Keep enough
 // room for repeated interview practice instead of silently refusing a new one.
 export const MAX_SESSIONS = 100;

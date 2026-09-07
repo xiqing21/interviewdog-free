@@ -23,6 +23,21 @@ contextBridge.exposeInMainWorld('desktopWindow', {
     ipcRenderer.on('desktop-shortcut:screenshot', sub);
     return () => ipcRenderer.removeListener('desktop-shortcut:screenshot', sub);
   },
+  onGlobalAppendScreenshot: (callback) => {
+    const sub = () => callback();
+    ipcRenderer.on('desktop-shortcut:append-screenshot', sub);
+    return () => ipcRenderer.removeListener('desktop-shortcut:append-screenshot', sub);
+  },
+  onGlobalSubmitExam: (callback) => {
+    const sub = () => callback();
+    ipcRenderer.on('desktop-shortcut:submit-exam', sub);
+    return () => ipcRenderer.removeListener('desktop-shortcut:submit-exam', sub);
+  },
+  onGlobalResetExam: (callback) => {
+    const sub = () => callback();
+    ipcRenderer.on('desktop-shortcut:reset-exam', sub);
+    return () => ipcRenderer.removeListener('desktop-shortcut:reset-exam', sub);
+  },
   onGlobalToggleIgnoreMouse: (callback) => {
     const sub = () => callback();
     ipcRenderer.on('desktop-shortcut:toggle-ignore-mouse', sub);
@@ -95,5 +110,31 @@ contextBridge.exposeInMainWorld('desktopWindow', {
     const subscription = (_event, message) => callback(String(message || '系统音频错误'));
     ipcRenderer.on('desktop-audio:error', subscription);
     return () => ipcRenderer.removeListener('desktop-audio:error', subscription);
+  },
+  // 原生 ASR WebSocket 网关代理（彻底绕过 Chromium file:// Origin 保护）
+  asrGateway: {
+    connect: (url, startPayload) => ipcRenderer.invoke('desktop-asr:connect', url, startPayload),
+    send: (payload) => ipcRenderer.invoke('desktop-asr:send', payload),
+    close: () => ipcRenderer.invoke('desktop-asr:close'),
+    onOpen: (callback) => {
+      const sub = () => callback();
+      ipcRenderer.on('desktop-asr:open', sub);
+      return () => ipcRenderer.removeListener('desktop-asr:open', sub);
+    },
+    onMessage: (callback) => {
+      const sub = (_event, data) => callback(data);
+      ipcRenderer.on('desktop-asr:message', sub);
+      return () => ipcRenderer.removeListener('desktop-asr:message', sub);
+    },
+    onError: (callback) => {
+      const sub = (_event, err) => callback(err);
+      ipcRenderer.on('desktop-asr:error', sub);
+      return () => ipcRenderer.removeListener('desktop-asr:error', sub);
+    },
+    onClose: (callback) => {
+      const sub = (_event, info) => callback(info);
+      ipcRenderer.on('desktop-asr:close', sub);
+      return () => ipcRenderer.removeListener('desktop-asr:close', sub);
+    },
   },
 });
