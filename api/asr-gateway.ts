@@ -433,7 +433,7 @@ function buildDoubaoFullRequest(config: Record<string, string | number | string[
       enable_ddc: false,
       enable_punc: true,
       show_utterances: true,
-      result_type: 'full',
+      result_type: (config.result_type as string) || 'single',
       ...(hotwords.length ? { hotwords } : {}),
     },
   })));

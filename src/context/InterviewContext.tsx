@@ -791,6 +791,8 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       mergeBuffer.current = [];
       dispatch({ type: 'SET_MERGING', payload: false });
       dispatch({ type: 'SET_CURRENT_QUESTION', payload: merged });
+      // 成功合并多段并触发时，重置底层识别流，避免旧内容渗入后续识别
+      asrGatewayService.resetStream();
       // 如果用户开启了“暂停应答”（快捷键或按钮），仅落库文字，拦截大模型触发
       if (isGenerationPausedRef.current) {
         console.info('[flushMergeBuffer] 自动应答已暂停，拦截 AI 生成，文字已落库:', merged);
@@ -817,6 +819,9 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
     if (!question) return '';
     addTranscriptLine({ id: generateId(), speaker: 'interviewer', text: question, timestamp: Date.now() });
+
+    // 关键：已成功提交一句话，立即重置底层 ASR 流（豆包重置 upstream 会话），彻底清空服务端累积的上下文滑动窗口！
+    asrGatewayService.resetStream();
 
     if (!isLikelyQuestionText(question)) {
       console.info('[commitInterimQuestion] 文字已落库双方对话，非典型提问，不触发 AI 回答:', question);
@@ -878,9 +883,11 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
       clearInterimCommitTimer();
       dispatch({ type: 'SET_INTERIM', payload: '' });
       addTranscriptLine({ id: generateId(), speaker: 'interviewer', text: interimQuestion, timestamp: Date.now() });
+      asrGatewayService.resetStream();
       await sendQuestion(interimQuestion);
       return;
     }
+    asrGatewayService.resetStream();
     await sendQuestion(question);
   }, [sendQuestion]);
 

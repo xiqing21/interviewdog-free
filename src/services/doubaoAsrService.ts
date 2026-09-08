@@ -245,7 +245,7 @@ function buildFullClientRequest(): ArrayBuffer {
       enable_ddc: false,
       enable_punc: true,
       show_utterances: true,
-      result_type: 'full',
+      result_type: 'single',
     },
   })));
 

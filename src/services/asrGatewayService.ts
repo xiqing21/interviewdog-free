@@ -48,6 +48,7 @@ let silentGain: GainNode | null = null;
 
 let desktopGatewayUnsubs: Array<() => void> = [];
 let isDesktopGatewayActive = false;
+let isResettingStream = false;
 
 function cleanupDesktopGateway(): void {
   desktopGatewayUnsubs.forEach((unsub) => {
@@ -130,6 +131,7 @@ function connectGateway(session: GatewaySession): void {
         }
         if (data.type === 'ready') {
           ready = true;
+          isResettingStream = false;
           reconnectAttempts = 0;
           console.info('[ASR Gateway Bridge] ready received from gateway');
           session.callbacks.onReady?.();
@@ -138,6 +140,7 @@ function connectGateway(session: GatewaySession): void {
         }
         if (data.type === 'pong') return;
         if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
+          if (isResettingStream) return;
           console.info('[ASR Gateway Bridge] VoiceMessage:', data.text.trim(), 'isFinal:', data.isFinal);
           session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
           return;
@@ -153,9 +156,12 @@ function connectGateway(session: GatewaySession): void {
           return;
         }
         if (data.type === 'end') {
-          console.info('[ASR Gateway Bridge] received end, manuallyStopped:', manuallyStopped);
+          console.info('[ASR Gateway Bridge] received end, manuallyStopped:', manuallyStopped, 'isResettingStream:', isResettingStream);
           if (manuallyStopped) {
             session.callbacks.onEnd();
+          } else if (isResettingStream) {
+            // resetStream 导致旧 upstream 正常关闭，正在等待新 upstream 的 ready 包，切勿重连
+            return;
           } else {
             scheduleReconnect('gateway end');
           }
@@ -216,6 +222,7 @@ function connectGateway(session: GatewaySession): void {
     }
     if (data.type === 'ready') {
       ready = true;
+      isResettingStream = false;
       reconnectAttempts = 0;
       console.info('[ASR Gateway] ready received from gateway');
       session.callbacks.onReady?.();
@@ -224,6 +231,7 @@ function connectGateway(session: GatewaySession): void {
     }
     if (data.type === 'pong') return;
     if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
+      if (isResettingStream) return;
       console.info('[ASR Gateway] VoiceMessage:', data.text.trim(), 'isFinal:', data.isFinal);
       session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
       return;
@@ -239,9 +247,11 @@ function connectGateway(session: GatewaySession): void {
       return;
     }
     if (data.type === 'end') {
-      console.info('[ASR Gateway] received end, manuallyStopped:', manuallyStopped);
+      console.info('[ASR Gateway] received end, manuallyStopped:', manuallyStopped, 'isResettingStream:', isResettingStream);
       if (manuallyStopped) {
         session.callbacks.onEnd();
+      } else if (isResettingStream) {
+        return;
       } else {
         scheduleReconnect('gateway end');
       }
@@ -361,8 +371,45 @@ export function sendAudio(pcm: Int16Array): void {
   }
 }
 
+export function resetStream(): void {
+  if (!currentSession || manuallyStopped) return;
+  console.info('[ASR Gateway] resetStream requested — refreshing ASR stream to prevent context accumulation');
+  isResettingStream = true;
+  ready = false;
+  queued = [];
+
+  const startPayload = {
+    type: 'start',
+    provider: currentSession.provider,
+    speaker: currentSession.speaker,
+    asrEndWindowSize: currentSession.config.asrEndWindowSize,
+    config: {
+      ...buildProviderConfig(currentSession.provider, currentSession.config),
+      hotwords: currentSession.config.hotwords ?? '',
+    },
+  };
+
+  if (isDesktopGatewayActive && typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
+    try {
+      window.desktopWindow.asrGateway.send(JSON.stringify(startPayload));
+    } catch (err) {
+      console.warn('[ASR Gateway Bridge] resetStream send failed:', err);
+    }
+    return;
+  }
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    try {
+      ws.send(JSON.stringify(startPayload));
+    } catch (err) {
+      console.warn('[ASR Gateway] resetStream send failed:', err);
+    }
+  }
+}
+
 export function stop(): void {
   manuallyStopped = true;
+  isResettingStream = false;
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -558,6 +605,7 @@ function buildProviderConfig(provider: ASRGatewayProvider, config: GatewayConfig
       appId: config.doubaoConfig.appId,
       accessToken: deobfuscate(config.doubaoConfig.accessToken),
       resourceId: config.doubaoConfig.resourceId,
+      result_type: 'single',
     };
   }
   if (provider === 'gateway-iflytek') {
