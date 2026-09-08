@@ -87,6 +87,7 @@ wss.on('connection', (client, request) => {
   let iflytekFirstFrame = true;
   let config: Record<string, string | number | string[]> = {};
   let clientAlive = true;
+  let lastAudioTime = Date.now();
   client.on('pong', () => { clientAlive = true; });
   const clientHeartbeat = setInterval(() => {
     if (!clientAlive) {
@@ -99,9 +100,11 @@ wss.on('connection', (client, request) => {
 
   const closeUpstream = () => {
     if (upstream) {
-      closeSocket(upstream, 'gateway cleanup');
+      const old = upstream;
+      upstream = null;
+      old.removeAllListeners();
+      closeSocket(old, 'gateway cleanup');
     }
-    upstream = null;
   };
 
   const send = (payload: unknown) => {
@@ -131,7 +134,7 @@ wss.on('connection', (client, request) => {
           asrEndWindowSize: message.asrEndWindowSize ?? 1500,
         };
         started = true;
-        if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker);
+        if (provider === 'gateway-doubao') startDoubao(config, send, (ws) => { upstream = ws; }, speaker, () => lastAudioTime);
         if (provider === 'gateway-iflytek') startIflytek(config, send, (ws) => { upstream = ws; }, speaker);
         if (provider === 'gateway-alibaba') startAlibaba(config, send, (ws) => { upstream = ws; }, speaker);
       })();
@@ -149,6 +152,7 @@ wss.on('connection', (client, request) => {
     }
 
     if (message.type === 'audio') {
+      lastAudioTime = Date.now();
       const pcm = Buffer.from(message.voiceRecBase64, 'base64');
       if (provider === 'gateway-doubao') {
         if (upstream?.readyState === WebSocket.OPEN) upstream.send(buildDoubaoAudioFrame(pcm, false));
@@ -207,6 +211,7 @@ function startDoubao(
   send: (payload: unknown) => void,
   setUpstream: (ws: WebSocket) => void,
   speaker: 'interviewer' | 'me',
+  getLastAudioTime?: () => number,
 ): void {
   const appId = str(config.appId);
   const accessToken = str(config.accessToken);
@@ -227,7 +232,16 @@ function startDoubao(
     },
   });
   const upstreamHeartbeat = setInterval(() => {
-    if (upstream.readyState === WebSocket.OPEN) upstream.ping();
+    if (upstream.readyState === WebSocket.OPEN) {
+      upstream.ping();
+      const lastAudio = getLastAudioTime ? getLastAudioTime() : 0;
+      if (lastAudio > 0 && Date.now() - lastAudio > 15_000) {
+        // 长时间静默时发送微弱空帧保活，防止豆包 upstream 断开长连接
+        try {
+          upstream.send(buildDoubaoAudioFrame(Buffer.alloc(3200), false));
+        } catch (_) {}
+      }
+    }
   }, HEARTBEAT_INTERVAL_MS);
   setUpstream(upstream);
   upstream.on('open', () => {

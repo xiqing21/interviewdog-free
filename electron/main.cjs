@@ -489,23 +489,29 @@ ipcMain.handle('desktop-audio:start', async () => {
     }
   });
 
-  audioProcess.on('close', (code) => {
-    const endedUnexpectedly = !audioStopRequested;
-    console.log(`[mac-audio-helper] exited with code ${code}`);
-    audioProcess = null;
-    audioStopRequested = false;
-    if (endedUnexpectedly) {
-      mainWindow?.webContents.send('desktop-audio:ended');
-      if (code && code !== 0) {
-        mainWindow?.webContents.send(
-          'desktop-audio:error',
-          `系统音频助手异常退出（code=${code}）。请检查屏幕录制权限后重试。`,
-        );
+    const child = audioProcess;
+    child.on('close', (code) => {
+      if (audioProcess !== child) return;
+      const endedUnexpectedly = !audioStopRequested;
+      console.log(`[mac-audio-helper] exited with code ${code}`);
+      audioProcess = null;
+      audioStopRequested = false;
+      if (endedUnexpectedly) {
+        mainWindow?.webContents.send('desktop-audio:ended');
+        if (code && code !== 0) {
+          mainWindow?.webContents.send(
+            'desktop-audio:error',
+            `系统音频助手异常退出（code=${code}）。请检查屏幕录制权限后重试。`,
+          );
+        }
       }
-    }
-  });
+    });
 
-  return { ok: true, helperPath, screenStatus: getScreenAccessStatus() };
+    return { ok: true, helperPath, screenStatus: getScreenAccessStatus() };
+  } catch (err) {
+    logDebug(`[main] Failed to spawn audio helper: ${err}`);
+    throw new Error('无法启动原生声音捕捉助手，请检查权限设置。');
+  }
 });
 
 ipcMain.handle('desktop-audio:stop', () => {
@@ -513,6 +519,10 @@ ipcMain.handle('desktop-audio:stop', () => {
     audioStopRequested = true;
     const child = audioProcess;
     audioProcess = null;
+    child.stdout?.removeAllListeners();
+    child.stderr?.removeAllListeners();
+    child.removeAllListeners('error');
+    child.removeAllListeners('close');
     try {
       child.kill('SIGTERM');
     } catch (_) {
@@ -524,8 +534,9 @@ ipcMain.handle('desktop-audio:stop', () => {
       } catch (_) {
         // already gone
       }
-    }, 800);
+    }, 400);
   }
+  return { ok: true };
 });
 
 // ===== 原生 Node.js ASR WebSocket 网关代理（彻底解决 Electron file:// 协议 Origin 1008/1005 拦截） =====
@@ -535,8 +546,10 @@ let asrSocket = null;
 ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
   logDebug(`[main-asr] connecting to ${url}`);
   if (asrSocket) {
-    try { asrSocket.close(1000, 'reconnecting'); } catch {}
+    const oldSocket = asrSocket;
     asrSocket = null;
+    oldSocket.removeAllListeners();
+    try { oldSocket.close(1000, 'reconnecting'); } catch {}
   }
 
   try {
@@ -549,6 +562,7 @@ ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
     asrSocket = ws;
 
     ws.on('open', () => {
+      if (asrSocket !== ws) return;
       logDebug(`[main-asr] WebSocket connected to ${url}, sending start payload`);
       if (startPayload) {
         try {
@@ -561,6 +575,7 @@ ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
     });
 
     ws.on('message', (data) => {
+      if (asrSocket !== ws) return;
       const str = data.toString();
       if (!str.includes('voiceRecBase64') && str.length < 200) {
         logDebug(`[main-asr] message: ${str}`);
@@ -569,14 +584,16 @@ ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
     });
 
     ws.on('error', (err) => {
+      if (asrSocket !== ws) return;
       logDebug(`[main-asr] WebSocket error: ${err.message}`);
       mainWindow?.webContents.send('desktop-asr:error', err.message);
     });
 
     ws.on('close', (code, reason) => {
+      if (asrSocket !== ws) return;
       logDebug(`[main-asr] WebSocket closed: code=${code}, reason=${reason}`);
       mainWindow?.webContents.send('desktop-asr:close', { code, reason: reason ? reason.toString() : '' });
-      if (asrSocket === ws) asrSocket = null;
+      asrSocket = null;
     });
 
     return { ok: true };
@@ -606,11 +623,13 @@ ipcMain.handle('desktop-asr:send', (_event, payload) => {
 
 ipcMain.handle('desktop-asr:close', () => {
   if (asrSocket) {
-    try {
-      asrSocket.send(JSON.stringify({ type: 'stop' }));
-      asrSocket.close(1000, 'user stop');
-    } catch {}
+    const s = asrSocket;
     asrSocket = null;
+    s.removeAllListeners();
+    try {
+      s.send(JSON.stringify({ type: 'stop' }));
+      s.close(1000, 'user stop');
+    } catch {}
   }
   return true;
 });

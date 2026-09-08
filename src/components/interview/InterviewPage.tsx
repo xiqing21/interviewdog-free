@@ -382,7 +382,7 @@ export function InterviewPage() {
         </Box>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 1, py: 0.25 }}>
+          <Alert severity={error.includes('自动') ? 'info' : 'error'} sx={{ mb: 1, py: 0.25 }}>
             {error}
           </Alert>
         )}

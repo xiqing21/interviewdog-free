@@ -969,8 +969,17 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
   }
 
   function handleAsrError(message: string, options: { stopSystemAudio?: boolean } = {}): void {
+    if (!message) {
+      dispatch({ type: 'SET_ERROR', payload: null });
+      return;
+    }
     dispatch({ type: 'SET_ERROR', payload: message });
-    if (isFatalDoubaoAsrError(message)) {
+    // 如果是网络连接短暂波动正在后台自动恢复，保持音频捕获继续缓冲，不打断听音
+    if (message.includes('自动重连') || message.includes('正在自动')) {
+      return;
+    }
+    const isFatal = isFatalDoubaoAsrError(message) || message.includes('已中断') || message.includes('请点击重新开始') || message.includes('请重新开始');
+    if (isFatal) {
       asrGatewayService.stop();
       doubaoAsrService.stop();
       if (options.stopSystemAudio) {
@@ -1340,6 +1349,12 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }
     const app = appRef.current;
     dispatch({ type: 'SET_ERROR', payload: null });
+
+    // 重新开启录音前，先彻底清理任何可能残留的旧音频/ASR 会话
+    asrGatewayService.stop();
+    doubaoAsrService.stop();
+    systemAudioService.stop();
+    speechService.stop();
 
     const desktopSystemAudioOnly = Boolean(window.desktopWindow?.isDesktop);
     const mySource = desktopSystemAudioOnly

@@ -23,7 +23,7 @@ type GatewaySession = {
   callbacks: GatewayCallbacks;
 };
 
-const MAX_RECONNECT_ATTEMPTS = 8;
+const MAX_RECONNECT_ATTEMPTS = 20;
 const CLIENT_HEARTBEAT_INTERVAL_MS = 20_000;
 const NON_RETRYABLE_ERROR_PATTERNS = [
   /quota exceeded/i,
@@ -116,7 +116,7 @@ function connectGateway(session: GatewaySession): void {
 
     const unsubs = [
       bridge.onOpen(() => {
-        console.info('[ASR Gateway Bridge] connected, starting heartbeat');
+        console.info('[ASR Gateway Bridge] socket open');
         startClientHeartbeatBridge();
       }),
       bridge.onMessage((raw) => {
@@ -135,6 +135,7 @@ function connectGateway(session: GatewaySession): void {
           reconnectAttempts = 0;
           console.info('[ASR Gateway Bridge] ready received from gateway');
           session.callbacks.onReady?.();
+          session.callbacks.onError('');
           flushQueue();
           return;
         }
@@ -226,6 +227,7 @@ function connectGateway(session: GatewaySession): void {
       reconnectAttempts = 0;
       console.info('[ASR Gateway] ready received from gateway');
       session.callbacks.onReady?.();
+      session.callbacks.onError('');
       flushQueue();
       return;
     }
@@ -373,38 +375,10 @@ export function sendAudio(pcm: Int16Array): void {
 
 export function resetStream(): void {
   if (!currentSession || manuallyStopped) return;
-  console.info('[ASR Gateway] resetStream requested — refreshing ASR stream to prevent context accumulation');
-  isResettingStream = true;
-  ready = false;
+  // 后端针对豆包 sauc 流式识别已开启 result_type: 'single'，
+  // 豆包上游在每句断句后已天然独立输出，不会产生多轮上下文累积；
+  // 前端重置仅清空待发送队列，切勿反复中断重连 WebSocket，以保持长连接高稳定性
   queued = [];
-
-  const startPayload = {
-    type: 'start',
-    provider: currentSession.provider,
-    speaker: currentSession.speaker,
-    asrEndWindowSize: currentSession.config.asrEndWindowSize,
-    config: {
-      ...buildProviderConfig(currentSession.provider, currentSession.config),
-      hotwords: currentSession.config.hotwords ?? '',
-    },
-  };
-
-  if (isDesktopGatewayActive && typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
-    try {
-      window.desktopWindow.asrGateway.send(JSON.stringify(startPayload));
-    } catch (err) {
-      console.warn('[ASR Gateway Bridge] resetStream send failed:', err);
-    }
-    return;
-  }
-
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    try {
-      ws.send(JSON.stringify(startPayload));
-    } catch (err) {
-      console.warn('[ASR Gateway] resetStream send failed:', err);
-    }
-  }
 }
 
 export function stop(): void {
@@ -452,14 +426,14 @@ function scheduleReconnect(reason: string, messagePrefix?: string): void {
     const callbacks = currentSession.callbacks;
     currentSession = null;
     ready = false;
-    callbacks.onError('ASR Gateway 连接已中断，请重新开始录音。');
+    callbacks.onError('ASR Gateway 连接已中断，请点击重新开始听音。');
     callbacks.onEnd();
     return;
   }
 
   const delay = isNormalSlice ? 100 : Math.min(2500, 250 * reconnectAttempts);
   if (reconnectAttempts === 1 && !isNormalSlice) {
-    currentSession.callbacks.onError(`${messagePrefix ?? '识别连接暂时中断'}，正在自动恢复。`);
+    currentSession.callbacks.onError(`${messagePrefix ?? '识别服务连接微弱'}，正在自动重连恢复中...`);
   }
   console.warn('[ASR Gateway] reconnect scheduled', {
     reason,
