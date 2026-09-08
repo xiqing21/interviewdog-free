@@ -508,10 +508,6 @@ ipcMain.handle('desktop-audio:start', async () => {
     });
 
     return { ok: true, helperPath, screenStatus: getScreenAccessStatus() };
-  } catch (err) {
-    logDebug(`[main] Failed to spawn audio helper: ${err}`);
-    throw new Error('无法启动原生声音捕捉助手，请检查权限设置。');
-  }
 });
 
 ipcMain.handle('desktop-audio:stop', () => {
