@@ -85,7 +85,6 @@ export function InterviewPage() {
     endInterview,
     isGenerationPaused,
     toggleGenerationPause,
-    audioLevel,
   } = useInterview();
   const [manualInput, setManualInput] = useState('');
   const [showSetup, setShowSetup] = useState(!activeSession);
@@ -406,53 +405,6 @@ export function InterviewPage() {
             label={isListening ? '正在听音' : '听音未开始'}
             sx={{ fontWeight: 800 }}
           />
-          {isListening && (
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 0.75,
-                px: 1,
-                py: 0.35,
-                borderRadius: 1,
-                border: '1px solid',
-                borderColor: audioLevel > 5 ? 'success.main' : 'divider',
-                bgcolor: audioLevel > 5 ? 'success.50' : 'background.paper',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: 14 }}>
-                {[0.4, 0.85, 1.0, 0.7, 0.35].map((factor, idx) => {
-                  const height = Math.max(
-                    3,
-                    Math.min(14, Math.round(14 * (audioLevel / 100) * factor + (audioLevel > 5 ? 2 : 0))),
-                  );
-                  return (
-                    <Box
-                      key={idx}
-                      sx={{
-                        width: 3,
-                        height: `${height}px`,
-                        borderRadius: '1px',
-                        bgcolor: audioLevel > 5 ? 'success.main' : 'text.disabled',
-                        transition: 'height 0.08s ease',
-                      }}
-                    />
-                  );
-                })}
-              </Box>
-              <Typography
-                variant="caption"
-                sx={{
-                  fontWeight: 700,
-                  fontSize: '0.72rem',
-                  color: audioLevel > 5 ? 'success.main' : 'text.disabled',
-                }}
-              >
-                {`系统音量 ${audioLevel}%`}
-              </Typography>
-            </Box>
-          )}
           <Chip
             size="small"
             color={isDesktop || systemAudioReady ? 'success' : 'default'}
