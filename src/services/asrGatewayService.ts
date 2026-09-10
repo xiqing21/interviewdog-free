@@ -49,6 +49,7 @@ let silentGain: GainNode | null = null;
 let desktopGatewayUnsubs: Array<() => void> = [];
 let isDesktopGatewayActive = false;
 let isResettingStream = false;
+let forceBrowserWebSocket = false;
 let lastRawText = '';
 let baselineRawText = '';
 
@@ -85,6 +86,7 @@ export function start(
   queued = [];
   lastRawText = '';
   baselineRawText = '';
+  forceBrowserWebSocket = false;
   connectGateway(currentSession);
   return true;
 }
@@ -99,7 +101,7 @@ function connectGateway(session: GatewaySession): void {
   cleanupDesktopGateway();
 
   const url = buildGatewayUrl();
-  console.info('[ASR Gateway] connecting to:', url, 'provider:', session.provider);
+  console.info('[ASR Gateway] connecting to:', url, 'provider:', session.provider, 'forceBrowserWebSocket:', forceBrowserWebSocket);
 
   const startPayload = {
     type: 'start',
@@ -112,8 +114,8 @@ function connectGateway(session: GatewaySession): void {
     },
   };
 
-  // Electron 桌面客户端环境下，优先使用主进程 Node.js 原生 WebSocket（彻底规避 Chromium file:// Origin 保护拦截）
-  if (typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
+  // Electron 桌面客户端环境下，优先使用主进程 Node.js 原生 WebSocket（若遭遇本地环境异常则自动降级到浏览器原生 WebSocket）
+  if (typeof window !== 'undefined' && window.desktopWindow?.asrGateway && !forceBrowserWebSocket) {
     console.info('[ASR Gateway] Using desktop native ASR bridge for:', url, 'provider:', session.provider);
     isDesktopGatewayActive = true;
     const bridge = window.desktopWindow.asrGateway;
@@ -400,6 +402,7 @@ export function resetStream(): void {
 export function stop(): void {
   manuallyStopped = true;
   isResettingStream = false;
+  forceBrowserWebSocket = false;
   lastRawText = '';
   baselineRawText = '';
   if (reconnectTimer !== null) {
@@ -440,6 +443,14 @@ function scheduleReconnect(reason: string, messagePrefix?: string): void {
   if (!isNormalSlice) {
     reconnectAttempts += 1;
   }
+
+  // 关键自愈：如果原生桌面网关桥接连续失败 3 次，自动降级为浏览器原生 WebSocket 连接
+  if (reconnectAttempts >= 3 && !forceBrowserWebSocket && typeof window !== 'undefined' && window.desktopWindow?.asrGateway) {
+    console.warn('[ASR Gateway] Desktop native bridge failed 3 times, switching to browser WebSocket');
+    forceBrowserWebSocket = true;
+    cleanupDesktopGateway();
+  }
+
   if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
     const callbacks = currentSession.callbacks;
     currentSession = null;
@@ -457,6 +468,7 @@ function scheduleReconnect(reason: string, messagePrefix?: string): void {
     reason,
     attempt: reconnectAttempts,
     delay,
+    forceBrowserWebSocket,
   });
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null;

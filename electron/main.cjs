@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, Menu, shell, systemPreferences, desktopCapturer, session, globalShortcut, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { spawn } = require('node:child_process');
+const { spawn, execSync } = require('node:child_process');
 
 // Chromium loopback on macOS 14.2+/26 uses Core Audio taps when this is on.
 // Must be set before app ready. Harmless if a given Electron build ignores it.
@@ -537,10 +537,53 @@ ipcMain.handle('desktop-audio:stop', () => {
 
 // ===== 原生 Node.js ASR WebSocket 网关代理（彻底解决 Electron file:// 协议 Origin 1008/1005 拦截） =====
 const WebSocketClient = require('ws');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 let asrSocket = null;
+let asrSocketId = 0;
 
-ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
-  logDebug(`[main-asr] connecting to ${url}`);
+function getMacSystemProxy() {
+  if (process.platform !== 'darwin') return null;
+  try {
+    const out = execSync('scutil --proxy', { encoding: 'utf8' });
+    const isHttps = /HTTPSEnable\s*:\s*1/.test(out);
+    const isHttp = /HTTPEnable\s*:\s*1/.test(out);
+    if (!isHttps && !isHttp) return null;
+    const hostMatch = out.match(/HTTPSProxy\s*:\s*([^\s]+)/) || out.match(/HTTPProxy\s*:\s*([^\s]+)/);
+    const portMatch = out.match(/HTTPSPort\s*:\s*(\d+)/) || out.match(/HTTPPort\s*:\s*(\d+)/);
+    if (hostMatch && portMatch) {
+      return `http://${hostMatch[1]}:${portMatch[1]}`;
+    }
+  } catch {}
+  return null;
+}
+
+async function resolveProxyForUrl(targetUrl) {
+  try {
+    if (session.defaultSession) {
+      const proxyStr = await session.defaultSession.resolveProxy(targetUrl);
+      if (proxyStr) {
+        const match = proxyStr.match(/(?:PROXY|HTTPS)\s+([^;\s]+)/i);
+        if (match && match[1]) {
+          return match[1].startsWith('http') ? match[1] : `http://${match[1]}`;
+        }
+      }
+    }
+  } catch (e) {
+    logDebug(`[main-asr] session.resolveProxy error: ${e.message}`);
+  }
+
+  const envProxy = process.env.HTTPS_PROXY || process.env.https_proxy || process.env.ALL_PROXY || process.env.all_proxy;
+  if (envProxy) return envProxy;
+
+  const macProxy = getMacSystemProxy();
+  if (macProxy) return macProxy;
+
+  return null;
+}
+
+ipcMain.handle('desktop-asr:connect', async (_event, url, startPayload) => {
+  const currentSocketId = ++asrSocketId;
+  logDebug(`[main-asr] connecting to ${url} (socket #${currentSocketId})`);
   if (asrSocket) {
     const oldSocket = asrSocket;
     asrSocket = null;
@@ -549,16 +592,45 @@ ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
   }
 
   try {
-    const ws = new WebSocketClient(url, {
+    let agent = null;
+    const proxyUrl = await resolveProxyForUrl(url);
+    if (proxyUrl) {
+      try {
+        agent = new HttpsProxyAgent(proxyUrl);
+        logDebug(`[main-asr] using proxy agent ${proxyUrl}`);
+      } catch (e) {
+        logDebug(`[main-asr] failed to create HttpsProxyAgent: ${e.message}`);
+      }
+    }
+
+    const wsOptions = {
       headers: {
         'Origin': 'https://mianshizhu.xyz',
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) MianshiZhu/1.0.8 Chrome/130.0.0.0 Electron/43.0.0 Safari/537.36'
       }
-    });
+    };
+    if (agent) {
+      wsOptions.agent = agent;
+    }
+
+    const ws = new WebSocketClient(url, wsOptions);
     asrSocket = ws;
 
+    // 连接握手 6 秒超时防挂起保护
+    const handshakeTimer = setTimeout(() => {
+      if (asrSocketId !== currentSocketId || asrSocket !== ws) return;
+      if (ws.readyState === WebSocketClient.CONNECTING) {
+        logDebug(`[main-asr] handshake timeout for ${url} after 6000ms`);
+        try { ws.terminate(); } catch {}
+        mainWindow?.webContents.send('desktop-asr:error', '识别网关握手超时，正在重试...');
+        mainWindow?.webContents.send('desktop-asr:close', { code: 1006, reason: 'handshake timeout' });
+        asrSocket = null;
+      }
+    }, 6000);
+
     ws.on('open', () => {
-      if (asrSocket !== ws) return;
+      clearTimeout(handshakeTimer);
+      if (asrSocketId !== currentSocketId || asrSocket !== ws) return;
       logDebug(`[main-asr] WebSocket connected to ${url}, sending start payload`);
       if (startPayload) {
         try {
@@ -571,7 +643,7 @@ ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
     });
 
     ws.on('message', (data) => {
-      if (asrSocket !== ws) return;
+      if (asrSocketId !== currentSocketId || asrSocket !== ws) return;
       const str = data.toString();
       if (!str.includes('voiceRecBase64') && str.length < 200) {
         logDebug(`[main-asr] message: ${str}`);
@@ -580,13 +652,15 @@ ipcMain.handle('desktop-asr:connect', (_event, url, startPayload) => {
     });
 
     ws.on('error', (err) => {
-      if (asrSocket !== ws) return;
+      clearTimeout(handshakeTimer);
+      if (asrSocketId !== currentSocketId || asrSocket !== ws) return;
       logDebug(`[main-asr] WebSocket error: ${err.message}`);
       mainWindow?.webContents.send('desktop-asr:error', err.message);
     });
 
     ws.on('close', (code, reason) => {
-      if (asrSocket !== ws) return;
+      clearTimeout(handshakeTimer);
+      if (asrSocketId !== currentSocketId || asrSocket !== ws) return;
       logDebug(`[main-asr] WebSocket closed: code=${code}, reason=${reason}`);
       mainWindow?.webContents.send('desktop-asr:close', { code, reason: reason ? reason.toString() : '' });
       asrSocket = null;
