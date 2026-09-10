@@ -47,12 +47,12 @@ export default async function handler(request: ApiRequest, response: ApiResponse
     : firstNonEmpty(config.textApiKey, config.apiKey, process.env.AI_TEXT_API_KEY, process.env.AI_API_KEY);
 
   const baseUrl = (isVision
-    ? firstNonEmpty(config.visionBaseUrl, config.baseUrl, process.env.AI_VISION_BASE_URL, process.env.AI_BASE_URL, 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+    ? firstNonEmpty(config.visionBaseUrl, config.baseUrl, process.env.AI_VISION_BASE_URL, process.env.AI_BASE_URL, 'https://api.deepseek.com/v1')
     : firstNonEmpty(config.textBaseUrl, config.baseUrl, process.env.AI_TEXT_BASE_URL, process.env.AI_BASE_URL, 'https://api.deepseek.com/v1')
   ).replace(/\/+$/, '');
 
-  const textModel = firstNonEmpty(config.textModel, process.env.AI_TEXT_MODEL, 'deepseek-chat');
-  const visionModel = firstNonEmpty(config.visionModel, process.env.AI_VISION_MODEL, 'qwen-vl-max');
+  const textModel = firstNonEmpty(config.textModel, process.env.AI_TEXT_MODEL, 'deepseek-flash');
+  const visionModel = firstNonEmpty(config.visionModel, process.env.AI_VISION_MODEL, 'deepseek-flash');
   const activeModel = isVision ? visionModel : textModel;
 
   if (!apiKey) {

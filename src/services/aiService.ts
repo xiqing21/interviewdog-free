@@ -215,14 +215,12 @@ export async function visionChat(
   onChunk?: (text: string) => void,
   extraInstruction?: string,
 ): Promise<string> {
-  // 若图片大于 500KB，自动在前端缩放到 1440px JPEG 格式，秒级完成上传，极大提升识别出答速度
+  // 截图自动智能压缩：缩放到最宽 1600px 高清 JPEG 格式，秒级完成上传，极大提升大模型识图出答速度并降低 token 消耗
   let processedBase64 = imageBase64;
-  if (processedBase64.length > 500_000) {
-    try {
-      processedBase64 = await compressImageBase64(processedBase64, 1440, 0.85);
-    } catch {
-      // ignore
-    }
+  try {
+    processedBase64 = await compressImageBase64(processedBase64, 1600, 0.82, 'image/jpeg');
+  } catch (compressErr) {
+    console.warn('[aiService] 截图前端压缩失败，使用原图发送:', compressErr);
   }
   const dataUrl = processedBase64.startsWith('http') || processedBase64.startsWith('data:')
     ? processedBase64

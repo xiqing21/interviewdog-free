@@ -23,9 +23,14 @@ function base64ToBlob(base64: string, contentType = 'image/png'): Blob {
 }
 
 /**
- * 本地 Canvas 压缩图片为小尺寸 WebP/JPEG Base64（~30KB）用于防爆仓兜底
+ * 本地 Canvas 压缩图片为高质量 JPEG Base64 用于快速传输与大模型识图
  */
-export async function compressImageBase64(base64: string, maxWidth = 640, quality = 0.65): Promise<string> {
+export async function compressImageBase64(
+  base64: string,
+  maxWidth = 1600,
+  quality = 0.82,
+  mimeType: 'image/jpeg' | 'image/webp' | 'image/png' = 'image/jpeg',
+): Promise<string> {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return base64;
   }
@@ -55,9 +60,14 @@ export async function compressImageBase64(base64: string, maxWidth = 640, qualit
           return;
         }
 
+        // JPEG 格式填充白色底色，严防透明 PNG 变黑底
+        if (mimeType === 'image/jpeg') {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, width, height);
+        }
+
         ctx.drawImage(img, 0, 0, width, height);
-        // 尝试转成 webp，不支持则 jpeg
-        const compressed = canvas.toDataURL('image/webp', quality);
+        const compressed = canvas.toDataURL(mimeType, quality);
         resolve(compressed);
       } catch (err) {
         console.warn('[ImageUploadService] Canvas compress failed, fallback to original:', err);

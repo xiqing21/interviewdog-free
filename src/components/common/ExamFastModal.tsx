@@ -32,6 +32,8 @@ import AddPhotoAlternateIcon from '@mui/icons-material/AddPhotoAlternate';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import StorageIcon from '@mui/icons-material/Storage';
 import CodeIcon from '@mui/icons-material/Code';
+import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
+import CheckIcon from '@mui/icons-material/Check';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useExam } from '../../hooks/useExam';
 import { useBilling } from '../../hooks/useBilling';
@@ -47,6 +49,32 @@ const LANGUAGE_OPTIONS = [
   { key: 'Java', label: 'Java' },
   { key: 'C++', label: 'C++' },
 ];
+
+/** 从 Markdown 回答中提取优先可直接运行的 SQL 或算法代码块 */
+function extractSqlOrCode(markdown: string): { code: string; isSql: boolean } | null {
+  if (!markdown) return null;
+  // 匹配标准闭合的 ```sql ... ```
+  const sqlMatch = /```sql\s*([\s\S]*?)```/i.exec(markdown);
+  if (sqlMatch && sqlMatch[1]?.trim()) {
+    return { code: sqlMatch[1].trim(), isSql: true };
+  }
+  // 匹配流式生成中尚未闭合的 ```sql ...
+  const sqlStreamingMatch = /```sql\s*([\s\S]*)$/i.exec(markdown);
+  if (sqlStreamingMatch && sqlStreamingMatch[1]?.trim()) {
+    return { code: sqlStreamingMatch[1].trim(), isSql: true };
+  }
+  // 匹配其他指定语言闭合代码块
+  const genericMatch = /```(?:[a-zA-Z0-9_+-]+)?\s*([\s\S]*?)```/i.exec(markdown);
+  if (genericMatch && genericMatch[1]?.trim()) {
+    return { code: genericMatch[1].trim(), isSql: false };
+  }
+  // 匹配流式生成中其他语言尚未闭合代码块
+  const genericStreamingMatch = /```(?:[a-zA-Z0-9_+-]+)?\s*([\s\S]*)$/i.exec(markdown);
+  if (genericStreamingMatch && genericStreamingMatch[1]?.trim()) {
+    return { code: genericStreamingMatch[1].trim(), isSql: false };
+  }
+  return null;
+}
 
 export function ExamFastModal() {
   const {
@@ -82,10 +110,88 @@ export function ExamFastModal() {
   const [minimized, setMinimized] = useState(false);
   const [showImageFull, setShowImageFull] = useState(false);
 
+  // 代码一键复制状态反馈
+  const [codeCopied, setCodeCopied] = useState(false);
+
+  // 滚动容器与防抢焦流式滚动管理
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const lastScrollTopRef = useRef<number>(0);
+  const userScrolledUpRef = useRef<boolean>(false);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+
   // 浮窗绝对坐标（支持自由鼠标拖拽）
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; mouseX: number; mouseY: number } | null>(null);
+
+  // 监听容器滚动：用户若向上滑动查看前面的 SQL/题目，立即暂停自动吸底，绝不与用户抢夺滚轮
+  const handleAnswerScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight <= 45;
+    if (isNearBottom) {
+      userScrolledUpRef.current = false;
+      setUserScrolledUp(false);
+    } else if (scrollTop < lastScrollTopRef.current) {
+      // 正在向上滑动，保持当前位置
+      userScrolledUpRef.current = true;
+      setUserScrolledUp(true);
+    }
+    lastScrollTopRef.current = scrollTop;
+  };
+
+  // 点击平滑滚回到底部
+  const scrollToBottom = () => {
+    userScrolledUpRef.current = false;
+    setUserScrolledUp(false);
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  };
+
+  // 流式生成时，仅在用户未往上滑的情况下自动吸底
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+    if (!userScrolledUpRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [currentAnswer]);
+
+  // 当开启新一轮生成时，重置滚动位置与吸底状态
+  useEffect(() => {
+    if (isProcessing && !currentAnswer) {
+      userScrolledUpRef.current = false;
+      setUserScrolledUp(false);
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+    }
+  }, [isProcessing, currentAnswer]);
+
+  // 一键复制代码块处理函数
+  const extractedCode = extractSqlOrCode(currentAnswer);
+
+  const handleCopyCode = async (code: string) => {
+    if (!code) return;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(code);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = code;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2500);
+    } catch (err) {
+      console.warn('[ExamFastModal] 一键复制代码失败:', err);
+    }
+  };
 
   // 初始化坐标（默认停靠在右侧偏中上）
   useEffect(() => {
@@ -556,11 +662,15 @@ export function ExamFastModal() {
         </Box>
       )}
 
-      {/* 答案流式滚动区 */}
+      {/* 答案流式滚动区（带抗抢焦与手动翻页保护） */}
       <Box
+        ref={scrollContainerRef}
+        onScroll={handleAnswerScroll}
         sx={{
+          position: 'relative',
           flexGrow: 1,
           overflowY: 'auto',
+          overscrollBehavior: 'contain',
           p: 2,
           minHeight: 200,
           maxHeight: 'calc(100vh - 300px)',
@@ -596,6 +706,33 @@ export function ExamFastModal() {
             尚未生成解答
           </Typography>
         )}
+
+        {/* 用户向上滚动阅读代码时，若后台仍在流式出字，展示回到底部浮动胶囊 */}
+        {userScrolledUp && isStreaming && (
+          <Button
+            size="small"
+            variant="contained"
+            color="primary"
+            startIcon={<ArrowDownwardIcon sx={{ fontSize: 13 }} />}
+            onClick={scrollToBottom}
+            sx={{
+              position: 'sticky',
+              bottom: 8,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 10,
+              fontSize: '0.72rem',
+              py: 0.3,
+              px: 1.5,
+              borderRadius: 4,
+              boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+              textTransform: 'none',
+              fontWeight: 700,
+            }}
+          >
+            正在生成中，点击滚回最新
+          </Button>
+        )}
       </Box>
 
       <Divider />
@@ -611,8 +748,43 @@ export function ExamFastModal() {
           bgcolor: 'background.default',
         }}
       >
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {currentAnswer && <CopyButton text={currentAnswer} />}
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* 核心亮点：一键复制 SQL / 一键复制代码 */}
+          {extractedCode && (
+            <Button
+              size="small"
+              variant="contained"
+              color={extractedCode.isSql ? 'primary' : 'secondary'}
+              startIcon={
+                codeCopied ? (
+                  <CheckIcon fontSize="small" />
+                ) : extractedCode.isSql ? (
+                  <StorageIcon fontSize="small" />
+                ) : (
+                  <CodeIcon fontSize="small" />
+                )
+              }
+              onClick={() => void handleCopyCode(extractedCode.code)}
+              sx={{
+                fontSize: '0.75rem',
+                fontWeight: 800,
+                bgcolor: codeCopied ? 'success.main' : undefined,
+                '&:hover': {
+                  bgcolor: codeCopied ? 'success.dark' : undefined,
+                },
+              }}
+            >
+              {codeCopied
+                ? extractedCode.isSql
+                  ? '✓ SQL 已复制'
+                  : '✓ 代码已复制'
+                : extractedCode.isSql
+                ? '一键复制 SQL'
+                : '一键复制代码'}
+            </Button>
+          )}
+
+          {currentAnswer && <CopyButton text={currentAnswer} title="复制完整解答全文" />}
           {currentAnswer && !isStreaming && (
             <Button
               size="small"

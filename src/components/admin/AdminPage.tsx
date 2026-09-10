@@ -2593,19 +2593,19 @@ function AiConfigConsole({
   const [textApiKey, setTextApiKey] = useState(String(values.textApiKey || values.apiKey || ''));
   const [textModel, setTextModel] = useState(String(values.textModel || 'deepseek-chat'));
 
-  // 视觉通道状态（笔试截屏，默认回退到阿里百炼 Qwen-VL）
-  const [visionBaseUrl, setVisionBaseUrl] = useState(String(values.visionBaseUrl || values.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
+  // 视觉通道状态（笔试截屏，默认使用 DeepSeek V4.1 Flash 原生识图）
+  const [visionBaseUrl, setVisionBaseUrl] = useState(String(values.visionBaseUrl || values.baseUrl || 'https://api.deepseek.com/v1'));
   const [visionApiKey, setVisionApiKey] = useState(String(values.visionApiKey || values.apiKey || ''));
-  const [visionModel, setVisionModel] = useState(String(values.visionModel || 'qwen-vl-max'));
+  const [visionModel, setVisionModel] = useState(String(values.visionModel || 'deepseek-flash'));
 
   useEffect(() => {
     setTextBaseUrl(String(values.textBaseUrl || values.baseUrl || 'https://api.deepseek.com/v1'));
     setTextApiKey(String(values.textApiKey || values.apiKey || ''));
-    setTextModel(String(values.textModel || 'deepseek-chat'));
+    setTextModel(String(values.textModel || 'deepseek-flash'));
 
-    setVisionBaseUrl(String(values.visionBaseUrl || values.baseUrl || 'https://dashscope.aliyuncs.com/compatible-mode/v1'));
+    setVisionBaseUrl(String(values.visionBaseUrl || values.baseUrl || 'https://api.deepseek.com/v1'));
     setVisionApiKey(String(values.visionApiKey || values.apiKey || ''));
-    setVisionModel(String(values.visionModel || 'qwen-vl-max'));
+    setVisionModel(String(values.visionModel || 'deepseek-flash'));
   }, [values]);
 
   const applyTextPreset = (preset: { baseUrl: string; model: string }) => {
@@ -2837,7 +2837,7 @@ function AiConfigConsole({
                 <Typography variant="subtitle1" fontWeight={700} color="secondary.main">
                   📸 通道二：笔试辅助 / 截屏看图解题
                 </Typography>
-                <Chip label="推荐 Qwen-VL" size="small" color="secondary" variant="outlined" />
+                <Chip label="推荐 DeepSeek 原生识图" size="small" color="primary" variant="outlined" />
               </Stack>
               <Typography variant="caption" color="text.secondary">
                 专用于一键截屏后直接看图解析，智能过滤桌面干扰，直接给出算法代码或选择题答案。
@@ -2849,7 +2849,15 @@ function AiConfigConsole({
                 </Typography>
                 <Stack direction="row" spacing={0.8} sx={{ flexWrap: 'wrap', gap: 0.8 }}>
                   <Chip
-                    label="🌟 阿里百炼 Qwen-VL (首选)"
+                    label="🌟 DeepSeek V4.1 Flash 原生识图 (首选/与文本统一)"
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    onClick={() => applyVisionPreset({ baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-flash' })}
+                    sx={{ cursor: 'pointer', fontWeight: 700 }}
+                  />
+                  <Chip
+                    label="阿里百炼 Qwen-VL"
                     size="small"
                     color="secondary"
                     variant="outlined"
@@ -2857,7 +2865,7 @@ function AiConfigConsole({
                     sx={{ cursor: 'pointer', fontWeight: 600 }}
                   />
                   <Chip
-                    label="🌟 火山豆包 Vision"
+                    label="火山豆包 Vision"
                     size="small"
                     color="secondary"
                     variant="outlined"
@@ -2881,7 +2889,7 @@ function AiConfigConsole({
                 fullWidth
                 value={visionBaseUrl}
                 onChange={(e) => setVisionBaseUrl(e.target.value)}
-                placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+                placeholder="https://api.deepseek.com/v1"
                 InputLabelProps={{ shrink: true }}
               />
 
@@ -2893,8 +2901,8 @@ function AiConfigConsole({
                 fullWidth
                 value={visionApiKey}
                 onChange={(e) => setVisionApiKey(e.target.value)}
-                placeholder={visionApiKey ? '留空不改（使用服务端数据库中已保存的密匙）' : 'sk-...'}
-                helperText="阿里百炼 DashScope 或 火山引擎 的 API 密钥"
+                placeholder={visionApiKey ? '留空不改（使用服务端数据库中已保存的密匙）' : '留空自动复用上方 DeepSeek API Key'}
+                helperText="若使用 DeepSeek 原生识图，留空将自动复用上方的 API Key"
                 InputLabelProps={{ shrink: true }}
               />
 
@@ -2907,8 +2915,8 @@ function AiConfigConsole({
                     fullWidth
                     value={visionModel}
                     onChange={(e) => setVisionModel(e.target.value)}
-                    placeholder="qwen-vl-max / doubao-vision-pro-32k"
-                    helperText="必须为支持 Vision 的模型（推荐 qwen-vl-max / qwen-vl-plus）"
+                    placeholder="deepseek-flash / qwen-vl-max"
+                    helperText="必须为支持 Vision 的模型（首推 deepseek-flash 原生多模态）"
                     InputLabelProps={{ shrink: true }}
                   />
                   <Button

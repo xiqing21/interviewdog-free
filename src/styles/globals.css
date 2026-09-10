@@ -372,17 +372,11 @@ html[data-theme='light'] .MuiPaper-root {
 }
 
 .exam-answer-markdown .code-block::before {
-  content: 'CODE';
-  position: absolute;
-  top: 10px;
-  right: 14px;
-  color: #94a3b8;
-  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  letter-spacing: 0.12em;
+  display: none;
 }
 
 .exam-answer-markdown .code-block pre {
-  padding: 42px 18px 18px !important;
+  padding: 12px 18px 18px !important;
   color: #e5edf7;
   font-size: 13px;
   line-height: 1.75;

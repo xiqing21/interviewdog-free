@@ -55,10 +55,10 @@ export const DEFAULT_EXAM_PROMPT = `
 
 ### 一、 核心答案（置顶最前，供快速作答）
 - **选择题/填空题/简答题**：第一行直接加粗给出最终答案（如 **【正确答案】：B** 或最终数值结果）。
-- **SQL / 编程算法题**：第一部分直接给出完整、规范、无占位符的最优解代码块（第一行以注释写明时间与空间复杂度，且保证代码完整闭合，例如闭合 GROUP BY、ORDER BY 等子句，绝不截断）。
+- **SQL / 编程算法题**：【绝对铁律：第一行必须直接以代码块开头 (\`\`\`sql 或对应语言代码块)】，优先给出完整、规范、可直接复制运行的最优解代码！严禁在代码块之前输出任何前置文字、寒暄或题意分析！代码块内部首行以注释写明时空复杂度，且保证代码完整闭合。
 
 ### 二、 解题步骤与核心思路（紧随其后，清晰易懂）
-- **解题思路与分析**：简明扼要讲解破题核心思想与逻辑步骤（例如 SQL 的关联过滤条件、算法的数据结构选择等）。
+- **解题思路与分析**：简明扼要讲解破题核心思想与逻辑步骤（例如 SQL 的关联过滤条件、窗口函数拆解、算法的数据结构选择等）。
 - **关键细节与易错点**：指出边界情况或陷阱（例如 NULL 值处理、日期边界、去重等）。
 - **选项解析（若为选择题）**：逐项说明各选项为什么正确或错误。
 
@@ -108,7 +108,7 @@ JD 职责/要求短句：
 
 // ===== 题型配置 =====
 export const EXAM_TYPES: ExamTypeConfig[] = [
-  { key: 'coding', label: '代码/SQL题', icon: 'Code', prompt: '第一部分先给出最优解法的完整可运行代码（包含时空复杂度；若题目包含数据表/字段，务必默认优先输出标准SQL；若为算法题则按题意使用指定语言），第二部分给出详细解题思路、步骤拆解与关键边界。', color: '#6c63ff' },
+  { key: 'coding', label: '代码/SQL题', icon: 'Code', prompt: '【第一行必须直接输出完整可运行代码块（```sql 或对应语言代码块），严禁在代码块前输出任何文字或分析】！若题目出现数据表或字段，100%优先输出标准SQL；在代码块之后，第二部分再给出核心解题思路、步骤拆解与关键边界。', color: '#6c63ff' },
   { key: 'choice', label: '选择题', icon: 'CheckCircle', prompt: '第一行必须直接给出最终答案（如【正确答案】：B），第二部分逐项分析各选项正误原因与考察考点。', color: '#00d4ff' },
   { key: 'chart', label: '读图题', icon: 'BarChart', prompt: '第一部分直接给出核心结论/关键计算结果，第二部分逐步展开拓扑关系与推导步骤分析。', color: '#4caf50' },
   { key: 'logic', label: '逻辑推理', icon: 'Psychology', prompt: '第一行直接给出最终结论或数字答案，第二部分给出严密的推理解题步骤。', color: '#ff9800' },
@@ -120,8 +120,7 @@ export const PROVIDER_DEFAULTS: Record<AIProvider, ProviderDefault> = {
   openai:    { baseUrl: 'https://api.openai.com/v1',            textModel: 'gpt-4o',              visionModel: 'gpt-4o',              label: 'OpenAI' },
   anthropic: { baseUrl: 'https://api.anthropic.com/v1',         textModel: 'claude-sonnet-4-20250514', visionModel: 'claude-sonnet-4-20250514', label: 'Anthropic' },
   doubao:    { baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', textModel: 'doubao-pro-32k', visionModel: 'doubao-vision-pro-32k', label: '豆包 (火山引擎)' },
-  // V4 Flash is text-only. Screenshot questions are locally OCRed first.
-  deepseek:  { baseUrl: 'https://api.deepseek.com/v1',         textModel: 'deepseek-v4-flash',   visionModel: 'deepseek-v4-flash',    label: 'DeepSeek' },
+  deepseek:  { baseUrl: 'https://api.deepseek.com/v1',         textModel: 'deepseek-flash',      visionModel: 'deepseek-flash',       label: 'DeepSeek' },
   zhipu:     { baseUrl: 'https://open.bigmodel.cn/api/paas/v4', textModel: 'glm-4-plus',        visionModel: 'glm-4v-plus',          label: '智谱 GLM' },
   moonshot:  { baseUrl: 'https://api.moonshot.cn/v1',          textModel: 'moonshot-v1-8k',      visionModel: 'moonshot-v1-8k-vision', label: 'Moonshot' },
   qwen:      { baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', textModel: 'qwen-plus', visionModel: 'qwen-vl-max', label: '通义千问' },

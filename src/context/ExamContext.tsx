@@ -339,10 +339,13 @@ export function ExamProvider({ children }: ExamProviderProps) {
       if (lang && lang !== 'auto') {
         if (lang === 'SQL') {
           extraInstruction =
-            '【强制指定语言指令】：本题必须使用标准 SQL（MySQL 8.0+ / PostgreSQL / SparkSQL）编写最优解答，绝对禁止默认输出 Python 或其他语言！';
+            '【强制指定语言铁律】：本题必须使用标准 SQL（MySQL 8.0+ / PostgreSQL / SparkSQL）编写最优解答！第一行必须严格以 ```sql 代码块开头直接给出完整可执行代码，绝对严禁在代码块前输出任何寒暄或分析！代码块结束后再输出解题思路。';
         } else {
-          extraInstruction = `【强制指定语言指令】：本题必须使用 ${lang} 编写最优解完整代码，不要使用其他语言！`;
+          extraInstruction = `【强制指定语言铁律】：本题必须使用 ${lang} 编写最优解完整代码！第一行必须严格以 \`\`\`${lang.toLowerCase()} 代码块开头直接给出完整代码，绝对严禁在代码前输出任何分析！代码块结束后再输出解题思路。`;
         }
+      } else {
+        extraInstruction =
+          '【输出顺序铁律】：若为编程或 SQL 题，第一行必须严格以代码块开头 (```sql 或指定语言代码块) 优先输出完整可运行代码，绝对严禁在代码块前输出任何前置说明或寒暄！解题步骤与思路必须放在代码块之后输出。';
       }
 
       let accumulated = '';
