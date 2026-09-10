@@ -14,16 +14,19 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Divider,
   FormControl,
   FormControlLabel,
   IconButton,
   InputLabel,
   ListItemText,
+  Menu,
   MenuItem,
   Paper,
   Select,
   Switch,
   TextField,
+  Tooltip,
   Typography,
   type SelectChangeEvent,
 } from '@mui/material';
@@ -41,6 +44,9 @@ import SendIcon from '@mui/icons-material/Send';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import EditNoteIcon from '@mui/icons-material/EditNote';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import { MessageScroller } from '@shadcn/react/message-scroller';
 import { Link } from 'react-router-dom';
 import { QACard } from './QACard';
@@ -94,6 +100,7 @@ export function InterviewPage() {
   const [selectedQaId, setSelectedQaId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [audioGuideOpen, setAudioGuideOpen] = useState(false);
+  const [projectMenuAnchor, setProjectMenuAnchor] = useState<null | HTMLElement>(null);
   const lastQaCountRef = useRef(qaList.length);
 
   useEffect(() => {
@@ -181,6 +188,12 @@ export function InterviewPage() {
           const targetSession = sessions.find((session) => session.id === id);
           setShowAudioPrep(!targetSession?.archivedAt && !isDesktop);
         }}
+        onEditSession={(id) => {
+          switchSession(id);
+          setSetupMode('edit');
+          setShowSetup(true);
+          setShowStartPrompt(false);
+        }}
         onDeleteSession={deleteSession}
       />
     );
@@ -199,6 +212,14 @@ export function InterviewPage() {
           onDone={() => {
             setShowSetup(false);
             setShowAudioPrep(!isDesktop);
+          }}
+          onBack={() => {
+            if (setupMode === 'edit' && activeSession) {
+              setShowSetup(false);
+            } else {
+              setShowSetup(false);
+              setShowStartPrompt(true);
+            }
           }}
         />
       </Box>
@@ -228,19 +249,140 @@ export function InterviewPage() {
 
   return (
     <>
-    <Box
-      sx={{
-        display: 'grid',
-        gridTemplateColumns: {
-          xs: '1fr',
-          md: '160px minmax(0, 1fr) 200px',
-          xl: '220px minmax(0, 1.2fr) 260px',
-        },
-        gap: 2,
-        alignItems: 'start',
-      }}
-    >
-      <Paper key={`answer-${activeSession.id}`} sx={{ p: 2, minHeight: { md: 'calc(100vh - 140px)' } }}>
+      {/* 顶部项目状态与导航控制栏 */}
+      <Paper
+        variant="outlined"
+        sx={{
+          mb: 1.5,
+          p: 1.2,
+          px: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1.5,
+          flexWrap: 'wrap',
+          bgcolor: 'background.paper',
+          borderRadius: 2,
+        }}
+      >
+        {/* 左侧：回退到项目列表按钮 + 当前项目信息 */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <Tooltip title="返回面试项目列表，可自由切换或新建其他项目">
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<ArrowBackIcon />}
+              onClick={() => {
+                setShowStartPrompt(true);
+              }}
+              sx={{ fontWeight: 700, textTransform: 'none', borderRadius: 1.5 }}
+            >
+              返回项目列表
+            </Button>
+          </Tooltip>
+
+          <Divider orientation="vertical" flexItem sx={{ height: 22, my: 'auto', display: { xs: 'none', sm: 'block' } }} />
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            <FolderOpenIcon color="primary" fontSize="small" />
+            <Typography variant="subtitle2" fontWeight={800}>
+              {activeSession.name}
+            </Typography>
+            {activeSession.targetRole && (
+              <Chip size="small" label={activeSession.targetRole} variant="outlined" sx={{ height: 22, fontSize: '0.72rem' }} />
+            )}
+            <Chip
+              size="small"
+              label={`${qaList.length} 轮问答`}
+              color={qaList.length > 0 ? 'primary' : 'default'}
+              sx={{ height: 22, fontSize: '0.72rem', fontWeight: 600 }}
+            />
+            {activeSession.archivedAt && (
+              <Chip size="small" label="已归档" sx={{ height: 22, fontSize: '0.72rem' }} />
+            )}
+
+            {/* 快速切换项目下拉菜单 */}
+            {sessions.length > 1 && (
+              <>
+                <Button
+                  size="small"
+                  variant="text"
+                  endIcon={<KeyboardArrowDownIcon />}
+                  onClick={(e) => setProjectMenuAnchor(e.currentTarget)}
+                  sx={{ fontSize: '0.75rem', py: 0.2, px: 1, textTransform: 'none' }}
+                >
+                  切换项目 ({sessions.length})
+                </Button>
+                <Menu
+                  anchorEl={projectMenuAnchor}
+                  open={Boolean(projectMenuAnchor)}
+                  onClose={() => setProjectMenuAnchor(null)}
+                >
+                  {sessions.map((s) => (
+                    <MenuItem
+                      key={s.id}
+                      selected={s.id === activeSession.id}
+                      onClick={() => {
+                        switchSession(s.id);
+                        setProjectMenuAnchor(null);
+                      }}
+                      sx={{ fontSize: '0.85rem' }}
+                    >
+                      <ListItemText
+                        primary={s.name}
+                        secondary={`${s.qaList.length} 轮问答${s.targetRole ? ` · ${s.targetRole}` : ''}`}
+                      />
+                    </MenuItem>
+                  ))}
+                  <Divider />
+                  <MenuItem
+                    onClick={() => {
+                      setProjectMenuAnchor(null);
+                      setShowStartPrompt(true);
+                    }}
+                    sx={{ fontSize: '0.85rem', color: 'primary.main', fontWeight: 700 }}
+                  >
+                    查看全部项目列表...
+                  </MenuItem>
+                </Menu>
+              </>
+            )}
+          </Box>
+        </Box>
+
+        {/* 右侧：修改本场 JD 与简历按钮 */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Tooltip title="查看或随时修改本项目的岗位 JD 描述、简历、考察侧重点及知识库">
+            <Button
+              size="small"
+              variant="contained"
+              color="primary"
+              startIcon={<EditNoteIcon />}
+              onClick={() => {
+                setSetupMode('edit');
+                setShowSetup(true);
+              }}
+              sx={{ fontWeight: 700, textTransform: 'none', borderRadius: 1.5 }}
+            >
+              修改本场 JD 与简历
+            </Button>
+          </Tooltip>
+        </Box>
+      </Paper>
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: {
+            xs: '1fr',
+            md: '160px minmax(0, 1fr) 200px',
+            xl: '220px minmax(0, 1.2fr) 260px',
+          },
+          gap: 2,
+          alignItems: 'start',
+        }}
+      >
+        <Paper key={`answer-${activeSession.id}`} sx={{ p: 2, minHeight: { md: 'calc(100vh - 180px)' } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
           <QuestionAnswerIcon color="primary" fontSize="small" />
           <Typography variant="subtitle1" fontWeight={700}>面试官问题</Typography>
@@ -933,6 +1075,7 @@ interface ProjectStartPromptProps {
   onCreate: () => void;
   sessions: InterviewSession[];
   onOpenSession: (id: string) => void;
+  onEditSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
 }
 
@@ -943,6 +1086,7 @@ function ProjectStartPrompt({
   onCreate,
   sessions,
   onOpenSession,
+  onEditSession,
   onDeleteSession,
 }: ProjectStartPromptProps) {
   const [pendingDelete, setPendingDelete] = useState<InterviewSession | null>(null);
@@ -1004,6 +1148,19 @@ function ProjectStartPrompt({
                   <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
                     {formatTimeOrDate(session.updatedAt ?? session.createdAt)}
                   </Typography>
+                  <Tooltip title="修改该项目的岗位 JD 与简历">
+                    <IconButton
+                      aria-label={`编辑项目 ${session.name}`}
+                      size="small"
+                      color="primary"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditSession(session.id);
+                      }}
+                    >
+                      <EditNoteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                   <IconButton
                     aria-label={`删除项目 ${session.name}`}
                     size="small"
@@ -1072,9 +1229,10 @@ function formatTimeOrDate(timestamp: number): string {
 interface InterviewSetupProps {
   mode: 'new' | 'edit';
   onDone: () => void;
+  onBack?: () => void;
 }
 
-function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
+function InterviewSetup({ mode, onDone, onBack }: InterviewSetupProps) {
   const { activeSession, createSession, resume, jd, updateSessionProfile, updateSessionName } = useSession();
   const { profile: knowledgeProfile } = useKnowledge();
   const editing = mode === 'edit' && Boolean(activeSession);
@@ -1210,11 +1368,33 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
 
   return (
     <Paper sx={{ p: 3 }}>
+      {onBack && (
+        <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid', borderColor: 'divider', pb: 1.5 }}>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<ArrowBackIcon />}
+            onClick={onBack}
+            sx={{ textTransform: 'none', fontWeight: 700 }}
+          >
+            {editing ? '返回工作台' : '返回项目列表'}
+          </Button>
+          <Chip
+            size="small"
+            label={editing ? `正在调整：${activeSession?.name}` : '新建面试项目'}
+            color={editing ? 'primary' : 'default'}
+            variant="outlined"
+            sx={{ fontWeight: 600 }}
+          />
+        </Box>
+      )}
       <Typography variant="h5" fontWeight={800} gutterBottom>
-        {editing ? '项目准备：简历与岗位' : '第一步：准备新的面试项目'}
+        {editing ? '修改项目：岗位 JD 与简历' : '第一步：准备新的面试项目'}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        先创建项目，粘贴 JD 和简历。生成答案时 JD 是第一权重，简历只用来举真实例子；第二步进入工作台后再开始识别问题。
+        {editing
+          ? '在此随时调整本场面试的岗位 JD 要求、简历或专家知识库。生成答案时 JD 是第一权重，修改保存后即时对齐后续所有 AI 回答。'
+          : '先创建项目，粘贴 JD 和简历。生成答案时 JD 是第一权重，简历只用来举真实例子；第二步进入工作台后再开始识别问题。'}
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -1398,14 +1578,18 @@ function InterviewSetup({ mode, onDone }: InterviewSetupProps) {
         </Alert>
       )}
 
-      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-        {editing && (
-          <Button sx={{ mr: 1 }} onClick={onDone}>
+      <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end', gap: 1.5, flexWrap: 'wrap' }}>
+        {onBack ? (
+          <Button variant="outlined" onClick={onBack}>
+            {editing ? '取消并返回工作台' : '返回项目列表'}
+          </Button>
+        ) : editing ? (
+          <Button variant="outlined" onClick={onDone}>
             返回工作台
           </Button>
-        )}
-        <Button variant="contained" size="large" onClick={startProject}>
-          {editing ? '保存并返回工作台' : '第二步：进入面试工作台'}
+        ) : null}
+        <Button variant="contained" size="large" onClick={startProject} sx={{ fontWeight: 700 }}>
+          {editing ? '保存修改并返回工作台' : '第二步：进入面试工作台'}
         </Button>
       </Box>
 
