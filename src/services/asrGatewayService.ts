@@ -49,6 +49,8 @@ let silentGain: GainNode | null = null;
 let desktopGatewayUnsubs: Array<() => void> = [];
 let isDesktopGatewayActive = false;
 let isResettingStream = false;
+let lastRawText = '';
+let baselineRawText = '';
 
 function cleanupDesktopGateway(): void {
   desktopGatewayUnsubs.forEach((unsub) => {
@@ -81,6 +83,8 @@ export function start(
   reconnectAttempts = 0;
   ready = false;
   queued = [];
+  lastRawText = '';
+  baselineRawText = '';
   connectGateway(currentSession);
   return true;
 }
@@ -142,8 +146,12 @@ function connectGateway(session: GatewaySession): void {
         if (data.type === 'pong') return;
         if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
           if (isResettingStream) return;
-          console.info('[ASR Gateway Bridge] VoiceMessage:', data.text.trim(), 'isFinal:', data.isFinal);
-          session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
+          const raw = data.text.trim();
+          lastRawText = raw;
+          const incremental = stripHistoricalBaseline(raw, baselineRawText);
+          if (!incremental) return;
+          console.info('[ASR Gateway Bridge] VoiceMessage:', incremental, 'isFinal:', data.isFinal);
+          session.callbacks.onResult(incremental, Boolean(data.isFinal));
           return;
         }
         if (data.type === 'error') {
@@ -234,8 +242,12 @@ function connectGateway(session: GatewaySession): void {
     if (data.type === 'pong') return;
     if (data.type === 'VoiceMessage' && typeof data.text === 'string') {
       if (isResettingStream) return;
-      console.info('[ASR Gateway] VoiceMessage:', data.text.trim(), 'isFinal:', data.isFinal);
-      session.callbacks.onResult(data.text.trim(), Boolean(data.isFinal));
+      const raw = data.text.trim();
+      lastRawText = raw;
+      const incremental = stripHistoricalBaseline(raw, baselineRawText);
+      if (!incremental) return;
+      console.info('[ASR Gateway] VoiceMessage:', incremental, 'isFinal:', data.isFinal);
+      session.callbacks.onResult(incremental, Boolean(data.isFinal));
       return;
     }
     if (data.type === 'error') {
@@ -375,15 +387,21 @@ export function sendAudio(pcm: Int16Array): void {
 
 export function resetStream(): void {
   if (!currentSession || manuallyStopped) return;
-  // 后端针对豆包 sauc 流式识别已开启 result_type: 'single'，
-  // 豆包上游在每句断句后已天然独立输出，不会产生多轮上下文累积；
-  // 前端重置仅清空待发送队列，切勿反复中断重连 WebSocket，以保持长连接高稳定性
+  // 核心突破：将当前已识别出的全部累积文本锁定为历史基线。
+  // 后续服务端返回的累积文本中，会自动剥离掉该基线部分，
+  // 彻底消除多轮面试“下一题包含上一题”的上下文滑动窗口，同时 100% 保持 WebSocket 长连接常驻不断！
+  if (lastRawText) {
+    baselineRawText = lastRawText;
+    console.info('[ASR Gateway] resetStream: baseline locked to length', baselineRawText.length);
+  }
   queued = [];
 }
 
 export function stop(): void {
   manuallyStopped = true;
   isResettingStream = false;
+  lastRawText = '';
+  baselineRawText = '';
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -604,4 +622,69 @@ function pcmToBase64(pcm: Int16Array): string {
     binary += String.fromCharCode(...bytes.subarray(i, i + size));
   }
   return btoa(binary);
+}
+
+/**
+ * 规整字符串：移除标点符号、空格和控制字符，转小写，用于稳健前缀对齐匹配
+ */
+export function normalizeForComparison(text: string): string {
+  return text.replace(/[\s\p{P}\p{S}]+/gu, '').toLowerCase();
+}
+
+/**
+ * 从 rawText 开头剔除已提交的历史基线文本。
+ * 支持标点容错、语气助词容错与字词对齐，确保每一题仅包含当前提问内容。
+ */
+export function stripHistoricalBaseline(rawText: string, baseline: string): string {
+  if (!rawText) return '';
+  if (!baseline) return rawText.trim();
+
+  // 1. 快速完全前缀匹配
+  if (rawText.startsWith(baseline)) {
+    return rawText.slice(baseline.length).replace(/^[\s\p{P}\p{S}]+/gu, '').trim();
+  }
+
+  // 2. 基于汉字/英文字符的标点与空格容错前缀对齐（彻底消除大模型后端修正标点引起的微小差异）
+  const normBase = normalizeForComparison(baseline);
+  if (!normBase) return rawText.trim();
+
+  let baseIdx = 0;
+  let cutIdx = 0;
+
+  for (let i = 0; i < rawText.length; i++) {
+    const char = rawText[i];
+    // 跳过标点、空格与修饰符号
+    if (/[\s\p{P}\p{S}]/u.test(char)) {
+      continue;
+    }
+    const normChar = char.toLowerCase();
+    if (baseIdx < normBase.length && normChar === normBase[baseIdx]) {
+      baseIdx++;
+      cutIdx = i + 1;
+      if (baseIdx >= normBase.length) {
+        break;
+      }
+    } else {
+      // 尾部语气词/细微同音字容错：若剩余未匹配字符数 <= 2 且前面已经对齐了绝大部分（>= 80%）
+      if (baseIdx >= Math.max(2, Math.floor(normBase.length * 0.8)) && normBase.length - baseIdx <= 2) {
+        let skip = normBase.length - baseIdx;
+        let j = i;
+        while (j < rawText.length && skip > 0) {
+          if (!/[\s\p{P}\p{S}]/u.test(rawText[j])) skip--;
+          j++;
+        }
+        cutIdx = j;
+        baseIdx = normBase.length;
+        break;
+      }
+      // 不匹配且对齐长度不足，说明 rawText 并非以该基线开头（例如 ASR 产生了完全独立的分句）
+      return rawText.trim();
+    }
+  }
+
+  if (baseIdx >= Math.max(2, Math.floor(normBase.length * 0.8))) {
+    return rawText.slice(cutIdx).replace(/^[\s\p{P}\p{S}]+/gu, '').trim();
+  }
+
+  return rawText.trim();
 }

@@ -520,22 +520,14 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     let current = text.trim();
     current = current.replace(/(?:热词|关键词)[：:][\s\S]*$/g, '').trim();
 
-    // 只与【最近一条】已提交的问题比对，且仅当当前文本以该问题开头（前缀）时才去除前缀，严禁在句子中间使用 indexOf 截断！
-    const lastCommitted = committedInterviewerQuestions.current[committedInterviewerQuestions.current.length - 1];
-    if (lastCommitted) {
-      const normalizedCurrent = normalizeTranscriptText(current);
-      const normalizedPrevious = normalizeTranscriptText(lastCommitted);
-
-      // 完全相同，说明整句话已经提交过了
-      if (normalizedCurrent === normalizedPrevious) {
-        return '';
-      }
-
-      // 仅当是以该句子为开头（前缀重叠）时，才剥离前缀
-      if (current.startsWith(lastCommitted)) {
-        current = current.slice(lastCommitted.length).trim();
-      } else if (normalizedPrevious.length >= 4 && normalizedCurrent.startsWith(normalizedPrevious)) {
-        current = current.slice(Math.min(lastCommitted.length, current.length)).trim();
+    // 剔除所有已提交过的历史面试官问题前缀，彻底杜绝上下文重叠与滑动窗口累积
+    const committed = committedInterviewerQuestions.current;
+    if (committed && committed.length > 0) {
+      for (let i = committed.length - 1; i >= 0; i--) {
+        const prev = committed[i];
+        if (prev) {
+          current = asrGatewayService.stripHistoricalBaseline(current, prev);
+        }
       }
     }
 
@@ -1350,11 +1342,12 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const app = appRef.current;
     dispatch({ type: 'SET_ERROR', payload: null });
 
-    // 重新开启录音前，先彻底清理任何可能残留的旧音频/ASR 会话
+    // 重新开启录音前，先彻底清理任何可能残留的旧音频/ASR 会话与历史基线
     asrGatewayService.stop();
     doubaoAsrService.stop();
     systemAudioService.stop();
     speechService.stop();
+    committedInterviewerQuestions.current = [];
 
     const desktopSystemAudioOnly = Boolean(window.desktopWindow?.isDesktop);
     const mySource = desktopSystemAudioOnly
@@ -1524,6 +1517,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     mimoAsrService.stop();
     cloudAsrService.stop();
     asrGatewayService.stop();
+    committedInterviewerQuestions.current = [];
     dispatch({ type: 'SET_AUDIO_LEVEL', payload: 0 });
     dispatch({ type: 'SET_LISTENING', payload: false });
     // 立即 flush 合并缓冲区
