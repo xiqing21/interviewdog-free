@@ -220,7 +220,44 @@ export function createAppTheme(mode: ThemeMode): Theme {
             borderRadius: 8,
             boxShadow: preset.shadow,
             backgroundImage: 'none',
-            '&:hover': { boxShadow: preset.shadowHover },
+            transition: 'transform 150ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 150ms ease, background-color 150ms ease',
+            '&:hover': {
+              boxShadow: preset.shadowHover,
+              transform: 'translateY(-1px)',
+            },
+            '&:active': {
+              transform: 'scale(0.96)',
+              transitionDuration: '70ms',
+            },
+          },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: {
+            transition: 'transform 150ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease',
+            '&:hover': {
+              transform: 'scale(1.08)',
+            },
+            '&:active': {
+              transform: 'scale(0.91)',
+              transitionDuration: '70ms',
+            },
+          },
+        },
+      },
+      MuiListItemButton: {
+        styleOverrides: {
+          root: {
+            borderRadius: 8,
+            margin: '2px 8px',
+            transition: 'transform 140ms cubic-bezier(0.16, 1, 0.3, 1), background-color 140ms ease',
+            '&:hover': {
+              transform: 'translateX(3px)',
+            },
+            '&:active': {
+              transform: 'scale(0.98)',
+            },
           },
         },
       },
@@ -255,9 +292,13 @@ export function createAppTheme(mode: ThemeMode): Theme {
           root: {
             fontWeight: 700,
             borderRadius: 8,
+            transition: 'transform 150ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 150ms ease, background-color 150ms ease',
             boxShadow: preset.paletteMode === 'dark'
               ? '3px 3px 8px rgba(3,8,20,0.35), -2px -2px 7px rgba(72,88,119,0.15)'
               : '3px 3px 8px rgba(104,126,153,0.16), -3px -3px 9px rgba(255,255,255,0.90)',
+            '&:active': {
+              transform: 'scale(0.95)',
+            },
           },
         },
       },
