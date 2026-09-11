@@ -3,6 +3,12 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { spawn, execSync } = require('node:child_process');
 
+process.on('uncaughtException', (err) => {
+  try {
+    fs.appendFileSync('/tmp/mianshizhu-debug.log', `[UNCAUGHT EXCEPTION] ${err && err.stack || err}\n`);
+  } catch {}
+});
+
 // Chromium loopback on macOS 14.2+/26 uses Core Audio taps when this is on.
 // Must be set before app ready. Harmless if a given Electron build ignores it.
 app.commandLine.appendSwitch(
@@ -537,7 +543,12 @@ ipcMain.handle('desktop-audio:stop', () => {
 
 // ===== 原生 Node.js ASR WebSocket 网关代理（彻底解决 Electron file:// 协议 Origin 1008/1005 拦截） =====
 const WebSocketClient = require('ws');
-const { HttpsProxyAgent } = require('https-proxy-agent');
+let HttpsProxyAgent = null;
+try {
+  HttpsProxyAgent = require('https-proxy-agent').HttpsProxyAgent;
+} catch (e) {
+  logDebug(`[main-asr] note: https-proxy-agent unavailable: ${e.message}`);
+}
 let asrSocket = null;
 let asrSocketId = 0;
 

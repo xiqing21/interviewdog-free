@@ -1651,3 +1651,239 @@ button, input, select { font: inherit; }
     min-height: 420px;
   }
 }
+
+/* ==========================================================================
+   Motion-Web Choreography & Interactive Enhancements
+   Based on motion-web skill specifications (tokens, physics, affordance)
+   ========================================================================== */
+
+/* 1. Stealth Compare Spring & Stage Spotlight */
+.compare-stage {
+  position: relative;
+  background: radial-gradient(
+    600px circle at var(--stage-spot-x, 50%) var(--stage-spot-y, 50%),
+    rgba(255, 196, 0, 0.08),
+    transparent 70%
+  ), #111;
+}
+.compare-stage .split-handle::after {
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 180ms ease, background 180ms ease;
+}
+.compare-stage:hover .split-handle::after {
+  transform: translate(-50%, -50%) scale(1.06);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28), 0 0 18px rgba(255, 196, 0, 0.55);
+}
+.compare-stage.is-dragging .split-handle::after {
+  transform: translate(-50%, -50%) scale(1.14);
+  background: #ffe066;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35), 0 0 30px rgba(255, 196, 0, 0.8);
+}
+.compare-stage .split-handle {
+  transition: box-shadow 180ms ease;
+}
+.compare-stage.is-dragging .split-handle {
+  box-shadow: 0 0 0 1px rgba(255, 230, 120, 0.4), 0 0 36px rgba(255, 196, 0, 0.75);
+}
+
+/* 2. Hero 3D Perspective Tilt & Specular Glare */
+.hero .media-card {
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 240ms ease;
+}
+.hero .media-card:hover {
+  box-shadow: 0 36px 90px rgba(164, 91, 16, 0.26);
+}
+.hero .media-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 28px;
+  background: radial-gradient(
+    circle 380px at var(--glare-x, 50%) var(--glare-y, 50%),
+    rgba(255, 255, 255, 0.28),
+    transparent 65%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+  z-index: 3;
+}
+.hero .media-card:hover::after {
+  opacity: 1;
+}
+
+/* Float badge breathing motion */
+.float-badge {
+  animation: badgeFloat 3.8s ease-in-out infinite;
+}
+@keyframes badgeFloat {
+  0%, 100% {
+    transform: translateY(0);
+    box-shadow: 0 16px 34px rgba(23, 106, 61, 0.16);
+  }
+  50% {
+    transform: translateY(-5px);
+    box-shadow: 0 22px 42px rgba(23, 106, 61, 0.24);
+  }
+}
+
+/* Dual-wave radar ping */
+.live-dot {
+  position: relative;
+}
+.live-dot::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.4);
+  animation: radarPing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes radarPing {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.4); opacity: 0; }
+}
+
+/* 3. Interactive Card Spotlight & Tactile Hover */
+.feature, .doc-card, .price-card, .platform, .chat-phone {
+  position: relative;
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 260ms cubic-bezier(0.16, 1, 0.3, 1), border-color 260ms ease;
+}
+.feature:hover, .doc-card:hover, .platform:hover {
+  transform: translateY(-5px);
+}
+.feature::before, .doc-card::before, .price-card::before, .platform::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    380px circle at var(--mouse-x, -999px) var(--mouse-y, -999px),
+    rgba(255, 122, 0, 0.08),
+    transparent 70%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+  z-index: 1;
+}
+.feature:hover::before, .doc-card:hover::before, .price-card:hover::before, .platform:hover::before {
+  opacity: 1;
+}
+.feature:hover, .doc-card:hover {
+  border-color: #ffc48e;
+  box-shadow: 0 24px 50px rgba(180, 84, 20, 0.12);
+}
+
+/* Popular pricing card pulse glow */
+.price-card.popular {
+  animation: popularGlow 4.5s ease-in-out infinite alternate;
+}
+@keyframes popularGlow {
+  0% {
+    box-shadow: 0 28px 60px rgba(255, 122, 0, 0.18);
+  }
+  100% {
+    box-shadow: 0 32px 75px rgba(255, 122, 0, 0.28), 0 0 22px rgba(255, 170, 70, 0.2);
+  }
+}
+.price-card:hover {
+  transform: translateY(-8px);
+}
+.price-card.popular:hover {
+  transform: translateY(-12px);
+}
+
+/* 4. Button Tactile Feedback & Light Shimmer */
+.btn {
+  will-change: transform;
+}
+.btn:active {
+  transform: scale(0.96) !important;
+  transition-duration: 80ms !important;
+}
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+.btn-primary::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -60%;
+  width: 40%;
+  height: 200%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.32),
+    transparent
+  );
+  transform: rotate(25deg);
+  transition: none;
+  pointer-events: none;
+}
+.btn-primary:hover::after {
+  left: 140%;
+  transition: left 650ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 5. Scroll Choreography (Ease-Out-Expo Reveals) */
+.motion-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 640ms cubic-bezier(0.16, 1, 0.3, 1),
+              transform 640ms cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: calc(var(--reveal-i, 0) * 65ms);
+  will-change: opacity, transform;
+}
+.motion-reveal.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Staggered chat bubble pop-in */
+.chat-phone .bubble {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+  transition: opacity 380ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              transform 380ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.chat-phone.bubbles-live .bubble:nth-child(2) {
+  opacity: 1; transform: translateY(0) scale(1); transition-delay: 80ms;
+}
+.chat-phone.bubbles-live .bubble:nth-child(3) {
+  opacity: 1; transform: translateY(0) scale(1); transition-delay: 200ms;
+}
+.chat-phone.bubbles-live .bubble:nth-child(4) {
+  opacity: 1; transform: translateY(0) scale(1); transition-delay: 340ms;
+}
+.chat-phone.bubbles-live .bubble:nth-child(5) {
+  opacity: 1; transform: translateY(0) scale(1); transition-delay: 480ms;
+}
+
+/* 6. Accessibility — Prefers-Reduced-Motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .motion-reveal,
+  .chat-phone .bubble {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .hero .media-card {
+    transform: none !important;
+  }
+  .float-badge,
+  .price-card.popular,
+  .live-dot::before {
+    animation: none !important;
+  }
+}
+
