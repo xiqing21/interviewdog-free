@@ -3,7 +3,7 @@
  * Registers global keyboard shortcuts and displays the privacy dialog on first launch.
  */
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Box } from '@mui/material';
 import { Sidebar } from './Sidebar';
@@ -17,7 +17,12 @@ import { useExam } from '../../hooks/useExam';
 import { useInterview } from '../../hooks/useInterview';
 import { useTheme } from '../../hooks/useTheme';
 import { useHotkeys } from '../../hooks/useHotkeys';
-import { onGlobalToggleGenerationPause } from '../../services/desktopWindowService';
+import {
+  onGlobalToggleGenerationPause,
+  onIgnoreMouseChanged,
+  onGlobalToggleIgnoreMouse,
+  isDesktopApp,
+} from '../../services/desktopWindowService';
 import { publicAssetUrl } from '../../lib/assets';
 
 export function AppLayout() {
@@ -27,6 +32,7 @@ export function AppLayout() {
   const { toggleTheme } = useTheme();
   const location = useLocation();
   const mainRef = useRef<HTMLDivElement>(null);
+  const [ghostFlash, setGhostFlash] = useState(false);
 
   // 监听原生全局快捷键（Cmd+Shift+A / Ctrl+Shift+A）
   useEffect(() => {
@@ -37,6 +43,21 @@ export function AppLayout() {
       unsub();
     };
   }, [toggleGenerationPause]);
+
+  // 监听幽灵穿透模式触发（Cmd+Shift+P），提供余光确认的无感边框柔光闪烁
+  useEffect(() => {
+    if (!isDesktopApp()) return;
+    const triggerGhostFlash = () => {
+      setGhostFlash(true);
+      setTimeout(() => setGhostFlash(false), 520);
+    };
+    const unsubChange = onIgnoreMouseChanged(triggerGhostFlash);
+    const unsubGlobal = onGlobalToggleIgnoreMouse(triggerGhostFlash);
+    return () => {
+      unsubChange();
+      unsubGlobal();
+    };
+  }, []);
 
   useHotkeys({
     onScreenshot: () => {
@@ -109,6 +130,7 @@ export function AppLayout() {
       />
       <ExamFastModal />
       <OnboardingGuide />
+      {ghostFlash && <div className="ghost-mode-flash" aria-hidden="true" />}
     </Box>
   );
 }

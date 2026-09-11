@@ -35,6 +35,9 @@ importers:
       highlight.js:
         specifier: ^11.10.0
         version: 11.11.1
+      https-proxy-agent:
+        specifier: ^7.0.6
+        version: 7.0.6
       lucide-react:
         specifier: ^1.23.0
         version: 1.23.0(react@19.2.7)

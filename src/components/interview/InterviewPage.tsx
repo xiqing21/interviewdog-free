@@ -39,7 +39,6 @@ import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import MicIcon from '@mui/icons-material/Mic';
 import StopIcon from '@mui/icons-material/Stop';
 import ComputerIcon from '@mui/icons-material/Computer';
-import GraphicEqIcon from '@mui/icons-material/GraphicEq';
 import SendIcon from '@mui/icons-material/Send';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PauseCircleOutlineIcon from '@mui/icons-material/PauseCircleOutline';
@@ -543,7 +542,18 @@ export function InterviewPage() {
           <Chip
             size="small"
             color={isListening ? 'success' : 'warning'}
-            icon={isListening ? <GraphicEqIcon /> : <MicIcon />}
+            icon={
+              isListening ? (
+                <span className="sound-bar-container" aria-hidden="true">
+                  <span className="sound-bar" />
+                  <span className="sound-bar" />
+                  <span className="sound-bar" />
+                  <span className="sound-bar" />
+                </span>
+              ) : (
+                <MicIcon />
+              )
+            }
             label={isListening ? '正在听音' : '听音未开始'}
             sx={{ fontWeight: 800 }}
           />

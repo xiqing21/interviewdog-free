@@ -55,7 +55,11 @@ export function QACard({ qa }: QACardProps) {
   };
 
   return (
-    <div className="fade-in mb-4 rounded-2xl border border-border/80 bg-card/90 p-5 text-card-foreground shadow-[0_20px_60px_rgba(15,23,42,0.10)] backdrop-blur">
+    <div
+      className={`fade-in mb-4 rounded-2xl border border-border/80 bg-card/90 p-5 text-card-foreground shadow-[0_20px_60px_rgba(15,23,42,0.10)] backdrop-blur transition-all duration-300 ${
+        qa.isStreaming ? 'streaming-active-glow ring-1 ring-primary/40' : ''
+      }`}
+    >
         {/* Question */}
         <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
           <Typography color="primary" fontWeight={700} sx={{ flexShrink: 0 }}>

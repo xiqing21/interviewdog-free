@@ -319,6 +319,7 @@ export function ExamFastModal() {
   return (
     <Paper
       elevation={12}
+      className="fade-in"
       style={pos ? { left: `${pos.x}px`, top: `${pos.y}px` } : undefined}
       sx={{
         position: 'fixed',
@@ -627,17 +628,20 @@ export function ExamFastModal() {
             overflowY: 'auto',
           }}
         >
-          <Box
-            component="img"
-            src={imageSrc}
-            alt="题目原图"
-            sx={{
-              maxWidth: '100%',
-              borderRadius: 1,
-              border: '1px solid',
-              borderColor: 'divider',
-            }}
-          />
+          <Box sx={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+            {isProcessing && <div className="scanline-laser" aria-hidden="true" />}
+            <Box
+              component="img"
+              src={imageSrc}
+              alt="题目原图"
+              sx={{
+                maxWidth: '100%',
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            />
+          </Box>
         </Box>
       </Collapse>
 
